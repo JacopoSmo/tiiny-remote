@@ -338,9 +338,9 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
     ) {
         Text("Unlock after a restart", style = MaterialTheme.typography.titleLarge)
         Text(
-            "After a restart the Tiiny stays locked until someone logs in. This connects to your NAS " +
-                "over SSH and runs \"tiiny login\" there. Switch SSH on in UGOS first " +
-                "(Control Panel → Terminal).",
+            "After a restart the Tiiny stays locked until someone logs in. With the Tiiny's password saved in " +
+                "Settings, the app unlocks it directly, the way \"tiiny login\" does. Without it, or if that fails, " +
+                "it runs \"tiiny login\" on your NAS over SSH (switch SSH on in UGOS first).",
             style = MaterialTheme.typography.bodyMedium,
         )
         if (s.settings.autoUnlock) {
@@ -410,6 +410,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     var pw by remember(cur) { mutableStateOf(cur.nasPassword) }
     var auto by remember(cur) { mutableStateOf(cur.autoUnlock) }
     var cmd by remember(cur) { mutableStateOf(cur.unlockCommand) }
+    var tpw by remember(cur) { mutableStateOf(cur.tiinyPassword) }
     var showDebug by remember { mutableStateOf(false) }
 
     fun current() = AppSettings(
@@ -421,6 +422,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         nasPassword = pw,
         unlockCommand = cmd.ifBlank { DEFAULT_UNLOCK_COMMAND },
         autoUnlock = auto,
+        tiinyPassword = tpw,
     )
 
     Column(
@@ -443,7 +445,22 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         SecretField(key, { key = it }, "API key (TiinyOS → Settings → API Key)")
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Text("NAS, for unlocking", style = MaterialTheme.typography.titleMedium)
+        Text("Unlocking after a restart", style = MaterialTheme.typography.titleMedium)
+        SecretField(tpw, { tpw = it }, "Tiiny password (the one tiiny login asks for)")
+        Text(
+            "Used to unlock the Tiiny directly. It goes only to the Tiiny and is stored encrypted on this phone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = auto, onCheckedChange = { auto = it })
+            Spacer(Modifier.width(10.dp))
+            Text("Unlock automatically when the Tiiny is locked")
+        }
+        TextButton(onClick = { vm.forgetTiinyLogin() }) { Text("Forget saved Tiiny login key") }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("NAS, as a fallback for unlocking", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = host,
             onValueChange = { host = it },
@@ -469,11 +486,6 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             modifier = Modifier.fillMaxWidth(),
         )
         SecretField(pw, { pw = it }, "NAS password")
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = auto, onCheckedChange = { auto = it })
-            Spacer(Modifier.width(10.dp))
-            Text("Unlock automatically when the Tiiny is locked")
-        }
         OutlinedTextField(
             value = cmd,
             onValueChange = { cmd = it },

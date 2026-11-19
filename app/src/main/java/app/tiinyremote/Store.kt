@@ -23,8 +23,11 @@ data class AppSettings(
     val nasPassword: String = "",
     val unlockCommand: String = DEFAULT_UNLOCK_COMMAND,
     val autoUnlock: Boolean = true,
+    /** The Tiiny's own password (the one "tiiny login" asks for), used to unlock it directly. */
+    val tiinyPassword: String = "",
 ) {
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
+    val directConfigured get() = tiinyUrl.isNotBlank() && tiinyPassword.isNotBlank()
     val nasConfigured get() = nasHost.isNotBlank() && nasUser.isNotBlank() && nasPassword.isNotBlank()
 }
 
@@ -42,6 +45,7 @@ class Store(context: Context) {
         unlockCommand = prefs.getString("unlock_command", null)?.takeIf { it.isNotBlank() }
             ?: DEFAULT_UNLOCK_COMMAND,
         autoUnlock = prefs.getBoolean("auto_unlock", true),
+        tiinyPassword = Crypto.decrypt(prefs.getString("tiiny_password", null)) ?: "",
     )
 
     fun save(s: AppSettings) {
@@ -54,7 +58,15 @@ class Store(context: Context) {
             .putString("nas_password", Crypto.encrypt(s.nasPassword))
             .putString("unlock_command", s.unlockCommand)
             .putBoolean("auto_unlock", s.autoUnlock)
+            .putString("tiiny_password", Crypto.encrypt(s.tiinyPassword))
             .apply()
+    }
+
+    /** The login key the Tiiny gave in exchange for its password (what "tiiny login" keeps), encrypted. */
+    fun authKey(): String? = Crypto.decrypt(prefs.getString("auth_key", null))?.takeIf { it.isNotEmpty() }
+
+    fun setAuthKey(key: String?) {
+        prefs.edit().putString("auth_key", key?.let { Crypto.encrypt(it) }).apply()
     }
 
     /** Models the Tiiny lists but answers "not found" for when asked to load them. */

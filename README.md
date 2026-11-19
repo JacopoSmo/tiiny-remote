@@ -4,7 +4,8 @@ A small Android app for a Tiiny AI Pocket Lab on your home network:
 
 - **Models:** see which models are installed and loaded, and load or unload them. If the NPU is full,
   the app tells you which model the Tiiny suggests unloading and swaps them on request.
-- **Unlock:** after a restart the Tiiny stays locked until someone logs in. The app connects to your
+- **Unlock:** after a restart the Tiiny stays locked until someone logs in. With the Tiiny's password saved,
+  the app unlocks it directly, the way `tiiny login` does. As a fallback it connects to your
   NAS over SSH and runs `tiiny login` there (the Tiiny CLI must be installed on the NAS). With
   automatic unlock on, it does this by itself when it finds the Tiiny locked.
 

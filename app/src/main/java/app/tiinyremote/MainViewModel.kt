@@ -103,7 +103,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = _state.value
         val now = System.currentTimeMillis()
         // At most one automatic try every 5 minutes, so a wrong password doesn't hammer the NAS.
-        if (s.settings.autoUnlock && s.settings.nasConfigured && !s.unlocking && now - lastAutoUnlock > 5 * 60_000) {
+        if (s.settings.autoUnlock && canUnlock(s.settings) && !s.unlocking && now - lastAutoUnlock > 5 * 60_000) {
             lastAutoUnlock = now
             unlock(automatic = true)
         }
@@ -196,25 +196,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- unlock over SSH ----------
 
+    private fun canUnlock(st: AppSettings) = st.directConfigured || st.nasConfigured
+
+    /**
+     * Unlocks the Tiiny after a restart: directly with its password when one is saved (the way "tiiny login" does it),
+     * otherwise, or if that fails, through the NAS over SSH. Then waits until the Tiiny answers again.
+     */
     fun unlock(automatic: Boolean = false) {
         if (_state.value.unlocking) return
         val st = settings
-        if (!st.nasConfigured) {
-            toast("Enter the NAS address, username and password in Settings first.")
+        if (!canUnlock(st)) {
+            toast("Enter the Tiiny's password (or the NAS login) in Settings first.")
             return
         }
         viewModelScope.launch {
             _state.update { it.copy(unlocking = true) }
-            log(if (automatic) "Tiiny is locked: unlocking automatically through the NAS…" else "Connecting to the NAS…")
-            val res = withContext(Dispatchers.IO) { SshRunner.run(st, store, st.unlockCommand) }
-            if (res.output.isNotBlank()) res.output.lines().filter { it.isNotBlank() }.forEach { log("  $it") }
-            if (res.error != null) {
-                log("Unlock failed: ${res.error}")
+            if (automatic) log("Tiiny is locked: unlocking automatically…")
+            var ok = false
+
+            if (st.directConfigured) {
+                log("Unlocking directly with the Tiiny's password…")
+                val r = withContext(Dispatchers.IO) {
+                    runCatching { DirectUnlock(st.tiinyUrl, store, st.tiinyPassword).unlock { line -> log("  $line") } }
+                }
+                r.onSuccess { ok = true }
+                r.onFailure { e ->
+                    log("Direct unlock failed: ${e.message}")
+                    if (st.nasConfigured) log("Trying through the NAS instead…")
+                }
+            }
+
+            if (!ok && st.nasConfigured) {
+                log("Connecting to the NAS…")
+                val res = withContext(Dispatchers.IO) { SshRunner.run(st, store, st.unlockCommand) }
+                if (res.output.isNotBlank()) res.output.lines().filter { it.isNotBlank() }.forEach { log("  $it") }
+                when {
+                    res.output.contains("Password:", ignoreCase = true) && res.error != null ->
+                        log(
+                            "Unlock through the NAS failed: \"tiiny login\" asked for the Tiiny's password, which it " +
+                                "can't be given over this connection. Enter the Tiiny's password in Settings to unlock directly."
+                        )
+                    res.error != null -> log("Unlock through the NAS failed: ${res.error}")
+                    else -> ok = true
+                }
+            }
+
+            if (!ok) {
                 _state.update { it.copy(unlocking = false) }
                 if (!automatic) toast("Unlock failed: see the Unlock tab")
                 return@launch
             }
-            log("tiiny login done. Waiting for the Tiiny's services (usually 1–2 minutes)…")
+            log("Login done. Waiting for the Tiiny's services (usually up to 2 minutes)…")
             val deadline = System.currentTimeMillis() + 4 * 60_000
             var back = false
             while (System.currentTimeMillis() < deadline) {
@@ -272,6 +304,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         lastAutoUnlock = 0L
         toast("Saved")
         refreshNow()
+    }
+
+    fun forgetTiinyLogin() {
+        store.setAuthKey(null)
+        toast("Saved Tiiny login key forgotten. The next unlock logs in with the password again.")
     }
 
     fun forgetHostKey() {
