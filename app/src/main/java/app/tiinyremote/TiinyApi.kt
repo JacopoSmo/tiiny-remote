@@ -9,7 +9,7 @@ import java.util.Date
 import java.util.Locale
 
 class TiinyException(val kind: Kind, message: String) : Exception(message) {
-    enum class Kind { LOCKED, UNAUTHORIZED, UNREACHABLE, HTTP }
+    enum class Kind { LOCKED, UNAUTHORIZED, UNREACHABLE, NOT_FOUND, HTTP }
 }
 
 data class ModelInfo(
@@ -146,6 +146,10 @@ class TiinyApi(url: String, private val key: String) {
                 TiinyException.Kind.UNAUTHORIZED,
                 "The Tiiny rejected the API key. Copy it again from TiinyOS → Settings → API Key.",
             )
+            code == 404 -> throw TiinyException(
+                TiinyException.Kind.NOT_FOUND,
+                errorText(text),
+            )
             code !in 200..299 -> throw TiinyException(
                 TiinyException.Kind.HTTP,
                 "HTTP $code: ${errorText(text)}",
@@ -232,25 +236,15 @@ class TiinyApi(url: String, private val key: String) {
         return Catalog(models, used)
     }
 
-    /**
-     * Calls /api/v1/models/{id}{suffix}. Model ids contain "/" (e.g. Qwen/Qwen3-8B): Tiiny Studio sends it
-     * encoded as %2F. If the device answers 404 to that, the same call is tried once with the "/" left as is.
-     */
-    private fun modelCall(method: String, id: String, suffix: String, body: JSONObject? = null, timeoutSec: Int): JSONObject {
-        val variants = listOf(quote(id), id.split('/').joinToString("/") { quote(it) }).distinct()
-        for ((i, v) in variants.withIndex()) {
-            val res = call(method, "/api/v1/models/$v$suffix", body, timeoutSec)
-            if (res.first == 404 && i < variants.size - 1) continue
-            return json(res)
-        }
-        throw IllegalStateException("unreachable")
-    }
+    /** Calls /api/v1/models/{id}{suffix}, with the id encoded like Tiiny Studio does (Qwen/X becomes Qwen%2FX). */
+    private fun modelCall(method: String, id: String, suffix: String, body: JSONObject? = null, timeoutSec: Int): JSONObject =
+        json(call(method, "/api/v1/models/${quote(id)}$suffix", body, timeoutSec))
 
     fun plan(id: String): Plan {
         val p = try {
             modelCall("GET", id, "/unload_candidate", timeoutSec = 30)
         } catch (e: TiinyException) {
-            // The room check is only a courtesy: if the device doesn't know it, just try the load.
+            // The room check is only a courtesy: if it fails for another reason than an unknown model, just try the load.
             if (e.kind == TiinyException.Kind.HTTP) {
                 ApiLog.add("unload_candidate failed (${e.message}); loading without the room check")
                 return Plan(false, null, null, null, null, null)

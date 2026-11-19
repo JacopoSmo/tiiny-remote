@@ -231,7 +231,14 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         .filter { !chatOnly || it.isChat }
         .sortedWith(
             compareBy<ModelInfo>(
-                { when (it.status) { "running" -> 0; "loading" -> 1; else -> 2 } },
+                {
+                    when {
+                        it.status == "running" -> 0
+                        it.status == "loading" -> 1
+                        it.id in s.unavailable -> 3
+                        else -> 2
+                    }
+                },
                 { it.name.lowercase() },
             )
         )
@@ -257,7 +264,9 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
                 ModelCard(
                     m = m,
                     working = m.id in s.working,
+                    unavailable = m.id in s.unavailable && m.status == "stopped",
                     onLoad = { vm.load(m) },
+                    onRetry = { vm.retry(m) },
                     onUnload = { vm.unload(m) },
                 )
             }
@@ -266,7 +275,14 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
 }
 
 @Composable
-private fun ModelCard(m: ModelInfo, working: Boolean, onLoad: () -> Unit, onUnload: () -> Unit) {
+private fun ModelCard(
+    m: ModelInfo,
+    working: Boolean,
+    unavailable: Boolean,
+    onLoad: () -> Unit,
+    onRetry: () -> Unit,
+    onUnload: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
             Text(m.name, style = MaterialTheme.typography.titleMedium)
@@ -278,11 +294,19 @@ private fun ModelCard(m: ModelInfo, working: Boolean, onLoad: () -> Unit, onUnlo
             if (meta.isNotEmpty()) {
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (unavailable) {
+                Text(
+                    "The Tiiny lists this model but can't load it, often a leftover copy. Delete it in TiinyOS to remove it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val label = when (m.status) {
-                    "running" -> if (m.busy) "Loaded · working" else "Loaded"
-                    "loading" -> "Loading…"
+                val label = when {
+                    m.status == "running" -> if (m.busy) "Loaded · working" else "Loaded"
+                    m.status == "loading" -> "Loading…"
+                    unavailable -> "Not available on the Tiiny"
                     else -> "Not loaded"
                 }
                 Text(
@@ -296,6 +320,7 @@ private fun ModelCard(m: ModelInfo, working: Boolean, onLoad: () -> Unit, onUnlo
                     working || m.status == "loading" ->
                         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                     m.status == "running" -> OutlinedButton(onClick = onUnload) { Text("Unload") }
+                    unavailable -> TextButton(onClick = onRetry) { Text("Try again") }
                     else -> Button(onClick = onLoad) { Text("Load") }
                 }
             }

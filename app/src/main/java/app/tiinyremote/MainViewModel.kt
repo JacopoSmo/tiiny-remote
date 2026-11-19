@@ -28,6 +28,8 @@ data class UiState(
     /** Models with a load or unload request in flight. */
     val working: Set<String> = emptySet(),
     val swap: PendingSwap? = null,
+    /** Models the Tiiny lists but refuses to load ("not found"), remembered across app starts. */
+    val unavailable: Set<String> = emptySet(),
     val unlocking: Boolean = false,
     val log: List<String> = emptyList(),
     val toast: String? = null,
@@ -36,7 +38,7 @@ data class UiState(
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val store = Store(app)
-    private val _state = MutableStateFlow(UiState(store.load()))
+    private val _state = MutableStateFlow(UiState(store.load(), unavailable = store.unavailable()))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
@@ -73,6 +75,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         try {
             val cat = withContext(Dispatchers.IO) { api().catalog() }
+            // A model that is running after all (loaded from TiinyOS, say) is no longer marked unavailable.
+            val nowRunning = cat.models.filter { it.status == "running" }.map { it.id }.toSet()
+            if (_state.value.unavailable.any { it in nowRunning }) setUnavailable(_state.value.unavailable - nowRunning)
             _state.update {
                 it.copy(
                     device = DeviceState.ONLINE,
@@ -87,7 +92,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 TiinyException.Kind.LOCKED -> DeviceState.LOCKED
                 TiinyException.Kind.UNAUTHORIZED -> DeviceState.UNAUTHORIZED
                 TiinyException.Kind.UNREACHABLE -> DeviceState.UNREACHABLE
-                TiinyException.Kind.HTTP -> DeviceState.ERROR
+                TiinyException.Kind.NOT_FOUND, TiinyException.Kind.HTTP -> DeviceState.ERROR
             }
             _state.update { it.copy(device = ds, deviceMessage = e.message ?: "") }
             if (ds == DeviceState.LOCKED) maybeAutoUnlock()
@@ -119,7 +124,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 toast("Loading ${model.name}…")
             } catch (e: TiinyException) {
                 ApiLog.add("Loading ${model.id} failed: ${e.message}")
-                toast(e.message ?: "Loading failed")
+                if (e.kind == TiinyException.Kind.NOT_FOUND) {
+                    setUnavailable(_state.value.unavailable + model.id)
+                    toast("${model.name} isn't available on the Tiiny. If it's a leftover copy, delete it in TiinyOS.")
+                } else {
+                    toast(e.message ?: "Loading failed")
+                }
             } finally {
                 setWorking(model.id, false)
                 refresh()
@@ -167,6 +177,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 refresh()
             }
         }
+    }
+
+    /** "Try again" on a model marked unavailable. */
+    fun retry(model: ModelInfo) {
+        setUnavailable(_state.value.unavailable - model.id)
+        load(model)
+    }
+
+    private fun setUnavailable(ids: Set<String>) {
+        store.setUnavailable(ids)
+        _state.update { it.copy(unavailable = ids) }
     }
 
     private fun setWorking(id: String, on: Boolean) {

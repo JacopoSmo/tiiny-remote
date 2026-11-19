@@ -57,6 +57,13 @@ class Store(context: Context) {
             .apply()
     }
 
+    /** Models the Tiiny lists but answers "not found" for when asked to load them. */
+    fun unavailable(): Set<String> = prefs.getStringSet("unavailable_models", emptySet())?.toSet() ?: emptySet()
+
+    fun setUnavailable(ids: Set<String>) {
+        prefs.edit().putStringSet("unavailable_models", ids).apply()
+    }
+
     /** The NAS's SSH host key as first seen (trust on first use), per host:port. */
     fun hostKey(id: String): String? = prefs.getString("hostkey_$id", null)
 
