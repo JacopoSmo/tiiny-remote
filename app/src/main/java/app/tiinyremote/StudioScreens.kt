@@ -75,7 +75,8 @@ private class Tool(val id: String, val title: String, val what: String, val fits
 private val TOOLS = listOf(
     Tool("image", "Create image", "A picture from a description", { it.isImageGen }),
     Tool("edit", "Edit image", "Change a photo with words", { it.canEditImages }),
-    Tool("read", "Image to text", "Read the text in a picture, or describe it", { it.isOcr || it.seesImages }),
+    Tool("ocr", "Read text (OCR)", "Copy the text out of a photo or screenshot", { it.isOcr }),
+    Tool("describe", "Describe image", "Have a picture described, or ask a question about it", { it.seesImages }),
     Tool("speech", "Voice", "Text to speech, built-in or cloned voices", { it.isSpeech }),
     Tool("transcribe", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
     Tool("loop", "Loop", "Short music loops at a set tempo and key", { it.isLoopModel }),
@@ -420,7 +421,8 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
         when (tool.id) {
             "image" -> ImageTool(model, notReady, st, edit = false)
             "edit" -> ImageTool(model, notReady, st, edit = true)
-            "read" -> ReadTool(model, notReady, st)
+            "ocr" -> ReadTool(model, notReady, st, ocr = true)
+            "describe" -> ReadTool(model, notReady, st, ocr = false)
             "speech" -> SpeechTool(model, notReady, st)
             "transcribe" -> TranscribeTool(model, notReady, st)
             "loop" -> LoopTool(model, notReady, st)
@@ -465,24 +467,25 @@ private fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
 }
 
 @Composable
-private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, ocr: Boolean) {
+    val tool = if (ocr) "ocr" else "describe"
     var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     var question by rememberSaveable { mutableStateOf("") }
     ImagePickerRow(images, 1, "Choose a picture") { images = it }
-    val ocr = model?.isOcr == true
-    if (model != null) {
+    if (!ocr) {
+        Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
         Text(
-            if (ocr) "This model reads the text in the picture (OCR)." else "This chat model describes the picture or answers your question about it.",
+            "Uses a chat model that sees images, e.g. one marked Image-Text-to-Text.",
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    if (!ocr) Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
     val why = notReady ?: if (images.isEmpty()) "Choose a picture." else null
-    RunPanel("read", if (ocr) "Read text" else "Ask", why == null, why, st) {
+    RunPanel(tool, if (ocr) "Read text" else "Describe", why == null, why, st) {
         val m = model!!.id
         val img = images.first().dataUri
         val q = question
-        st.run("read") { c, store, p, _ -> if (ocr) Tools.ocr(c, store, m, img, p) else Tools.describe(c, store, m, img, q, p) }
+        st.run(tool) { c, store, p, _ -> if (ocr) Tools.ocr(c, store, m, img, p) else Tools.describe(c, store, m, img, q, p) }
     }
 }
 
@@ -696,6 +699,8 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) 
 
 // ---------------- results ----------------
 
+private val TEXT_KINDS = setOf("ocr", "description", "transcript")
+
 private val dateFmt = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
 
 @Composable
@@ -741,14 +746,14 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                 }
                 "mesh" -> file?.let { f -> Button(onClick = { st.open(f.name) }) { Text("Open in a 3D viewer") } }
             }
-            if ((e.kind == "ocr" || e.kind == "transcript") && e.text.isNotBlank()) {
+            if (e.kind in TEXT_KINDS && e.text.isNotBlank()) {
                 SelectionContainer {
                     Text(e.text, fontSize = 14.sp)
                 }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (e.files.isNotEmpty()) TextButton(onClick = { st.saveToPhone(e) }) { Text("Save to phone") }
-                if (e.text.isNotBlank() && (e.kind == "ocr" || e.kind == "transcript")) {
+                if (e.text.isNotBlank() && e.kind in TEXT_KINDS) {
                     TextButton(onClick = { clipboard.setText(AnnotatedString(e.text)) }) { Text("Copy") }
                 }
                 TextButton(onClick = { st.share(e) }) { Text("Share") }

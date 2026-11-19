@@ -131,7 +131,7 @@ object Tools {
             ?.replace(Regex("(?s)<think>.*?</think>"), "")?.trim()
             ?: throw MediaException("The model sent no answer.")
         val id = store.newId()
-        return ResultEntry(id, "ocr", "About the image: ${q.take(50)}", emptyList(), text, model, System.currentTimeMillis())
+        return ResultEntry(id, "description", "About the image: ${q.take(50)}", emptyList(), text, model, System.currentTimeMillis())
     }
 
     // ---------------- voice ----------------
