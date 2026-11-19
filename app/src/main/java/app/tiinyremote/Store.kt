@@ -31,6 +31,10 @@ data class AppSettings(
     val vpnOffAtHome: Boolean = true,
     /** The user's SearXNG (e.g. on the NAS), for the chat's web search. */
     val searxUrl: String = "",
+    /** auto: SearXNG when reachable, else the phone searches; searx: only SearXNG; phone: never SearXNG. */
+    val searchMode: String = "auto",
+    /** Optional Tavily API key (free tier) for better searches from the phone. */
+    val tavilyKey: String = "",
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -57,6 +61,8 @@ class Store(context: Context) {
         autoVpn = prefs.getBoolean("auto_vpn", false),
         vpnOffAtHome = prefs.getBoolean("vpn_off_at_home", true),
         searxUrl = prefs.getString("searx_url", "") ?: "",
+        searchMode = prefs.getString("search_mode", "auto") ?: "auto",
+        tavilyKey = Crypto.decrypt(prefs.getString("tavily_key", null)) ?: "",
     )
 
     fun save(s: AppSettings) {
@@ -74,6 +80,8 @@ class Store(context: Context) {
             .putBoolean("auto_vpn", s.autoVpn)
             .putBoolean("vpn_off_at_home", s.vpnOffAtHome)
             .putString("searx_url", s.searxUrl.trim())
+            .putString("search_mode", s.searchMode)
+            .putString("tavily_key", Crypto.encrypt(s.tavilyKey.trim()))
             .apply()
     }
 

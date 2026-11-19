@@ -466,11 +466,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Runs web_search or open_page and notes the sources on the reply. */
-    private fun webTool(name: String, args: JSONObject, searx: String): String {
+    private fun webTool(name: String, args: JSONObject, cfg: AppSettings): String {
         if (name == "web_search") {
             val q = args.optString("query").trim().ifBlank { return "Give a query to search for." }
             setStatus("Searching the web: $q")
-            val hits = WebSearch.search(searx, q)
+            val found = WebSearch.search(cfg, q)
+            val hits = found.hits
+            ApiLog.add("web search via ${found.via}: ${hits.size} results")
             if (hits.isEmpty()) return "No results for \"$q\". Try other words."
             _chat.update { list ->
                 list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
@@ -587,7 +589,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val tools = JSONArray()
                     if (canMake) toolSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
                     if (web) webSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
-                    val searx = settingsStore.load().searxUrl
+                    val searchCfg = settingsStore.load()
                     val maxRounds = if (web) 8 else 4
                     val p = Progress({ m, _ -> setStatus(m) }, { chatStop.get() })
                     for (round in 0..maxRounds) {
@@ -624,7 +626,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 JSONObject()
                             }
                             val (entry, answer) = try {
-                                if (call.name == "web_search" || call.name == "open_page") null to webTool(call.name, args, searx)
+                                if (call.name == "web_search" || call.name == "open_page") null to webTool(call.name, args, searchCfg)
                                 else runTool(c, call.name, args, models, p)
                             } catch (e: Exception) {
                                 if (chatStop.get()) throw e

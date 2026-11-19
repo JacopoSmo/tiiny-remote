@@ -1,5 +1,6 @@
 package app.tiinyremote
 
+import androidx.compose.material3.RadioButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -502,6 +503,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     var offHome by remember(cur) { mutableStateOf(cur.vpnOffAtHome) }
     var searx by remember(cur) { mutableStateOf(cur.searxUrl) }
     var searxTest by remember { mutableStateOf<String?>(null) }
+    var searchMode by remember(cur) { mutableStateOf(cur.searchMode) }
+    var tavily by remember(cur) { mutableStateOf(cur.tavilyKey) }
     val scope = rememberCoroutineScope()
     var showDebug by remember { mutableStateOf(false) }
 
@@ -519,6 +522,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         autoVpn = autoVpn,
         vpnOffAtHome = offHome,
         searxUrl = searx.trim(),
+        searchMode = searchMode,
+        tavilyKey = tavily.trim(),
     )
 
     Column(
@@ -552,18 +557,37 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
         )
         Text(
-            "Lets chat models search the web and read pages (\"Web search\" in the Chat tab). The search goes to your SearXNG; pages are opened by this phone.",
+            "Lets chat models search the web and read pages (\"Web search\" in the Chat tab). Pages are always opened by this phone.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text("Search with", style = MaterialTheme.typography.labelLarge)
+        for ((v, label) in listOf(
+            "auto" to "Your SearXNG when reachable, else the phone (works anywhere)",
+            "searx" to "Only your SearXNG (at home or on the VPN)",
+            "phone" to "Only the phone (never the NAS)",
+        )) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                RadioButton(selected = searchMode == v, onClick = { searchMode = v; searxTest = null })
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        if (searchMode != "searx") {
+            SecretField(tavily, { tavily = it; searxTest = null }, "Tavily API key (optional)")
+            Text(
+                "The phone searches with Tavily if you add a key (free plan: 1,000 searches a month, no card, at tavily.com), otherwise with DuckDuckGo, and Wikipedia as a last resort. DuckDuckGo needs no key but can occasionally refuse.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(enabled = searx.isNotBlank(), onClick = {
+            OutlinedButton(onClick = {
                 searxTest = "Searching…"
-                val base = searx
+                val cfg = current()
                 scope.launch {
                     searxTest = try {
-                        val hits = withContext(Dispatchers.IO) { WebSearch.search(base, "Tiiny AI", 3) }
-                        if (hits.isEmpty()) "Reachable, but no results came back." else "Works: ${hits.size} results, e.g. ${hits.first().title}"
+                        val found = withContext(Dispatchers.IO) { WebSearch.search(cfg, "Tiiny AI", 3) }
+                        if (found.hits.isEmpty()) "Reachable, but no results came back." else "Works via ${found.via}: ${found.hits.size} results, e.g. ${found.hits.first().title}"
                     } catch (e: Exception) {
                         e.message ?: e.toString()
                     }

@@ -1008,7 +1008,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var thinking by rememberSaveable { mutableStateOf(true) }
     var canMake by rememberSaveable { mutableStateOf(true) }
     var web by rememberSaveable { mutableStateOf(st.setting("chat.web", "0") == "1") }
-    val hasSearx = s.settings.searxUrl.isNotBlank()
+    val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     val scroll = rememberScrollState()
     LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) { scroll.animateScrollTo(scroll.maxValue) }
@@ -1033,9 +1033,9 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         val hint = when {
             model == null -> null
-            !hasSearx && web -> "Web search needs your SearXNG address: Settings → Web search."
+            !hasSearx && web -> "Web search is set to SearXNG only, but no address is set: Settings → Web search."
             (canMake || (web && hasSearx)) && !makes -> "This model isn't marked for tool use: it may not make things or search, or not reliably. Pick one marked \"Makes things\"."
-            web && hasSearx && !canMake -> "The model may search the web with your SearXNG and read pages."
+            web && hasSearx && !canMake -> "The model may search the web and read pages."
             canMake -> (if (web && hasSearx) "The model may search the web, " else "The model may ") + "create and edit images, speak, and make loops and songs. Models are swapped on the Tiiny when needed, which can take a few minutes."
             !thinks -> "This model doesn't think before answering."
             else -> null
