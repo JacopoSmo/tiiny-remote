@@ -1,0 +1,236 @@
+package app.tiinyremote
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class TiinyException(val kind: Kind, message: String) : Exception(message) {
+    enum class Kind { LOCKED, UNAUTHORIZED, UNREACHABLE, HTTP }
+}
+
+data class ModelInfo(
+    val id: String,
+    val name: String,
+    val type: String,
+    val npuUsage: Double?,
+    val loadTimeSec: Int?,
+    /** "running", "loading" or "stopped", worked out the same way Tiiny Studio does. */
+    val status: String,
+    val busy: Boolean,
+) {
+    val isChat get() = type == "Text Generation" || type == "Image-Text-to-Text"
+}
+
+data class Catalog(val models: List<ModelInfo>, val npuUsed: Double)
+
+/** Answer of /api/v1/models/{id}/unload_candidate: does the model fit, and what to unload if not. */
+data class Plan(
+    val unloadRequired: Boolean,
+    val npuRequired: Double?,
+    val npuAvailable: Double?,
+    val candidateId: String?,
+    val candidateName: String?,
+    val candidateNpu: Double?,
+)
+
+/** The last few requests and answers, shown under Settings to help debug a firmware that answers differently. */
+object ApiLog {
+    private val entries = ArrayDeque<String>()
+    private val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
+
+    @Synchronized
+    fun add(line: String) {
+        entries.addFirst("${time.format(Date())}  $line")
+        while (entries.size > 30) entries.removeLast()
+    }
+
+    @Synchronized
+    fun all(): List<String> = entries.toList()
+}
+
+/**
+ * The Tiiny's own HTTP API on port 80, called the same way Tiiny Studio calls it
+ * (Bearer key; 502 on every route means the device is locked after a restart).
+ */
+class TiinyApi(url: String, private val key: String) {
+    private val base = normalize(url)
+
+    companion object {
+        fun normalize(url: String): String {
+            var u = url.trim().trimEnd('/')
+            if (u.endsWith("/v1")) u = u.removeSuffix("/v1").trimEnd('/')
+            if (!u.startsWith("http://") && !u.startsWith("https://")) u = "http://$u"
+            return u
+        }
+
+        fun quote(id: String): String = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+    }
+
+    private fun call(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> {
+        val conn = try {
+            URL(base + path).openConnection() as HttpURLConnection
+        } catch (e: Exception) {
+            throw TiinyException(TiinyException.Kind.UNREACHABLE, "Invalid Tiiny address: $base")
+        }
+        try {
+            conn.requestMethod = method
+            conn.connectTimeout = 8000
+            conn.readTimeout = timeoutSec * 1000
+            conn.setRequestProperty("Authorization", "Bearer $key")
+            conn.setRequestProperty("Accept", "application/json")
+            if (body != null) {
+                val bytes = body.toString().toByteArray(Charsets.UTF_8)
+                conn.doOutput = true
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setFixedLengthStreamingMode(bytes.size)
+                conn.outputStream.use { it.write(bytes) }
+            } else if (method == "POST") {
+                conn.doOutput = true
+                conn.setFixedLengthStreamingMode(0)
+                conn.outputStream.close()
+            }
+            val code = conn.responseCode
+            val stream = if (code >= 400) conn.errorStream else conn.inputStream
+            val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+            ApiLog.add("$method $path -> $code ${text.take(300)}")
+            return code to text
+        } catch (e: Exception) {
+            // Network errors (and anything unexpected) become one readable error instead of a crash.
+            ApiLog.add("$method $path -> ${e.javaClass.simpleName}: ${e.message}")
+            throw TiinyException(
+                TiinyException.Kind.UNREACHABLE,
+                "Can't reach the Tiiny at $base (${e.message ?: e.javaClass.simpleName}). " +
+                    "Check the address, and that you're on home wifi or WireGuard.",
+            )
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun json(res: Pair<Int, String>): JSONObject {
+        val (code, text) = res
+        when {
+            code == 502 -> throw TiinyException(
+                TiinyException.Kind.LOCKED,
+                "Your Tiiny is locked after a restart.",
+            )
+            code == 401 || code == 403 -> throw TiinyException(
+                TiinyException.Kind.UNAUTHORIZED,
+                "The Tiiny rejected the API key. Copy it again from TiinyOS → Settings → API Key.",
+            )
+            code !in 200..299 -> throw TiinyException(
+                TiinyException.Kind.HTTP,
+                "HTTP $code: ${errorText(text)}",
+            )
+        }
+        val t = text.trim()
+        if (t.isEmpty()) return JSONObject()
+        return try {
+            if (t.startsWith("[")) JSONObject().put("data", JSONArray(t)) else JSONObject(t)
+        } catch (e: Exception) {
+            throw TiinyException(TiinyException.Kind.HTTP, "Unexpected answer (not JSON): ${t.take(120)}")
+        }
+    }
+
+    private fun errorText(text: String): String {
+        val t = text.trim()
+        return try {
+            val o = JSONObject(t)
+            o.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+                ?: o.optString("detail").takeIf { it.isNotBlank() }
+                ?: o.optString("message").takeIf { it.isNotBlank() }
+                ?: t.take(200)
+        } catch (e: Exception) {
+            t.take(200)
+        }
+    }
+
+    /** Installed models with live status: running, loading (pending) or stopped. */
+    fun catalog(): Catalog {
+        val inst = json(call("GET", "/api/v1/models/?including_downloading=false"))
+        val run = json(call("GET", "/api/v1/models/running"))
+
+        val instances = run.optJSONObject("instances") ?: JSONObject()
+        val running = instances.optJSONArray("running") ?: JSONArray()
+        val runningById = HashMap<String, JSONObject>()
+        for (i in 0 until running.length()) {
+            val r = running.optJSONObject(i) ?: continue
+            r.optString("model_id").takeIf { it.isNotEmpty() }?.let { runningById[it] = r }
+        }
+        val pending = HashSet<String>()
+        instances.optJSONArray("pending")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val p = arr.opt(i)
+                if (p is JSONObject) p.optString("model_id").takeIf { it.isNotEmpty() }?.let { pending.add(it) }
+                else if (p is String) pending.add(p)
+            }
+        }
+        run.optJSONArray("pending")?.let { arr ->
+            for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotEmpty() }?.let { pending.add(it) }
+        }
+
+        val data = inst.optJSONArray("data") ?: JSONArray()
+        val models = ArrayList<ModelInfo>()
+        for (i in 0 until data.length()) {
+            val m = data.optJSONObject(i) ?: continue
+            val id = m.optString("id")
+            if (id.isEmpty()) continue
+            val r = runningById[id]
+            val status = when {
+                r != null -> "running"
+                id in pending -> "loading"
+                else -> "stopped"
+            }
+            val display = m.optString("display_name").takeIf { it.isNotBlank() && it != "null" }
+                ?: id.substringAfterLast('/')
+            models.add(
+                ModelInfo(
+                    id = id,
+                    name = display,
+                    type = m.optString("type").takeIf { it != "null" } ?: "",
+                    npuUsage = m.optDouble("npu_usage").takeIf { !it.isNaN() },
+                    loadTimeSec = m.optDouble("load_time").takeIf { !it.isNaN() }?.toInt(),
+                    status = status,
+                    busy = r != null && r.optInt("active_request_count", 0) > 0,
+                )
+            )
+        }
+        var used = 0.0
+        for (r in runningById.values) used += r.optDouble("npu_usage").takeIf { !it.isNaN() } ?: 0.0
+        return Catalog(models, used)
+    }
+
+    fun plan(id: String): Plan {
+        val p = json(call("GET", "/api/v1/models/${quote(id)}/unload_candidate", timeoutSec = 30))
+        val cand = p.optJSONObject("candidate")
+        var candId = cand?.optString("model_id")?.takeIf { it.isNotEmpty() }
+        if (candId == null) {
+            // Some answers list the models to unload as an array instead.
+            val arr = p.optJSONArray("model_id")
+            if (arr != null && arr.length() > 0) candId = arr.optString(0)
+        }
+        return Plan(
+            unloadRequired = p.optBoolean("unload_required", false),
+            npuRequired = p.optDouble("npu_required").takeIf { !it.isNaN() },
+            npuAvailable = p.optDouble("npu_available").takeIf { !it.isNaN() },
+            candidateId = candId,
+            candidateName = (cand?.optString("fullname")?.takeIf { it.isNotEmpty() } ?: candId)
+                ?.substringAfterLast('/'),
+            candidateNpu = cand?.optDouble("npu_usage")?.takeIf { !it.isNaN() },
+        )
+    }
+
+    /** Starts loading; the device answers once the load is accepted and finishes in the background. */
+    fun launch(id: String) {
+        json(call("POST", "/api/v1/models/${quote(id)}/launch", JSONObject().put("model_id", id), timeoutSec = 120))
+    }
+
+    fun stop(id: String) {
+        json(call("POST", "/api/v1/models/${quote(id)}/stop", timeoutSec = 120))
+    }
+}
