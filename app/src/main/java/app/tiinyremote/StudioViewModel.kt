@@ -27,6 +27,8 @@ data class JobUi(
 
 data class SavedVoice(val id: String, val name: String, val text: String)
 
+data class Source(val title: String, val url: String)
+
 data class ChatMsg(
     val role: String,
     val text: String,
@@ -37,6 +39,8 @@ data class ChatMsg(
     val results: List<ResultEntry> = emptyList(),
     /** What a tool is doing right now (loading a model, making an image, …). */
     val status: String = "",
+    /** Web pages found or read while answering. */
+    val sources: List<Source> = emptyList(),
 )
 
 private const val SYSTEM_PROMPT = "You are the assistant in Tiiny Remote, an Android app for the user's own Tiiny AI device. " +
@@ -47,6 +51,23 @@ private const val TOOLS_PROMPT = " When the user wants something made (an image,
     "made unless you call a tool: never claim you made or changed something without calling the tool in this turn. " +
     "The result appears in the chat and in the app's results, so after the tool returns just tell the user briefly " +
     "what you made. Making things can take a minute or more because models may be swapped on the device."
+
+private fun webPrompt() = " You can search the web with web_search and read a page with open_page. Today is " +
+    java.text.SimpleDateFormat("EEEE d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date()) + ". For anything " +
+    "current, recent or that you're unsure of, search first instead of answering from memory; open the most promising " +
+    "pages when the snippets aren't enough. Base your answer on what you found and cite the sources as Markdown links."
+
+/** The web tools: search through the user's SearXNG, and read a page. */
+private fun webSpecs(): JSONArray {
+    fun fn(name: String, desc: String, props: JSONObject, req: String) = JSONObject().put("type", "function")
+        .put("function", JSONObject().put("name", name).put("description", desc).put("parameters",
+            JSONObject().put("type", "object").put("properties", props).put("required", JSONArray(listOf(req)))))
+    return JSONArray()
+        .put(fn("web_search", "Search the web. Returns titles, links and snippets of the top results.",
+            JSONObject().put("query", JSONObject().put("type", "string").put("description", "Search terms, as you'd type them into a search engine.")), "query"))
+        .put(fn("open_page", "Read the text of a web page (e.g. one from the search results).",
+            JSONObject().put("url", JSONObject().put("type", "string").put("description", "The page's full http(s) address.")), "url"))
+}
 
 /** The tools the chat model may call, as in Tiiny Studio's "Can make things". */
 private fun toolSpecs(): JSONArray {
@@ -444,6 +465,27 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _chat.update { list -> list.dropLast(1) + list.last().copy(status = text) }
     }
 
+    /** Runs web_search or open_page and notes the sources on the reply. */
+    private fun webTool(name: String, args: JSONObject, searx: String): String {
+        if (name == "web_search") {
+            val q = args.optString("query").trim().ifBlank { return "Give a query to search for." }
+            setStatus("Searching the web: $q")
+            val hits = WebSearch.search(searx, q)
+            if (hits.isEmpty()) return "No results for \"$q\". Try other words."
+            _chat.update { list ->
+                list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
+            }
+            return hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(400)}" }.joinToString("\n\n")
+        }
+        val url = args.optString("url").trim()
+        setStatus("Reading ${url.substringAfter("://").substringBefore('/')}")
+        val text = WebSearch.read(url)
+        _chat.update { list ->
+            list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(url.substringAfter("://").substringBefore('/'), url)) }
+        }
+        return "Page $url:\n\n$text"
+    }
+
     /** Runs one tool call for the chat model; returns (result or null, text for the model). */
     private fun runTool(c: DeviceClient, name: String, args: JSONObject, models: List<ModelInfo>, p: Progress): Pair<ResultEntry?, String> {
         val (tool, fits) = when (name) {
@@ -517,7 +559,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * Sends a message. With canMake on, the model may call tools (images, edits, speech, loops, songs); a tool's model
      * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards.
      */
-    fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, models: List<ModelInfo>) {
+    fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, web: Boolean, models: List<ModelInfo>) {
         if (_chatBusy.value || (text.isBlank() && image == null)) return
         if (image != null) lastChatImage = image
         val history = _chat.value + ChatMsg("user", text.trim(), image = image)
@@ -525,7 +567,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _chatBusy.value = true
         chatStop.set(false)
         val convo = JSONArray()
-        convo.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT + if (canMake) TOOLS_PROMPT else ""))
+        convo.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "")))
         for (m in history) {
             if (m.role == "assistant" && m.text.isBlank()) continue
             if (m.image != null) {
@@ -542,15 +584,19 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) {
                     val c = client()
                     val mode = Tools.thinkingMode(c, model)
-                    val tools = toolSpecs()
+                    val tools = JSONArray()
+                    if (canMake) toolSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
+                    if (web) webSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
+                    val searx = settingsStore.load().searxUrl
+                    val maxRounds = if (web) 8 else 4
                     val p = Progress({ m, _ -> setStatus(m) }, { chatStop.get() })
-                    for (round in 0..4) {
+                    for (round in 0..maxRounds) {
                         val body = JSONObject().put("model", model).put("messages", convo).put("stream", true).put("max_tokens", 4096)
                         when (mode) {
                             "always" -> body.put("reasoning_effort", if (thinking) "medium" else "low")
                             "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", thinking))
                         }
-                        if (canMake && round < 4) body.put("tools", tools)
+                        if (tools.length() > 0 && round < maxRounds) body.put("tools", tools)
                         setStatus("")
                         val done = c.streamChat(body, { content, reasoning ->
                             _chat.update { list ->
@@ -578,7 +624,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 JSONObject()
                             }
                             val (entry, answer) = try {
-                                runTool(c, call.name, args, models, p)
+                                if (call.name == "web_search" || call.name == "open_page") null to webTool(call.name, args, searx)
+                                else runTool(c, call.name, args, models, p)
                             } catch (e: Exception) {
                                 if (chatStop.get()) throw e
                                 null to "That didn't work: ${e.message}"

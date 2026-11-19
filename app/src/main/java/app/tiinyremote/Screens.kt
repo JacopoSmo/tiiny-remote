@@ -1,5 +1,9 @@
 package app.tiinyremote
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -496,6 +500,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     var tunnel by remember(cur) { mutableStateOf(cur.wgTunnel) }
     var autoVpn by remember(cur) { mutableStateOf(cur.autoVpn) }
     var offHome by remember(cur) { mutableStateOf(cur.vpnOffAtHome) }
+    var searx by remember(cur) { mutableStateOf(cur.searxUrl) }
+    var searxTest by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     var showDebug by remember { mutableStateOf(false) }
 
     fun current() = AppSettings(
@@ -511,6 +518,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         wgTunnel = tunnel.trim(),
         autoVpn = autoVpn,
         vpnOffAtHome = offHome,
+        searxUrl = searx.trim(),
     )
 
     Column(
@@ -531,6 +539,38 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
         )
         SecretField(key, { key = it }, "API key (TiinyOS → Settings → API Key)")
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("Web search", style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(
+            value = searx,
+            onValueChange = { searx = it; searxTest = null },
+            label = { Text("SearXNG address") },
+            placeholder = { Text("http://192.168.x.x:8080 (the one RikkaHub uses)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+        )
+        Text(
+            "Lets chat models search the web and read pages (\"Web search\" in the Chat tab). The search goes to your SearXNG; pages are opened by this phone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(enabled = searx.isNotBlank(), onClick = {
+                searxTest = "Searching…"
+                val base = searx
+                scope.launch {
+                    searxTest = try {
+                        val hits = withContext(Dispatchers.IO) { WebSearch.search(base, "Tiiny AI", 3) }
+                        if (hits.isEmpty()) "Reachable, but no results came back." else "Works: ${hits.size} results, e.g. ${hits.first().title}"
+                    } catch (e: Exception) {
+                        e.message ?: e.toString()
+                    }
+                }
+            }) { Text("Test search") }
+        }
+        searxTest?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Unlocking after a restart", style = MaterialTheme.typography.titleMedium)

@@ -29,6 +29,8 @@ data class AppSettings(
     val wgTunnel: String = "",
     val autoVpn: Boolean = false,
     val vpnOffAtHome: Boolean = true,
+    /** The user's SearXNG (e.g. on the NAS), for the chat's web search. */
+    val searxUrl: String = "",
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -54,6 +56,7 @@ class Store(context: Context) {
         wgTunnel = prefs.getString("wg_tunnel", "") ?: "",
         autoVpn = prefs.getBoolean("auto_vpn", false),
         vpnOffAtHome = prefs.getBoolean("vpn_off_at_home", true),
+        searxUrl = prefs.getString("searx_url", "") ?: "",
     )
 
     fun save(s: AppSettings) {
@@ -70,6 +73,7 @@ class Store(context: Context) {
             .putString("wg_tunnel", s.wgTunnel.trim())
             .putBoolean("auto_vpn", s.autoVpn)
             .putBoolean("vpn_off_at_home", s.vpnOffAtHome)
+            .putString("searx_url", s.searxUrl.trim())
             .apply()
     }
 
