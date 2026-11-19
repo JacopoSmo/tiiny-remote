@@ -456,7 +456,7 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             "embed" -> EmbedTool(model, notReady, st)
             "rerank" -> RerankTool(model, notReady, st)
             "classify" -> ClassifyTool(model, notReady, st)
-            "mesh" -> MeshTool(model, notReady, st)
+            "mesh" -> MeshTool(model, notReady, st, s.models)
         }
     }
 }
@@ -803,28 +803,185 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
     }
 }
 
+/** An image model that can put a subject on a transparent background (Qwen-Image): loaded ones first, then real alpha. */
+private fun cutoutModel(models: List<ModelInfo>): ModelInfo? {
+    val ok = Regex("transparent|alpha channel|RGBA", RegexOption.IGNORE_CASE)
+    val alpha = Regex("alpha channel|RGBA", RegexOption.IGNORE_CASE)
+    return models.filter { it.canEditImages && ok.containsMatchIn(it.desc) }
+        .sortedWith(compareBy({ if (it.running) 0 else 1 }, { if (alpha.containsMatchIn(it.desc)) 0 else 1 }))
+        .firstOrNull()
+}
+
+/** The cut-out keeps the picture's shape at about 512 px on its long side (what Hunyuan3D uses), in steps of 64. */
+private fun cutoutSize(w: Int, h: Int): String {
+    val k = 512.0 / maxOf(w, h)
+    fun r64(v: Int) = maxOf(256, Math.round(v * k / 64).toInt() * 64)
+    return "${r64(w)}x${r64(h)}"
+}
+
 @Composable
-private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
-    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
-    var textured by rememberSaveable { mutableStateOf(true) }
-    var quality by rememberSaveable { mutableStateOf("fast") }
-    ImagePickerRow(images, 1, "Choose a picture of one object") { images = it }
-    Text("Works best with a single object on a plain background.", style = MaterialTheme.typography.bodySmall)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Switch(checked = textured, onCheckedChange = { textured = it })
-        Spacer(Modifier.width(10.dp))
-        Text("With colours and texture (takes about twice as long)")
+private fun SwitchRow(checked: Boolean, enabled: Boolean = true, title: String, detail: String, onChange: (Boolean) -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+            Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
-    Text("Quality", style = MaterialTheme.typography.labelLarge)
-    Chips(listOf("fast" to "Fast", "balance" to "Balanced", "quality" to "Best"), quality) { quality = it }
-    Text("Expect several minutes. The result is a .glb file you can open in a 3D viewer app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val why = notReady ?: if (images.isEmpty()) "Choose a picture." else null
-    RunPanel("mesh", "Make 3D model", why == null, why, st) {
+}
+
+@Composable
+private fun LabelRow(label: String, hint: String = "") {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        if (hint.isNotBlank()) Text(hint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, models: List<ModelInfo>) {
+    var caps by remember { mutableStateOf<Tools.MeshCaps?>(null) }
+    LaunchedEffect(model?.id, model?.running) {
+        caps = if (model?.running == true) withContext(Dispatchers.IO) { runCatching { Tools.meshCaps(st.client(), model.id) }.getOrNull() } else null
+    }
+    val t = caps ?: Tools.MeshCaps(
+        "hunyuan3d", false, listOf("background", "shape", "simplify", "texture", "export"),
+        listOf(Triple("draft", "Draft", "192"), Triple("standard", "Standard", "288"), Triple("high", "High", "384")),
+        listOf("fast", "balance", "quality"), emptyList(),
+    )
+    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    var precision by remember { mutableStateOf(st.setting("mesh.precision", "draft")) }
+    var quality by remember { mutableStateOf(st.setting("mesh.quality", "balance")) }
+    var asset by remember { mutableStateOf(st.setting("mesh.asset", "")) }
+    var faces by remember { mutableStateOf(st.setting("mesh.faces", "40000")) }
+    var texture by remember { mutableStateOf(st.setting("mesh.texture", "true") == "true") }
+    var cutout by remember { mutableStateOf(st.setting("mesh.cutout", "true") == "true") }
+    var seed by rememberSaveable { mutableStateOf("") }
+    var advanced by remember { mutableStateOf(false) }
+    val results by st.results.collectAsState()
+    val scope = rememberCoroutineScope()
+
+    val prec = if (t.precisions.any { it.first == precision }) precision else t.precisions.firstOrNull()?.first ?: "draft"
+    val qual = if (quality in t.qualities) quality else if ("balance" in t.qualities) "balance" else t.qualities.firstOrNull() ?: "balance"
+    val nFaces = if (t.simplify) faces.toIntOrNull() ?: 0 else 0
+    val tex = texture && t.texture
+    val img = images.firstOrNull()
+    val cm = cutoutModel(models)
+    val cuts = cutout && cm != null && img?.transparent != true
+    val cutSecs = if (cuts && cm != null) 85 + (if (cm.running) 0 else 2 * (cm.loadTimeSec ?: 30)) else 0
+    val est = Tools.meshEstimate(t, prec, qual, nFaces, tex, cutSecs)
+    val plan = listOfNotNull(if (cuts) "cutout" else null, "shape", if (nFaces > 0) "simplify" else null) + (if (tex) listOf("texture", "export") else emptyList())
+
+    LabelRow("Source image")
+    ImagePickerRow(images, 1, "Choose a picture") { images = it }
+    Text("One object, plain background works best.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val recent = results.filter { it.kind == "image" && it.mainFile != null }.take(12)
+    if (recent.isNotEmpty()) {
+        LabelRow("From your images")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (e in recent) {
+                val f = st.store.file(e.mainFile!!)
+                val thumb = remember(f.path) { Inputs.thumbnail(f, 256) }
+                if (thumb != null) {
+                    Card(onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Inputs.fromFile(f) }?.let { images = listOf(it) }
+                        }
+                    }) {
+                        Image(thumb.asImageBitmap(), e.title, Modifier.size(84.dp), contentScale = ContentScale.Crop)
+                    }
+                }
+            }
+        }
+    }
+
+    SwitchRow(
+        checked = cutout && cm != null,
+        enabled = cm != null,
+        title = "Cut out the subject first",
+        detail = when {
+            cm == null -> "Needs an image model that makes transparent pictures (Qwen-Image)."
+            img?.transparent == true -> "This picture already has a transparent background, so it's used as it is."
+            else -> "${cm.name} puts the subject on a transparent background first, so the background doesn't end up in the model · adds ~1.5 min" +
+                if (cm.running) "" else ", plus loading it (models are swapped back after)"
+        },
+    ) { cutout = it; st.setSetting("mesh.cutout", it.toString()) }
+
+    if (t.precisions.isNotEmpty()) {
+        val hint = t.precisions.map { it.third }.filter { it.isNotBlank() }.let { h ->
+            if (h.isEmpty()) "" else if (t.family == "hunyuan3d") "octree " + h.joinToString(" / ") else h.joinToString(" / ") + " px"
+        }
+        LabelRow("Geometry detail", hint)
+        Chips(t.precisions.map { it.first to it.second }, prec) { precision = it; st.setSetting("mesh.precision", it) }
+    }
+    if (t.qualities.isNotEmpty()) {
+        LabelRow("Sampling quality")
+        val names = mapOf("fast" to "Fast", "balance" to "Balanced", "quality" to "Best")
+        Chips(t.qualities.map { it to (names[it] ?: it) }, qual) { quality = it; st.setSetting("mesh.quality", it) }
+    }
+    if (t.known && t.assetQualities.isNotEmpty()) {
+        LabelRow("Mesh quality", "simplify and export")
+        val names = mapOf("fast" to "Fast", "balance" to "Balanced", "quality" to "Best")
+        Chips(listOf("" to "Default") + t.assetQualities.map { it to (names[it] ?: it) }, asset) { asset = it; st.setSetting("mesh.asset", it) }
+    }
+    if (t.simplify) {
+        LabelRow("Polygon budget", "simplify before texturing")
+        Chips(listOf("0" to "Full", "100000" to "100k", "40000" to "40k", "10000" to "10k"), faces) { faces = it; st.setSetting("mesh.faces", it) }
+    }
+    if (t.texture) {
+        SwitchRow(
+            checked = texture,
+            title = "PBR texture",
+            detail = "Paint color, metal and roughness maps · adds ~${if (t.family == "trellis2") "2.5" else "5"} min",
+        ) { texture = it; st.setSetting("mesh.texture", it.toString()) }
+        if (texture && nFaces == 0) {
+            Text("Texturing a full-resolution mesh is slow: a 40k budget is recommended.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { advanced = !advanced }) { Text((if (advanced) "▾ " else "▸ ") + "Advanced") }
+                Spacer(Modifier.weight(1f))
+                Text(if (seed.isNotBlank()) "seed $seed" else "auto", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (advanced) {
+                LabelRow("Seed", "blank = new each run")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = seed,
+                        onValueChange = { v -> seed = v.filter { it.isDigit() }.take(10) },
+                        placeholder = { Text("random") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = { seed = Random.nextLong(0, 1L shl 31).toString() }) { Text("Roll") }
+                }
+            }
+        }
+    }
+
+    Text(plan.joinToString(" → "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val why = notReady ?: if (img == null) "Choose a picture." else null
+    RunPanel("mesh", "Make 3D model" + if (img != null) "  (~${Tools.fmtDuration(est.toLong())})" else "", why == null, why, st) {
         val id = model!!.id
-        val img = images.first().bytes
-        val tx = textured
-        val qu = quality
-        st.run("mesh") { c, store, p, rj -> Tools.mesh(c, store, id, img, tx, qu, rj, p) }
+        val pic = img!!
+        val opts = Tools.MeshOptions(
+            precision = prec,
+            quality = qual,
+            assetQuality = asset.takeIf { it.isNotBlank() && t.known && it in t.assetQualities },
+            faces = nFaces,
+            textured = tex,
+            seed = seed.toLongOrNull(),
+            cutoutModel = if (cuts) cm?.id else null,
+            cutoutSize = cutoutSize(pic.preview.width, pic.preview.height),
+        )
+        st.run("mesh") { c, store, p, rj -> Tools.mesh(c, store, id, pic.bytes, pic.mime, opts, rj, p) }
     }
 }
 
@@ -974,7 +1131,10 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                         modifier = Modifier.fillMaxWidth().height(240.dp),
                     )
                 }
-                "mesh" -> file?.let { f -> Button(onClick = { st.open(f.name) }) { Text("Open in a 3D viewer") } }
+                "mesh" -> file?.let { f ->
+                    if (e.text.isNotBlank()) Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { st.open(f.name) }) { Text("Open in a 3D viewer") }
+                }
             }
             if (e.kind in TEXT_KINDS && e.text.isNotBlank()) {
                 SelectionContainer {

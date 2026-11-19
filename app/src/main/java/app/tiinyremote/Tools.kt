@@ -684,15 +684,125 @@ object Tools {
 
     private class Artifact(val name: String, val data: ByteArray, val mime: String)
 
-    /** A 3D model from one picture: shape, then (optionally) texture and export, like Tiiny Studio's mesh tool. */
+    /** What a loaded 3D model offers (its /v1/3d/capabilities); Hunyuan3D's options when it doesn't say. */
+    data class MeshCaps(
+        val family: String,
+        val known: Boolean,
+        val stages: List<String>,
+        /** (value, label, hint) of the geometry details it accepts: draft / standard / high */
+        val precisions: List<Triple<String, String, String>>,
+        val qualities: List<String>,
+        val assetQualities: List<String>,
+    ) {
+        val simplify get() = "simplify" in stages
+        val texture get() = "texture" in stages && "export" in stages
+    }
+
+    fun meshCaps(c: DeviceClient, model: String): MeshCaps {
+        val o = try {
+            c.request("GET", "/v1/3d/capabilities?model=${c.quote(model)}", null, 30).json().optJSONObject("data")
+        } catch (e: Exception) {
+            null
+        } ?: JSONObject()
+        fun list(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optString(it) } }
+        val op = o.optJSONObject("output_precisions")
+        val precisions = listOf("draft" to "Draft", "standard" to "Standard", "high" to "High").mapNotNull { (v, label) ->
+            if (op == null) {
+                Triple(v, label, mapOf("draft" to "192", "standard" to "288", "high" to "384").getValue(v))
+            } else {
+                val e = op.optJSONObject(v) ?: return@mapNotNull null
+                val eff = e.optString("effective")
+                if (eff.isNotBlank() && eff != "null" && eff != v) return@mapNotNull null // TRELLIS.2: its draft is standard
+                val hint = e.opt("octree_resolution")?.toString() ?: e.opt("pipeline_type")?.toString() ?: ""
+                Triple(v, label, hint)
+            }
+        }
+        return MeshCaps(
+            family = o.optString("model").takeIf { it.isNotBlank() && it != "null" } ?: "hunyuan3d",
+            known = o.has("model"),
+            stages = list("stages") ?: listOf("background", "shape", "simplify", "texture", "export"),
+            precisions = precisions,
+            qualities = list("inference_qualities")?.filter { it in setOf("fast", "balance", "quality") } ?: listOf("fast", "balance", "quality"),
+            assetQualities = list("asset_qualities") ?: emptyList(),
+        )
+    }
+
+    /** Tiiny Studio's time estimate for a 3D model, in seconds (measured on TiinyOS 0.1.38). */
+    fun meshEstimate(caps: MeshCaps, precision: String, quality: String, faces: Int, textured: Boolean, cutoutSecs: Int): Double {
+        val qm = mapOf("fast" to 0.75, "balance" to 1.0, "quality" to 1.5)[quality] ?: 1.0
+        val pm = mapOf("draft" to 1.0, "standard" to 1.75, "high" to 3.35)[precision] ?: 1.0
+        val simp = faces > 0 && caps.simplify
+        val tex = textured && caps.texture
+        return if (caps.family == "trellis2") {
+            cutoutSecs + 200 * (if (precision == "high") 2 else 1) * qm + (if (simp) 20 else 0) + (if (tex) 100 * qm + 45 else 0.0)
+        } else {
+            cutoutSecs + 205 * pm * qm + (if (simp) 6 else 0) + (if (tex) 230 * qm + 60 else 0.0)
+        }
+    }
+
+    data class MeshOptions(
+        val precision: String,
+        val quality: String,
+        val assetQuality: String?,
+        /** 0 = keep every polygon (no simplify stage) */
+        val faces: Int,
+        val textured: Boolean,
+        val seed: Long?,
+        /** An image model that puts the subject on a transparent background first, or null. */
+        val cutoutModel: String?,
+        val cutoutSize: String,
+    )
+
+    private const val CUTOUT_PROMPT = "Extract the main subject from this photo onto a transparent background. Keep the subject exactly the same: " +
+        "shape, colours, details. Remove everything else. The image has an alpha channel and a transparent background."
+
+    /** Makes nearly see-through pixels fully transparent white, as Tiiny Studio does before building from a cut-out. */
+    private fun cleanAlpha(png: ByteArray): ByteArray {
+        val bmp = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.size) ?: return png
+        if (!bmp.hasAlpha()) return png
+        val w = bmp.width
+        val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        for (i in px.indices) if ((px[i] ushr 24) < 32) px[i] = 0x00FFFFFF
+        val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        out.setPixels(px, 0, w, 0, 0, w, h)
+        val bos = java.io.ByteArrayOutputStream()
+        out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
+        return bos.toByteArray()
+    }
+
+    /**
+     * A 3D model from one picture, like Tiiny Studio's mesh tool: optional cut-out, then shape, optional simplify
+     * (polygon budget), optional texture and export.
+     */
     fun mesh(
-        c: DeviceClient, store: ResultStore, model: String, image: ByteArray, textured: Boolean,
-        quality: String, job: RemoteJob, p: Progress,
+        c: DeviceClient, store: ResultStore, model: String, image: ByteArray, imageMime: String,
+        opts: MeshOptions, job: RemoteJob, p: Progress,
     ): ResultEntry {
+        val started = System.currentTimeMillis()
+        var source = image
+        var sourceMime = imageMime
+        if (opts.cutoutModel != null) {
+            p.update("Cutting out the subject", null)
+            val uri = "data:$imageMime;base64," + b64(image)
+            val unloaded = makeRoom(c, opts.cutoutModel, p)
+            val cut = try {
+                this.image(c, store, opts.cutoutModel, CUTOUT_PROMPT, "", opts.cutoutSize, null, null, listOf(uri), p)
+            } finally {
+                putBack(c, opts.cutoutModel, unloaded, p)
+            }
+            val f = store.file(cut.mainFile!!)
+            source = cleanAlpha(f.readBytes())
+            sourceMime = "image/png"
+            f.delete() // the cut-out is only a step on the way, not a result of its own
+            makeRoom(c, model, p) // the 3D model may have made way for the image model
+        }
         val q = "?model=${c.quote(model)}"
         val caps = c.request("GET", "/v1/3d/capabilities$q", null, 30).json().let { it.optJSONObject("data") ?: JSONObject() }
         val plan = mutableListOf("shape")
-        if (textured) plan += listOf("texture", "export")
+        if (opts.faces > 0) plan += "simplify"
+        if (opts.textured) plan += listOf("texture", "export")
         caps.optJSONArray("stages")?.let { st ->
             val offered = (0 until st.length()).map { st.optString(it) }.toSet()
             if (offered.isNotEmpty()) plan.retainAll { it in offered }
@@ -701,7 +811,7 @@ object Tools {
         val useRefs = caps.optBoolean("input_refs", false)
         val refs = JSONObject()
         val have = HashMap<String, Artifact>()
-        have["image"] = Artifact("input.png", image, "image/png")
+        have["image"] = Artifact(if (sourceMime == "image/png") "input.png" else "input.jpg", source, sourceMime)
         val total = plan.sumOf { weight(it) }
         var done = 0.0
         val last = plan.last()
@@ -709,7 +819,15 @@ object Tools {
         for (stage in plan) {
             check(p)
             val params = JSONObject()
-            if (quality.isNotBlank()) params.put("asset_quality", quality)
+            when (stage) {
+                "simplify" -> params.put("target_faces", opts.faces)
+                "background" -> {}
+                else -> {
+                    params.put("output_precision", opts.precision).put("inference_quality", opts.quality)
+                    opts.assetQuality?.let { params.put("asset_quality", it) }
+                    opts.seed?.let { params.put("seed", it) }
+                }
+            }
             caps.optJSONObject("stage_specs")?.optJSONObject(stage)?.let { spec ->
                 val listed = HashSet<String>()
                 spec.optJSONObject("params")?.keys()?.forEach { listed.add(it) }
@@ -830,6 +948,14 @@ object Tools {
         val mesh = have["mesh"] ?: have["preview"] ?: throw MediaException("The Tiiny returned no 3D model.")
         val id = store.newId()
         val file = store.saveFile(id, "model.glb", mesh.data)
-        return ResultEntry(id, "mesh", if (textured) "Textured 3D model" else "3D model", listOf(file), "", model, System.currentTimeMillis())
+        val details = listOfNotNull(
+            "Took ${fmtDuration((System.currentTimeMillis() - started) / 1000)}",
+            if (opts.cutoutModel != null) "cut out by ${short(opts.cutoutModel)}" else null,
+            "${opts.precision} detail",
+            if (opts.faces > 0) "${opts.faces / 1000}k faces" else "full mesh",
+            if (opts.textured) "PBR texture" else "no texture",
+            opts.seed?.let { "seed $it" },
+        ).joinToString(" · ")
+        return ResultEntry(id, "mesh", if (opts.textured) "Textured 3D model" else "3D model", listOf(file), details, model, System.currentTimeMillis())
     }
 }

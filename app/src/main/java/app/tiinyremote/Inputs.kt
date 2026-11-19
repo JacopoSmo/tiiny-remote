@@ -14,6 +14,16 @@ import java.io.File
 /** A picture picked from the phone, scaled down and encoded for the Tiiny. */
 class PickedImage(val bytes: ByteArray, val mime: String, val preview: Bitmap) {
     val dataUri get() = "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+    /** Already on a transparent background (over 5% see-through), so no cut-out is needed. */
+    val transparent: Boolean by lazy {
+        if (!preview.hasAlpha()) return@lazy false
+        val k = minOf(1.0, 256.0 / maxOf(preview.width, preview.height))
+        val small = Bitmap.createScaledBitmap(preview, maxOf(1, (preview.width * k).toInt()), maxOf(1, (preview.height * k).toInt()), false)
+        val px = IntArray(small.width * small.height)
+        small.getPixels(px, 0, small.width, 0, 0, small.width, small.height)
+        px.count { (it ushr 24) < 16 } > px.size / 20
+    }
 }
 
 /** An audio clip picked or recorded on the phone. */
@@ -56,6 +66,18 @@ object Inputs {
         }
         val mime = ctx.contentResolver.getType(uri) ?: "audio/mpeg"
         return PickedAudio(bytes, mime, name)
+    }
+
+    /** A picture from the app's own results, to build on (e.g. a 3D model from a generated image). */
+    fun fromFile(file: File): PickedImage? {
+        val bytes = try {
+            file.readBytes()
+        } catch (e: Exception) {
+            return null
+        }
+        val preview = thumbnail(file, 1536) ?: return null
+        val mime = if (file.name.endsWith(".png")) "image/png" else "image/jpeg"
+        return PickedImage(bytes, mime, preview)
     }
 
     /** A small preview of a result picture, without loading the full size into memory. */
