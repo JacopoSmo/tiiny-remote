@@ -4,7 +4,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,7 +67,17 @@ class TiinyApi(url: String, private val key: String) {
             return u
         }
 
-        fun quote(id: String): String = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+        /** Same encoding as Tiiny Studio: everything but letters, digits and _.-~ becomes %XX (per UTF-8 byte). */
+        fun quote(id: String): String {
+            val sb = StringBuilder()
+            for (b in id.toByteArray(Charsets.UTF_8)) {
+                val c = b.toInt() and 0xFF
+                val ch = c.toChar()
+                if (c < 128 && (ch.isLetterOrDigit() || ch in "_.-~")) sb.append(ch)
+                else sb.append('%').append(String.format(Locale.ROOT, "%02X", c))
+            }
+            return sb.toString()
+        }
     }
 
     private fun call(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> {
@@ -205,8 +214,31 @@ class TiinyApi(url: String, private val key: String) {
         return Catalog(models, used)
     }
 
+    /**
+     * Calls /api/v1/models/{id}{suffix}. Model ids contain "/" (e.g. Qwen/Qwen3-8B): Tiiny Studio sends it
+     * encoded as %2F. If the device answers 404 to that, the same call is tried once with the "/" left as is.
+     */
+    private fun modelCall(method: String, id: String, suffix: String, body: JSONObject? = null, timeoutSec: Int): JSONObject {
+        val variants = listOf(quote(id), id.split('/').joinToString("/") { quote(it) }).distinct()
+        for ((i, v) in variants.withIndex()) {
+            val res = call(method, "/api/v1/models/$v$suffix", body, timeoutSec)
+            if (res.first == 404 && i < variants.size - 1) continue
+            return json(res)
+        }
+        throw IllegalStateException("unreachable")
+    }
+
     fun plan(id: String): Plan {
-        val p = json(call("GET", "/api/v1/models/${quote(id)}/unload_candidate", timeoutSec = 30))
+        val p = try {
+            modelCall("GET", id, "/unload_candidate", timeoutSec = 30)
+        } catch (e: TiinyException) {
+            // The room check is only a courtesy: if the device doesn't know it, just try the load.
+            if (e.kind == TiinyException.Kind.HTTP) {
+                ApiLog.add("unload_candidate failed (${e.message}); loading without the room check")
+                return Plan(false, null, null, null, null, null)
+            }
+            throw e
+        }
         val cand = p.optJSONObject("candidate")
         var candId = cand?.optString("model_id")?.takeIf { it.isNotEmpty() }
         if (candId == null) {
@@ -227,10 +259,10 @@ class TiinyApi(url: String, private val key: String) {
 
     /** Starts loading; the device answers once the load is accepted and finishes in the background. */
     fun launch(id: String) {
-        json(call("POST", "/api/v1/models/${quote(id)}/launch", JSONObject().put("model_id", id), timeoutSec = 120))
+        modelCall("POST", id, "/launch", JSONObject().put("model_id", id), timeoutSec = 120)
     }
 
     fun stop(id: String) {
-        json(call("POST", "/api/v1/models/${quote(id)}/stop", timeoutSec = 120))
+        modelCall("POST", id, "/stop", timeoutSec = 120)
     }
 }
