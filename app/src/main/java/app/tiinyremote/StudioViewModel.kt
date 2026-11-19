@@ -52,7 +52,7 @@ private const val TOOLS_PROMPT = " When the user wants something made (an image,
     "The result appears in the chat and in the app's results, so after the tool returns just tell the user briefly " +
     "what you made. Making things can take a minute or more because models may be swapped on the device."
 
-private fun webPrompt() = " You can search the web with web_search and read a page with open_page. Today is " +
+private fun webPrompt() = " You can search the web with web_search, get current headlines with news, and read a page with open_page. Today is " +
     java.text.SimpleDateFormat("EEEE d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date()) + ". For anything " +
     "current, recent or that you're unsure of, search first instead of answering from memory; open the most promising " +
     "pages when the snippets aren't enough. Base your answer on what you found and cite the sources as Markdown links."
@@ -65,6 +65,9 @@ private fun webSpecs(): JSONArray {
     return JSONArray()
         .put(fn("web_search", "Search the web. Returns titles, links and snippets of the top results.",
             JSONObject().put("query", JSONObject().put("type", "string").put("description", "Search terms, as you'd type them into a search engine.")), "query"))
+        .put(fn("news", "Current news headlines from the last day, with sources and times. Leave topic empty for the top stories.",
+            JSONObject().put("topic", JSONObject().put("type", "string").put("description", "What the news should be about; empty for top stories."))
+                .put("region", JSONObject().put("type", "string").put("description", "Country code for local news (ch, de, at, us, uk, fr, it) or \"world\" (default).")), "topic"))
         .put(fn("open_page", "Read the text of a web page (e.g. one from the search results).",
             JSONObject().put("url", JSONObject().put("type", "string").put("description", "The page's full http(s) address.")), "url"))
 }
@@ -472,12 +475,23 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             setStatus("Searching the web: $q")
             val found = WebSearch.search(cfg, q)
             val hits = found.hits
-            ApiLog.add("web search via ${found.via}: ${hits.size} results")
+            ApiLog.add("web search via ${found.via}: ${hits.size} results" + if (found.skipped.isNotEmpty()) " (skipped: ${found.skipped.joinToString("; ")})" else "")
             if (hits.isEmpty()) return "No results for \"$q\". Try other words."
             _chat.update { list ->
                 list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
             }
             return hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(400)}" }.joinToString("\n\n")
+        }
+        if (name == "news") {
+            val topic = args.optString("topic").trim()
+            val region = args.optString("region").trim()
+            setStatus(if (topic.isEmpty()) "Getting today's headlines" else "Getting news: $topic")
+            val found = WebSearch.news(cfg, topic, region)
+            ApiLog.add("news via ${found.via}: ${found.hits.size} items" + if (found.skipped.isNotEmpty()) " (skipped: ${found.skipped.joinToString("; ")})" else "")
+            _chat.update { list ->
+                list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + found.hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
+            }
+            return "News (via ${found.via}):\n\n" + found.hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(300)}" }.joinToString("\n\n")
         }
         val url = args.optString("url").trim()
         setStatus("Reading ${url.substringAfter("://").substringBefore('/')}")
@@ -626,7 +640,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 JSONObject()
                             }
                             val (entry, answer) = try {
-                                if (call.name == "web_search" || call.name == "open_page") null to webTool(call.name, args, searchCfg)
+                                if (call.name in setOf("web_search", "open_page", "news")) null to webTool(call.name, args, searchCfg)
                                 else runTool(c, call.name, args, models, p)
                             } catch (e: Exception) {
                                 if (chatStop.get()) throw e

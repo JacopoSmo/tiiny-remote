@@ -575,7 +575,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         if (searchMode != "searx") {
             SecretField(tavily, { tavily = it; searxTest = null }, "Tavily API key (optional)")
             Text(
-                "The phone searches with Tavily if you add a key (free plan: 1,000 searches a month, no card, at tavily.com), otherwise with DuckDuckGo, and Wikipedia as a last resort. DuckDuckGo needs no key but can occasionally refuse.",
+                "The phone searches with Tavily if you add a key (free plan: 1,000 searches a month, no card, at tavily.com), otherwise with Bing and DuckDuckGo, and Wikipedia as a last resort. News comes from Google News and Bing News. The keyless sources can occasionally refuse; the log shows which one answered.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
