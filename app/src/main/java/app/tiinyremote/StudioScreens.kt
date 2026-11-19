@@ -70,19 +70,24 @@ import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
 
-private class Tool(val id: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
+/** A tool, filed under the model type TiinyOS shows in its store. */
+private class Tool(val id: String, val type: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
 
 private val TOOLS = listOf(
-    Tool("image", "Create image", "A picture from a description", { it.isImageGen }),
-    Tool("edit", "Edit image", "Change a photo with words", { it.canEditImages }),
-    Tool("ocr", "Read text (OCR)", "Copy the text out of a photo or screenshot", { it.isOcr }),
-    Tool("describe", "Describe image", "Have a picture described, or ask a question about it", { it.seesImages }),
-    Tool("speech", "Voice", "Text to speech, built-in or cloned voices", { it.isSpeech }),
-    Tool("transcribe", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
-    Tool("loop", "Loop", "Short music loops at a set tempo and key", { it.isLoopModel }),
-    Tool("song", "Song", "Full songs with lyrics, or instrumentals", { it.isSongModel }),
-    Tool("video", "Video", "Short clips from a description or a picture", { it.isVideo }),
-    Tool("mesh", "3D model", "A 3D model (.glb) from one picture", { it.is3d }),
+    Tool("describe", "Image-Text-to-Text", "Describe image", "Have a picture described, or ask a question about it", { it.seesImages }),
+    Tool("chat", "Text Generation", "Chat", "Talk with the loaded model (also in the Chat tab)", { it.isChat }),
+    Tool("image", "Text-to-Image", "Create image", "A picture from a description", { it.isImageGen }),
+    Tool("edit", "Text-to-Image", "Edit image", "Change a photo with words", { it.canEditImages }),
+    Tool("transcribe", "ASR", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
+    Tool("speech", "Text-to-Speech", "Voice", "Text to speech, built-in, described or cloned voices", { it.isSpeech }),
+    Tool("ocr", "Image-to-Text", "Read text (OCR)", "Copy the text out of a photo or screenshot", { it.isOcr }),
+    Tool("loop", "Music Generation", "Loop", "Short music loops at a set tempo and key", { it.isLoopModel }),
+    Tool("song", "Music Generation", "Song", "Full songs with lyrics, or instrumentals", { it.isSongModel }),
+    Tool("mesh", "Image-to-3D", "3D model", "A 3D model (.glb) from one picture", { it.is3d }),
+    Tool("embed", "Text Embedding", "Compare texts", "How similar in meaning are a few texts?", { it.isEmbedding }),
+    Tool("rerank", "Text Reranking", "Rank documents", "Order texts by how well they answer a question", { it.isReranker }),
+    Tool("classify", "Text Classification", "Classify text", "Yes/no, pick-one and score questions about a text", { it.isClassifier }),
+    Tool("video", "Text-to-Video", "Video", "Short clips from a description or a picture", { it.isVideo }),
 )
 
 private val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -94,12 +99,15 @@ private const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI kee
 // ---------------- the Create tab ----------------
 
 @Composable
-fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
+fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: () -> Unit) {
     var toolId by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = toolId != null) { toolId = null }
     val tool = TOOLS.firstOrNull { it.id == toolId }
     if (tool == null) {
-        ToolHub(s, st) { toolId = it }
+        ToolHub(s, st) { id ->
+            if (id == "chat") openChat()
+            if (id != "chat") toolId = id
+        }
     } else {
         ToolScreen(tool, s, vm, st) { toolId = null }
     }
@@ -130,8 +138,12 @@ private fun ToolHub(s: UiState, st: StudioViewModel, open: (String) -> Unit) {
                 }
             }
         }
-        Text("Tools", style = MaterialTheme.typography.titleMedium)
+        var lastType = ""
         for (t in TOOLS) {
+            if (t.type != lastType) {
+                lastType = t.type
+                Text(t.type, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+            }
             val installed = s.models.count(t.fits)
             val loaded = s.models.count { t.fits(it) && it.running }
             Card(onClick = { open(t.id) }, modifier = Modifier.fillMaxWidth()) {
@@ -410,7 +422,10 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = back) { Text("‹ Tools") }
             Spacer(Modifier.width(6.dp))
-            Text(tool.title, style = MaterialTheme.typography.titleLarge)
+            Column {
+                Text(tool.title, style = MaterialTheme.typography.titleLarge)
+                Text(tool.type, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         val model = ModelPicker(tool.id, tool.fits, s, vm, st)
         val notReady = when {
@@ -428,6 +443,9 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             "loop" -> LoopTool(model, notReady, st)
             "song" -> SongTool(model, notReady, st)
             "video" -> VideoTool(model, notReady, st)
+            "embed" -> EmbedTool(model, notReady, st)
+            "rerank" -> RerankTool(model, notReady, st)
+            "classify" -> ClassifyTool(model, notReady, st)
             "mesh" -> MeshTool(model, notReady, st)
         }
     }
@@ -697,9 +715,107 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) 
     }
 }
 
+/** Splits a box of text into items: one per line, or per paragraph when blank lines separate them. */
+private fun items(text: String): List<String> {
+    val t = text.trim()
+    val parts = if (Regex("\\n\\s*\\n").containsMatchIn(t)) t.split(Regex("\\n\\s*\\n")) else t.lines()
+    return parts.map { it.trim() }.filter { it.isNotEmpty() }
+}
+
+@Composable
+private fun EmbedTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var texts by rememberSaveable { mutableStateOf("") }
+    Field(texts, { texts = it }, "Texts to compare, one per line", lines = 6)
+    Text(
+        "Shows how close the texts are in meaning. Useful to test an embedding model before using it for search.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    val list = items(texts)
+    val why = notReady ?: if (list.size < 2) "Enter at least two texts." else null
+    RunPanel("embed", "Compare", why == null, why, st) {
+        val id = model!!.id
+        st.run("embed") { c, store, p, _ -> Tools.embeddings(c, store, id, list, p) }
+    }
+}
+
+@Composable
+private fun RerankTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var docs by rememberSaveable { mutableStateOf("") }
+    Field(query, { query = it }, "Question or search", lines = 2)
+    Field(docs, { docs = it }, "Documents: one per line, or separated by blank lines", lines = 8)
+    val list = items(docs)
+    val why = notReady ?: when {
+        query.isBlank() -> "Enter the question."
+        list.size < 2 -> "Enter at least two documents."
+        else -> null
+    }
+    RunPanel("rerank", "Rank", why == null, why, st) {
+        val id = model!!.id
+        val q = query.trim()
+        st.run("rerank") { c, store, p, _ -> Tools.rerank(c, store, id, q, list, p) }
+    }
+}
+
+private class QuestionDraft(type: String = "noul") {
+    var type by mutableStateOf(type)
+    var instructions by mutableStateOf("")
+    var options by mutableStateOf("")
+}
+
+@Composable
+private fun ClassifyTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var text by rememberSaveable { mutableStateOf("") }
+    val questions = remember { androidx.compose.runtime.mutableStateListOf(QuestionDraft()) }
+    Field(text, { text = it }, "Text to classify", lines = 5)
+    Text(
+        "Ask typed questions about the text; the model answers with probabilities instead of writing text.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    for ((i, q) in questions.withIndex()) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Question ${i + 1}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    if (questions.size > 1) TextButton(onClick = { questions.removeAt(i) }) { Text("Remove") }
+                }
+                Chips(listOf("noul" to "Yes / no", "choice" to "Pick one", "score" to "Score"), q.type) { q.type = it }
+                Field(q.instructions, { q.instructions = it }, "The question", lines = 2,
+                    placeholder = when (q.type) {
+                        "choice" -> "e.g. What is this message about?"
+                        "score" -> "e.g. How urgent is this?"
+                        else -> "e.g. Is this about billing?"
+                    })
+                when (q.type) {
+                    "choice" -> Field(q.options, { q.options = it }, "Options, one per line (name: description)", lines = 4,
+                        placeholder = "billing: payments, refunds\nshipping: delivery")
+                    "score" -> Field(q.options, { q.options = it }, "Levels from low to high, one per line", lines = 4,
+                        placeholder = "not urgent\nsomewhat urgent\nvery urgent")
+                }
+            }
+        }
+    }
+    if (questions.size < 16) OutlinedButton(onClick = { questions.add(QuestionDraft()) }) { Text("Add a question") }
+    val qs = questions.map { Tools.Question(it.type, it.instructions.trim(), it.options.lines().map { l -> l.trim() }.filter { l -> l.isNotEmpty() }) }
+    val why = notReady ?: when {
+        text.isBlank() -> "Enter the text to classify."
+        qs.any { it.instructions.isBlank() } -> "Every question needs its wording."
+        qs.any { it.type == "choice" && it.options.size < 2 } -> "Pick-one questions need at least two options."
+        qs.any { it.type == "score" && it.options.size < 2 } -> "Score questions need at least two levels."
+        else -> null
+    }
+    RunPanel("classify", "Classify", why == null, why, st) {
+        val id = model!!.id
+        val t = text.trim()
+        st.run("classify") { c, store, p, _ -> Tools.classify(c, store, id, t, qs, p) }
+    }
+}
+
 // ---------------- results ----------------
 
-private val TEXT_KINDS = setOf("ocr", "description", "transcript")
+private val TEXT_KINDS = setOf("ocr", "description", "transcript", "embedding", "rerank", "classification")
 
 private val dateFmt = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
 

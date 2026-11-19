@@ -180,7 +180,7 @@ fun AppRoot(vm: MainViewModel) {
         ) {
             when (tab) {
                 0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 4 })
-                1 -> CreateScreen(s, vm, st)
+                1 -> CreateScreen(s, vm, st, openChat = { tab = 2 })
                 2 -> ChatScreen(s, vm, st)
                 3 -> UnlockScreen(s, vm)
                 else -> SettingsScreen(s, vm)

@@ -40,6 +40,9 @@ data class ModelInfo(
     val isLoopModel get() = isMusic && !isSongModel
     val isVideo get() = type == "Text-to-Video"
     val is3d get() = type == "Image-to-3D"
+    val isEmbedding get() = type == "Text Embedding"
+    val isReranker get() = type == "Text Reranking"
+    val isClassifier get() = type == "Text Classification"
     val running get() = status == "running"
 }
 

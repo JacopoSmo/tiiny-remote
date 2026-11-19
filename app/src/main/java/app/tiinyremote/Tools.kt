@@ -337,6 +337,134 @@ object Tools {
         return ResultEntry(id, "song", "Song: ${caption.take(60)}", listOf(file), lyrics, model, System.currentTimeMillis())
     }
 
+    // ---------------- text models ----------------
+
+    /** Embeds several texts and shows how similar they are to each other (cosine similarity, 1 = same meaning). */
+    fun embeddings(c: DeviceClient, store: ResultStore, model: String, texts: List<String>, p: Progress): ResultEntry {
+        p.update("Embedding ${texts.size} texts", null)
+        val r = c.request("POST", "/v1/embeddings", JSONObject().put("model", model).put("input", JSONArray(texts)), 600)
+        val data = r.json().optJSONArray("data")
+        if (!r.ok || data == null || data.length() != texts.size) throw MediaException(r.error())
+        val vecs = (0 until data.length()).map { i ->
+            val o = data.getJSONObject(i)
+            val e = o.getJSONArray("embedding")
+            o.optInt("index", i) to DoubleArray(e.length()) { e.getDouble(it) }
+        }.sortedBy { it.first }.map { it.second }
+        fun cos(a: DoubleArray, b: DoubleArray): Double {
+            var dot = 0.0
+            var na = 0.0
+            var nb = 0.0
+            for (k in a.indices) {
+                dot += a[k] * b[k]
+                na += a[k] * a[k]
+                nb += b[k] * b[k]
+            }
+            return if (na == 0.0 || nb == 0.0) 0.0 else dot / Math.sqrt(na * nb)
+        }
+        val pairs = ArrayList<Triple<Int, Int, Double>>()
+        for (i in vecs.indices) for (j in i + 1 until vecs.size) pairs.add(Triple(i, j, cos(vecs[i], vecs[j])))
+        pairs.sortByDescending { it.third }
+        val text = buildString {
+            append("Vectors with ${vecs.firstOrNull()?.size ?: 0} dimensions.\n\n")
+            texts.forEachIndexed { i, t -> append("${i + 1}. ${t.take(120)}\n") }
+            append("\nSimilarity, most alike first (1.00 = same meaning):\n")
+            for ((i, j, v) in pairs) append("${i + 1} ↔ ${j + 1}: ${"%.3f".format(v)}\n")
+        }
+        val id = store.newId()
+        return ResultEntry(id, "embedding", "Compared ${texts.size} texts", emptyList(), text.trim(), model, System.currentTimeMillis())
+    }
+
+    /** Ranks documents by how well they answer a query. */
+    fun rerank(c: DeviceClient, store: ResultStore, model: String, query: String, docs: List<String>, p: Progress): ResultEntry {
+        p.update("Ranking ${docs.size} documents", null)
+        val r = c.request(
+            "POST", "/v1/rerank",
+            JSONObject().put("model", model).put("query", query).put("documents", JSONArray(docs)), 600,
+        )
+        val o = r.json()
+        val list = o.optJSONArray("results") ?: o.optJSONArray("data")
+        if (!r.ok || list == null) throw MediaException(r.error())
+        val ranked = (0 until list.length()).mapNotNull { i ->
+            val e = list.optJSONObject(i) ?: return@mapNotNull null
+            val idx = e.optInt("index", i)
+            val score = when {
+                e.has("relevance_score") -> e.optDouble("relevance_score")
+                else -> e.optDouble("score", Double.NaN)
+            }
+            idx to score
+        }.sortedByDescending { if (it.second.isNaN()) Double.NEGATIVE_INFINITY else it.second }
+        val text = buildString {
+            append("Query: $query\n\nMost relevant first:\n")
+            ranked.forEachIndexed { rank, (idx, score) ->
+                val doc = docs.getOrNull(idx) ?: "?"
+                val sc = if (score.isNaN()) "" else " (score ${"%.3f".format(score)})"
+                append("${rank + 1}. ${doc.take(160)}$sc\n")
+            }
+        }
+        val id = store.newId()
+        return ResultEntry(id, "rerank", "Ranked: ${query.take(50)}", emptyList(), text.trim(), model, System.currentTimeMillis())
+    }
+
+    /** One typed question for a Text Classification (Jev / System One) model. */
+    data class Question(val type: String, val instructions: String, val options: List<String>)
+
+    /**
+     * Asks a classification model typed questions about a text (POST /v1/systemone): yes/no ("noul"),
+     * pick one ("choice") or a score on a scale ("score"). The answers are probabilities, not generated text.
+     */
+    fun classify(c: DeviceClient, store: ResultStore, model: String, state: String, questions: List<Question>, p: Progress): ResultEntry {
+        p.update("Classifying", null)
+        val qs = JSONObject()
+        questions.forEachIndexed { i, q ->
+            val o = JSONObject().put("type", q.type).put("instructions", q.instructions)
+            when (q.type) {
+                "choice" -> {
+                    val crit = JSONObject()
+                    for (opt in q.options) {
+                        val name = opt.substringBefore(':').trim()
+                        if (name.isNotEmpty()) crit.put(name, opt.substringAfter(':', name).trim())
+                    }
+                    o.put("criteria", crit)
+                }
+                "score" -> o.put("criteria", JSONArray(q.options))
+            }
+            qs.put("q${i + 1}", o)
+        }
+        val r = c.request("POST", "/v1/systemone", JSONObject().put("model", model).put("state", state).put("questions", qs), 600)
+        val answers = r.json().optJSONObject("answers")
+        if (!r.ok || answers == null) throw MediaException(r.error())
+        fun pct(v: Double) = "${Math.round(v * 100)}%"
+        val text = buildString {
+            questions.forEachIndexed { i, q ->
+                val a = answers.optJSONObject("q${i + 1}") ?: JSONObject()
+                append("${i + 1}. ${q.instructions}\n")
+                when (q.type) {
+                    "noul" -> {
+                        val yes = a.optDouble("noul", Double.NaN)
+                        append(if (yes.isNaN()) "   (no answer)\n" else "   ${if (yes >= 0.5) "Yes" else "No"} (yes: ${pct(yes)})\n")
+                    }
+                    "choice" -> {
+                        append("   ${a.optString("choice")}")
+                        if (a.has("confidence")) append(" (${pct(a.optDouble("confidence"))})")
+                        append("\n")
+                        a.optJSONObject("probabilities")?.let { pr ->
+                            pr.keys().asSequence().map { it to pr.optDouble(it) }.sortedByDescending { it.second }
+                                .forEach { (k, v) -> append("   · $k: ${pct(v)}\n") }
+                        }
+                    }
+                    else -> {
+                        val sc = a.optDouble("score", Double.NaN)
+                        val levels = q.options
+                        val nearest = if (sc.isNaN()) null else levels.getOrNull(Math.round(sc).toInt())
+                        append("   ${if (sc.isNaN()) "(no answer)" else "%.2f".format(sc)}${nearest?.let { " ≈ $it" } ?: ""}\n")
+                    }
+                }
+            }
+        }
+        val id = store.newId()
+        return ResultEntry(id, "classification", "Classified: ${state.take(50)}", emptyList(), text.trim(), model, System.currentTimeMillis())
+    }
+
     // ---------------- video ----------------
 
     data class VideoInfo(val canvases: List<String>, val steps: List<Int>, val defaultSteps: Int)
