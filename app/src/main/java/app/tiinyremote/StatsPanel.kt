@@ -1,0 +1,149 @@
+package app.tiinyremote
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import java.util.Locale
+
+private fun fmt(v: Double?, unit: String, digits: Int = 0): String =
+    if (v == null) "—" else String.format(Locale.ROOT, "%.${digits}f", v) + unit
+
+/** The top-bar button with the live device numbers; tap for the full panel (like Tiiny Studio's Models drawer). */
+@Composable
+fun StatsButton(s: UiState, vm: MainViewModel) {
+    val stats by vm.stats.collectAsState()
+    var open by remember { mutableStateOf(false) }
+    val st = stats
+    val running = s.models.filter { it.running }
+    val used = running.sumOf { it.npuUsage ?: 0.0 }
+    Box {
+        TextButton(onClick = { open = true; vm.statsPanel(true) }) {
+            val temp = st?.npuTempC?.let { " · ${fmt(it, "°")}" } ?: ""
+            Text(
+                if (s.device != DeviceState.ONLINE) "NPU ▾" else "NPU ${fmt(used.coerceIn(0.0, 100.0), "%")}$temp ▾",
+                style = MaterialTheme.typography.labelLarge,
+                color = if ((st?.npuTempC ?: 0.0) > 80) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false; vm.statsPanel(false) }) {
+            Column(Modifier.width(330.dp).padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (s.device != DeviceState.ONLINE) {
+                    Text("The Tiiny isn't online, so there are no live numbers.", style = MaterialTheme.typography.bodyMedium)
+                }
+
+                // NPU memory budget: what the loaded models take.
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("NPU memory", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            Text("${fmt(used, "%")} used · ${fmt((100 - used).coerceAtLeast(0.0), "%")} free", style = MaterialTheme.typography.labelLarge)
+                        }
+                        LinearProgressIndicator(progress = { (used / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        if (running.isEmpty()) Text("Nothing loaded", style = MaterialTheme.typography.bodySmall)
+                        for (m in running) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(m.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
+                                Text(fmt(m.npuUsage, "%", 1), style = MaterialTheme.typography.labelMedium)
+                                TextButton(onClick = { vm.unload(m) }, enabled = m.id !in s.working) { Text("Unload") }
+                            }
+                        }
+                    }
+                }
+
+                // Live activity
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Device activity", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            Text("${fmt(st?.npuUtil, "%")} NPU busy", style = MaterialTheme.typography.labelLarge)
+                        }
+                        LinearProgressIndicator(progress = { ((st?.npuUtil ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        val mu = st?.npuMemUsedMb
+                        val mt = st?.npuMemTotalMb
+                        val memGb = if (mu != null && mt != null) "${Math.round(mu / 1024)} / ${Math.round(mt / 1024)} GB" else "—"
+                        Row {
+                            Stat("NPU memory", memGb, Modifier.weight(1f))
+                            Stat("NPU power", fmt(st?.npuPowerW, " W", 1), Modifier.weight(1f))
+                        }
+                        Row {
+                            Stat("Hottest sensor", fmt(st?.npuTempC, " °C"), Modifier.weight(1f), hot = (st?.npuTempC ?: 0.0) > 80)
+                            Stat("CPU / RAM", "${fmt(st?.cpuPct, "%")} / ${fmt(st?.memPct, "%")}", Modifier.weight(1f))
+                        }
+                        val temps = st?.temps.orEmpty()
+                        if (temps.isNotEmpty()) {
+                            HorizontalDivider()
+                            Text("Temperatures", style = MaterialTheme.typography.labelLarge)
+                            for ((name, t) in temps.take(8)) {
+                                Row {
+                                    Text(name.replace('_', ' '), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1)
+                                    Text(
+                                        fmt(t, " °C", 1),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (t > 80) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                            }
+                        }
+                        val df = st?.diskFreeGb
+                        val dt = st?.diskTotalGb
+                        if (df != null && dt != null) {
+                            Text(
+                                "Storage: ${Math.round(df)} GB free of ${Math.round(dt)} GB",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (df < 10) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            when {
+                                st == null -> "Reading…"
+                                st.dashboard -> "Live from the on-device dashboard (port 9109) · every 3 s"
+                                else -> "Power and temperature need the on-device dashboard (port 9109), a community add-on that isn't part of TiinyOS. NPU activity shows while a model is loaded."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Text(
+                    "Models load into the NPU's memory; loading takes roughly 30–60 s. The device can only hold what fits in 100% NPU.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Stat(label: String, value: String, modifier: Modifier, hot: Boolean = false) {
+    Column(modifier) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}

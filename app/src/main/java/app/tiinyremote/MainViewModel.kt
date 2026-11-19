@@ -61,6 +61,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val settings get() = _state.value.settings
     private fun api() = TiinyApi(settings.tiinyUrl, settings.apiKey)
 
+    // ---------- live device stats (NPU, CPU/RAM, storage, and power/temperature from the :9109 dashboard) ----------
+
+    private val _stats = MutableStateFlow<DeviceStats?>(null)
+    val stats: StateFlow<DeviceStats?> = _stats.asStateFlow()
+
+    @Volatile
+    private var statsOpen = false
+
+    /** The stats panel is open: read every 3 s instead of every 15 s. */
+    fun statsPanel(open: Boolean) {
+        statsOpen = open
+        if (open) viewModelScope.launch { readStats() }
+    }
+
+    private suspend fun readStats() {
+        val s = _state.value
+        if (s.device != DeviceState.ONLINE || !s.settings.tiinyConfigured) return
+        _stats.value = withContext(Dispatchers.IO) { Stats.read(s.settings) }
+    }
+
+    /** Runs while the app is on screen, beside pollLoop. */
+    suspend fun statsLoop() {
+        var last = 0L
+        while (true) {
+            val every = if (statsOpen) 3_000L else 15_000L
+            if (System.currentTimeMillis() - last >= every) {
+                readStats()
+                last = System.currentTimeMillis()
+            }
+            delay(1_000)
+        }
+    }
+
     /** Runs while the app is on screen (see MainActivity): checks the Tiiny every 15 s, every 5 s while something changes. */
     suspend fun pollLoop() {
         while (true) {

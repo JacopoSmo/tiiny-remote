@@ -263,6 +263,7 @@ fun AppRoot(vm: MainViewModel) {
                             Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
                         },
                         actions = {
+                            StatsButton(s, vm)
                             if (tab == 2) IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             IconButton(onClick = { vm.refreshNow() }) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")

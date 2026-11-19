@@ -25,7 +25,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Check the Tiiny only while the app is on screen; stops in the background to save battery.
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) { vm.pollLoop() }
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { vm.statsLoop() }
+                vm.pollLoop()
+            }
         }
         setContent {
             AppTheme { AppRoot(vm) }
