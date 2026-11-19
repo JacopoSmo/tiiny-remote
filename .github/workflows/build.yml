@@ -25,7 +25,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
-          mv app/build/outputs/apk/release/app-release.apk TiinyRemote-1.0.${{ github.run_number }}.apk
+          mv app/build/outputs/apk/release/app-release.apk TiinyRemote-2.0.${{ github.run_number }}.apk
 
       - name: Keep the APK with this run
         uses: actions/upload-artifact@v4
@@ -37,6 +37,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Tiiny Remote 1.0.${{ github.run_number }}
+          name: Tiiny Remote 2.0.${{ github.run_number }}
           body: Download the .apk below on your phone and open it to install or update.
           files: TiinyRemote-*.apk

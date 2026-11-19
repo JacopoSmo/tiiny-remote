@@ -15,6 +15,12 @@ A small Android app for a Tiiny AI Pocket Lab on your home network:
   Settings → *Allow remote control apps*. Home is recognised by your Wi-Fi having the Tiiny's address range,
   so no location access is needed.
 
+- **Create (2.0):** make images from a description or edit photos, read text in pictures or have them
+  described, speak text (built-in, described or cloned voices), transcribe recordings, make music loops and
+  full songs, render short videos and build 3D models (.glb) from a picture. Results are kept in the app and
+  can be saved to the phone's gallery or shared.
+- **Chat (2.0):** a simple chat with the loaded model, with pictures for models that see images.
+
 It talks to the Tiiny the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does,
 over plain HTTP, so use it on home wifi or over WireGuard only.
 
