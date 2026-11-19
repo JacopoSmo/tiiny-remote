@@ -62,6 +62,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
+import android.content.Intent
 import java.util.Locale
 
 private fun pct(v: Double?): String {
@@ -71,6 +73,33 @@ private fun pct(v: Double?): String {
 
 private fun fmtSec(s: Int): String =
     if (s >= 60) "${s / 60} min" + (if (s % 60 > 0) " ${s % 60} s" else "") else "$s s"
+
+/** Everything useful for debugging in one text: status, the API log and the unlock log. No keys or passwords. */
+private fun buildReport(ctx: Context, s: UiState): String {
+    val version = try {
+        ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
+    } catch (e: Exception) {
+        "?"
+    }
+    return buildString {
+        append("Tiiny Remote ").append(version).append('\n')
+        append("Status: ").append(s.device).append(' ').append(s.deviceMessage).append("\n\n")
+        append("== API calls (newest first) ==\n")
+        val api = ApiLog.all()
+        append(if (api.isEmpty()) "(none)" else api.joinToString("\n\n"))
+        append("\n\n== Unlock log ==\n")
+        append(if (s.log.isEmpty()) "(none)" else s.log.joinToString("\n"))
+    }
+}
+
+private fun shareLog(ctx: Context, s: UiState) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Tiiny Remote log")
+        putExtra(Intent.EXTRA_TEXT, buildReport(ctx, s))
+    }
+    ctx.startActivity(Intent.createChooser(send, "Share log"))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -300,8 +329,12 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
             Button(onClick = { vm.unlock() }, enabled = !s.unlocking) {
                 Text(if (s.unlocking) "Unlocking…" else "Unlock Tiiny now")
             }
-            Spacer(Modifier.width(10.dp))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = { vm.clearLog() }) { Text("Clear log") }
+            Spacer(Modifier.width(10.dp))
+            val ctx = LocalContext.current
+            OutlinedButton(onClick = { shareLog(ctx, s) }) { Text("Share log") }
         }
         if (s.unlocking) LinearProgressIndicator(Modifier.fillMaxWidth())
         Card(
@@ -436,6 +469,10 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         TextButton(onClick = { vm.forgetHostKey() }) { Text("Forget saved NAS key") }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        val shareCtx = LocalContext.current
+        OutlinedButton(onClick = { shareLog(shareCtx, s) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Share log (no keys or passwords)")
+        }
         TextButton(onClick = { showDebug = !showDebug }) {
             Text(if (showDebug) "Hide last API answers" else "Show last API answers")
         }

@@ -45,7 +45,7 @@ object ApiLog {
     @Synchronized
     fun add(line: String) {
         entries.addFirst("${time.format(Date())}  $line")
-        while (entries.size > 30) entries.removeLast()
+        while (entries.size > 100) entries.removeLast()
     }
 
     @Synchronized
@@ -60,6 +60,10 @@ class TiinyApi(url: String, private val key: String) {
     private val base = normalize(url)
 
     companion object {
+        /** The full model list is written to the log once per app start, to help debugging. */
+        @Volatile
+        private var catalogLogged = false
+
         fun normalize(url: String): String {
             var u = url.trim().trimEnd('/')
             if (u.endsWith("/v1")) u = u.removeSuffix("/v1").trimEnd('/')
@@ -80,7 +84,14 @@ class TiinyApi(url: String, private val key: String) {
         }
     }
 
-    private fun call(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> {
+    /** `routine` marks the status checks made every few seconds: those are logged only when they fail. */
+    private fun call(
+        method: String,
+        path: String,
+        body: JSONObject? = null,
+        timeoutSec: Int = 15,
+        routine: Boolean = false,
+    ): Pair<Int, String> {
         val conn = try {
             URL(base + path).openConnection() as HttpURLConnection
         } catch (e: Exception) {
@@ -106,11 +117,14 @@ class TiinyApi(url: String, private val key: String) {
             val code = conn.responseCode
             val stream = if (code >= 400) conn.errorStream else conn.inputStream
             val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            ApiLog.add("$method $path -> $code ${text.take(300)}")
+            if (!routine || code !in 200..299) {
+                val sent = if (body != null) "\n  sent: $body" else ""
+                ApiLog.add("$method $base$path$sent\n  -> HTTP $code: ${text.take(1500)}")
+            }
             return code to text
         } catch (e: Exception) {
             // Network errors (and anything unexpected) become one readable error instead of a crash.
-            ApiLog.add("$method $path -> ${e.javaClass.simpleName}: ${e.message}")
+            ApiLog.add("$method $base$path\n  -> ${e.javaClass.simpleName}: ${e.message}")
             throw TiinyException(
                 TiinyException.Kind.UNREACHABLE,
                 "Can't reach the Tiiny at $base (${e.message ?: e.javaClass.simpleName}). " +
@@ -161,8 +175,12 @@ class TiinyApi(url: String, private val key: String) {
 
     /** Installed models with live status: running, loading (pending) or stopped. */
     fun catalog(): Catalog {
-        val inst = json(call("GET", "/api/v1/models/?including_downloading=false"))
-        val run = json(call("GET", "/api/v1/models/running"))
+        val inst = json(call("GET", "/api/v1/models/?including_downloading=false", routine = true))
+        val run = json(call("GET", "/api/v1/models/running", routine = true))
+        if (!catalogLogged) {
+            catalogLogged = true
+            ApiLog.add("Model list as the Tiiny reports it:\n${inst.toString().take(6000)}")
+        }
 
         val instances = run.optJSONObject("instances") ?: JSONObject()
         val running = instances.optJSONArray("running") ?: JSONArray()

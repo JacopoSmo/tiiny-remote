@@ -118,6 +118,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { api().launch(model.id) }
                 toast("Loading ${model.name}…")
             } catch (e: TiinyException) {
+                ApiLog.add("Loading ${model.id} failed: ${e.message}")
                 toast(e.message ?: "Loading failed")
             } finally {
                 setWorking(model.id, false)
@@ -159,6 +160,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { api().stop(model.id) }
                 toast("${model.name} unloaded")
             } catch (e: TiinyException) {
+                ApiLog.add("Unloading ${model.id} failed: ${e.message}")
                 toast(e.message ?: "Unloading failed")
             } finally {
                 setWorking(model.id, false)
