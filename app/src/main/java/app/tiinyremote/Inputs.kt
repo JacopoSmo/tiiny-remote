@@ -65,7 +65,18 @@ object Inputs {
             if (c.moveToFirst()) c.getString(0)?.let { name = it }
         }
         val mime = ctx.contentResolver.getType(uri) ?: "audio/mpeg"
-        return PickedAudio(bytes, mime, name)
+        val secs = try {
+            val r = android.media.MediaMetadataRetriever()
+            try {
+                r.setDataSource(ctx, uri)
+                r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.let { it / 1000.0 }
+            } finally {
+                r.release()
+            }
+        } catch (e: Exception) {
+            null
+        }
+        return PickedAudio(bytes, mime, name, secs)
     }
 
     /** A picture from the app's own results, to build on (e.g. a 3D model from a generated image). */

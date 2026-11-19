@@ -338,19 +338,67 @@ object Tools {
         return ResultEntry(id, "loop", "Loop: ${prompt.take(60)}", listOf(file), prompt, model, System.currentTimeMillis())
     }
 
+    /** What the song model is, from /v1/music/info: SongGeneration (preview, resume) or a plain one (AceStep, YuE2). */
+    data class SongInfo(
+        val known: Boolean,
+        val plain: Boolean,
+        val ace: Boolean,
+        val yue: Boolean,
+        val steps: Double?,
+        val temperature: Double?,
+        val topK: Double?,
+        val topP: Double?,
+        val maxSteps: Int?,
+        val maxSeconds: Int,
+        val secsPerSec: Double?,
+    )
+
+    fun songInfo(c: DeviceClient, model: String): SongInfo {
+        val r = try {
+            c.request("GET", "/v1/music/info?model=${c.quote(model)}", null, 15)
+        } catch (e: Exception) {
+            null
+        }
+        val o = if (r?.ok == true) r.json() else JSONObject()
+        val svc = o.optString("service_name")
+        val d = o.optJSONObject("default_config") ?: JSONObject()
+        val mi = o.optJSONObject("model_info")?.optJSONObject("model") ?: JSONObject()
+        fun num(k: String) = if (d.has(k) && !d.isNull(k)) d.optDouble(k).takeIf { !it.isNaN() } else null
+        val plain = if (svc.isNotEmpty()) !svc.startsWith("SongGeneration") else model.startsWith("ACE-Step/")
+        val dur = mi.optInt("codec_llm_duration", 0)
+        return SongInfo(
+            known = svc.isNotEmpty(),
+            plain = plain,
+            ace = svc.startsWith("AceStep") || (svc.isEmpty() && plain),
+            yue = if (svc.isNotEmpty()) svc.startsWith("YuE") else model.contains("YuE", true),
+            steps = num("steps"), temperature = num("temperature"), topK = num("top_k"), topP = num("top_p"),
+            maxSteps = mi.optInt("max_decoder_steps", 0).takeIf { it > 0 },
+            maxSeconds = if (dur > 0) dur else 270,
+            secsPerSec = when {
+                svc.startsWith("YuE") -> 10.5
+                svc.startsWith("AceStep") -> 1.5
+                else -> null
+            },
+        )
+    }
+
+    /** A made song, and the device's session id when it was a preview that can be continued. */
+    class SongOut(val entry: ResultEntry, val session: String?)
+
     /**
-     * A song: SongGeneration through the gateway's preview route (and preview + resume for full length, 4 min and
-     * more); other song models (ACE-Step, …) through the plain /v1/music/generate route.
+     * A song, as Tiiny Studio composes it over the gateway: plain models (AceStep, YuE2) through /v1/music/generate;
+     * SongGeneration as an 8-second preview, a preview of the asked length, preview + resume for full length (4 min
+     * and more), or the resume of an earlier preview. `config` holds caption, generation_type, lyrics, seed and any
+     * of steps, temperature, top_k, top_p and ace_step.
      */
     fun song(
-        c: DeviceClient, store: ResultStore, model: String, caption: String, lyrics: String,
-        type: String, seconds: Int, seed: Long, p: Progress,
-    ): ResultEntry {
+        c: DeviceClient, store: ResultStore, model: String, config: JSONObject, seconds: Int,
+        preview: Boolean, resume: String?, p: Progress,
+    ): SongOut {
         val q = c.quote(model)
-        val service = c.request("GET", "/v1/music/info?model=$q", null, 15).let { if (it.ok) it.json().optString("service_name") else "" }
-        val plain = if (service.isNotEmpty()) !service.startsWith("SongGeneration") else model.startsWith("ACE-Step/")
-        val config = JSONObject().put("caption", caption).put("generation_type", type).put("seed", seed)
-        if (type != "bgm") config.put("lyrics", lyrics)
+        val plain = songInfo(c, model).plain
+        val caption = config.optString("caption")
+        val lyrics = config.optString("lyrics")
 
         // Show the device's own progress while the long request runs.
         val done = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -374,32 +422,42 @@ object Tools {
         }
         watcher.isDaemon = true
         watcher.start()
+        fun post(path: String, cfg: JSONObject, session: String? = null): Reply {
+            val body = JSONObject().put("model", model).put("config", cfg)
+            if (session != null) body.put("session_id", session)
+            return c.request("POST", "/v1/music/generate$path", body, 3600)
+        }
+        var previewSession: String? = null
         val r: Reply = try {
             when {
                 plain -> {
                     p.update("Composing", null)
-                    config.put("seconds_total", seconds)
-                    c.request("POST", "/v1/music/generate", JSONObject().put("model", model).put("config", config), 3600)
+                    post("", JSONObject(config.toString()).put("seconds_total", if (preview) 8 else seconds))
+                }
+                resume != null -> {
+                    p.update("Composing the full song (this takes a while)", null)
+                    post("/resume", config, resume)
+                }
+                preview -> {
+                    p.update("Composing an 8-second preview", null)
+                    post("/preview", JSONObject(config.toString()).put("preview_seconds", 8)).also { r1 ->
+                        previewSession = r1.json().optString("session_id").takeIf { it.isNotBlank() && it != "null" }
+                    }
                 }
                 seconds >= 240 -> {
                     p.update("Composing the opening", null)
-                    val first = JSONObject(config.toString()).put("preview_seconds", 8)
-                    val r1 = c.request("POST", "/v1/music/generate/preview", JSONObject().put("model", model).put("config", first), 3600)
-                    val sid = r1.json().opt("session_id")
-                    if (!r1.ok || sid == null || sid.toString().isBlank()) r1
+                    val r1 = post("/preview", JSONObject(config.toString()).put("preview_seconds", 8))
+                    val sid = r1.json().optString("session_id")
+                    if (!r1.ok || sid.isBlank() || sid == "null") r1
                     else {
                         check(p)
                         p.update("Composing the full song (this takes a while)", null)
-                        c.request(
-                            "POST", "/v1/music/generate/resume",
-                            JSONObject().put("model", model).put("config", config).put("session_id", sid), 3600,
-                        )
+                        post("/resume", config, sid)
                     }
                 }
                 else -> {
                     p.update("Composing", null)
-                    val cfg = JSONObject(config.toString()).put("preview_seconds", seconds)
-                    c.request("POST", "/v1/music/generate/preview", JSONObject().put("model", model).put("config", cfg), 3600)
+                    post("/preview", JSONObject(config.toString()).put("preview_seconds", seconds))
                 }
             }
         } finally {
@@ -419,7 +477,77 @@ object Tools {
         val ext = if (bytes.size > 4 && String(bytes, 0, 4) == "RIFF") "wav" else "mp3"
         val id = store.newId()
         val file = store.saveFile(id, "song.$ext", bytes)
-        return ResultEntry(id, "song", "Song: ${caption.take(60)}", listOf(file), lyrics, model, System.currentTimeMillis())
+        val kindLabel = when {
+            preview && !plain -> "Song preview"
+            resume != null -> "Song (full)"
+            else -> "Song"
+        }
+        val text = buildString {
+            append(caption)
+            append(" · ")
+            append(mapOf("bgm" to "instrumental", "vocal" to "vocals only").getOrDefault(config.optString("generation_type"), "with vocals"))
+            if (lyrics.isNotBlank()) append("\n\n").append(lyrics)
+        }
+        val entry = ResultEntry(id, "song", "$kindLabel: ${caption.take(60)}", listOf(file), text, model, System.currentTimeMillis())
+        return SongOut(entry, if (preview && !plain) previewSession else null)
+    }
+
+    // ---------------- helpers: a chat model writes tags or lyrics ----------------
+
+    /** One short answer from a chat model, with thinking off where it can be switched off. */
+    fun chatOnce(c: DeviceClient, model: String, system: String, user: String, maxTokens: Int): String {
+        val body = JSONObject().put("model", model).put("max_tokens", maxTokens).put("stream", false)
+            .put("messages", JSONArray()
+                .put(JSONObject().put("role", "system").put("content", system))
+                .put(JSONObject().put("role", "user").put("content", user)))
+        when (thinkingMode(c, model)) {
+            "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
+            "always" -> body.put("reasoning_effort", "low")
+        }
+        val r = c.request("POST", "/v1/chat/completions", body, 600)
+        if (!r.ok) throw MediaException(r.error())
+        val text = r.json().optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content") ?: ""
+        val out = text.replace(Regex("(?s)<think>.*?</think>"), "").trim()
+            .replace(Regex("^```\\w*\\n?|\\n?```$"), "").trim()
+            .trim('"', '“', '”').trim()
+        if (out.isEmpty()) throw MediaException("The chat model sent an empty answer. Try again.")
+        return out
+    }
+
+    const val LYRICS_SYSTEM = "You write song lyrics for a singing model. Use only these section tags, each alone on its own line: " +
+        "[verse], [chorus], [bridge]. Under each tag write 2-4 short singable lines, one per line, then a blank line " +
+        "before the next tag. Repeat the chorus word for word. No title, no notes, no other markup, no blank lines " +
+        "inside a section. Reply with the lyrics only."
+
+    const val TAGS_SYSTEM = "You write prompts for Foundation-1, a model that makes instrument loops from comma-separated tags. Turn the " +
+        "user's description into tags: first exactly one instrument, then 1-3 character tags, 1-2 phrase tags and 0-2 " +
+        "effect tags. Prefer tags from the vocabulary given; never mention drums, tempo, bars or key. Reply with one " +
+        "line of comma-separated tags only."
+
+    /** Tidies a model's lyrics to [verse]/[chorus]/[bridge] sections (Tiiny Studio's clean_lyrics). */
+    fun cleanLyrics(text: String): String {
+        val tag = Regex("(?i)^\\[?\\s*(verse|chorus|bridge|intro|outro|pre-chorus|hook)(?:\\s*\\d+)?\\s*\\]?\\s*:?$")
+        val out = ArrayList<String>()
+        for (raw in text.lines()) {
+            val line = raw.trim().trim('*', '_', '#').trim()
+            val m = tag.find(line)
+            if (m != null) {
+                val t = when (val k = m.groupValues[1].lowercase()) {
+                    "pre-chorus" -> "verse"
+                    "hook" -> "chorus"
+                    else -> k
+                }
+                if (out.isNotEmpty()) out.add("")
+                out.add("[$t]")
+            } else if (line.isNotEmpty() && out.isNotEmpty()) {
+                out.add(line)
+            }
+        }
+        val joined = out.joinToString("\n")
+        if (!Regex("\\[(verse|chorus)\\]").containsMatchIn(joined)) {
+            throw MediaException("The model didn't return lyrics with [verse]/[chorus] sections. Try again.")
+        }
+        return joined.replace(Regex("\\[(intro|outro)\\]\\n(?=\\n|$)"), "").trim()
     }
 
     // ---------------- text models ----------------

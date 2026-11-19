@@ -90,10 +90,10 @@ private val TOOLS = listOf(
     Tool("video", "Text-to-Video", "Video", "Short clips from a description or a picture", { it.isVideo }),
 )
 
-private val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+internal val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
     .flatMap { listOf("$it major", "$it minor") }
 
-private const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI keep walking where the rivers go\n\n" +
+internal const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI keep walking where the rivers go\n\n" +
     "[chorus]\nHold on, hold on to the night\nWe're burning like a paper kite"
 
 // ---------------- the Create tab ----------------
@@ -173,7 +173,7 @@ private fun ToolHub(s: UiState, st: StudioViewModel, open: (String) -> Unit) {
 
 /** Picks the model for a tool and offers to load it. Returns the chosen model, or null if none fits. */
 @Composable
-private fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, vm: MainViewModel, st: StudioViewModel): ModelInfo? {
+internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, vm: MainViewModel, st: StudioViewModel): ModelInfo? {
     val choices = s.models.filter(fits).filter { it.id !in s.unavailable }
     if (choices.isEmpty()) {
         Text(
@@ -239,7 +239,7 @@ private fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, 
 }
 
 @Composable
-private fun Chips(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+internal fun Chips(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for ((value, label) in options) {
             FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label) })
@@ -248,7 +248,7 @@ private fun Chips(options: List<Pair<String, String>>, selected: String, onSelec
 }
 
 @Composable
-private fun Field(value: String, onChange: (String) -> Unit, label: String, lines: Int = 1, placeholder: String = "") {
+internal fun Field(value: String, onChange: (String) -> Unit, label: String, lines: Int = 1, placeholder: String = "") {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -262,7 +262,7 @@ private fun Field(value: String, onChange: (String) -> Unit, label: String, line
 
 /** Progress, error and result of the tool's last job, plus the Run button. */
 @Composable
-private fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: String?, st: StudioViewModel, onRun: () -> Unit) {
+internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: String?, st: StudioViewModel, onRun: () -> Unit) {
     val job by st.job.collectAsState()
     val mine = job?.takeIf { it.tool == tool }
     val busyElsewhere = job?.running == true && job?.tool != tool
@@ -349,7 +349,7 @@ private fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, o
 
 /** Record from the microphone (16 kHz WAV) or pick an audio file. */
 @Composable
-private fun AudioInput(audio: PickedAudio?, onAudio: (PickedAudio?) -> Unit) {
+internal fun AudioInput(audio: PickedAudio?, mimes: Array<String> = arrayOf("audio/*"), pickLabel: String = "Pick a file", onAudio: (PickedAudio?) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val recorder = remember { WavRecorder() }
@@ -375,7 +375,7 @@ private fun AudioInput(audio: PickedAudio?, onAudio: (PickedAudio?) -> Unit) {
         if (ok) startRecording()
         if (!ok) error = "Recording needs microphone access."
     }
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             try {
                 onAudio(withContext(Dispatchers.IO) { Inputs.audio(ctx, uri) })
@@ -399,7 +399,7 @@ private fun AudioInput(audio: PickedAudio?, onAudio: (PickedAudio?) -> Unit) {
                     else perm.launch(Manifest.permission.RECORD_AUDIO)
                 }) { Text("Record") }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { pick.launch("audio/*") }) { Text("Pick a file") }
+                OutlinedButton(onClick = { pick.launch(mimes) }) { Text(pickLabel) }
             }
         }
         audio?.let { a ->
@@ -416,7 +416,7 @@ private fun AudioInput(audio: PickedAudio?, onAudio: (PickedAudio?) -> Unit) {
     }
 }
 
-private fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.nextLong(0, 1L shl 31)
+internal fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.nextLong(0, 1L shl 31)
 
 // ---------------- the tools ----------------
 
@@ -448,10 +448,10 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             "edit" -> ImageTool(model, notReady, st, edit = true)
             "ocr" -> ReadTool(model, notReady, st, ocr = true)
             "describe" -> ReadTool(model, notReady, st, ocr = false)
-            "speech" -> SpeechTool(model, notReady, st)
+            "speech" -> SpeechTool(model, notReady, st, s.models)
             "transcribe" -> TranscribeTool(model, notReady, st)
-            "loop" -> LoopTool(model, notReady, st)
-            "song" -> SongTool(model, notReady, st)
+            "loop" -> LoopTool(model, notReady, st, s.models)
+            "song" -> SongTool(model, notReady, st, s.models)
             "video" -> VideoTool(model, notReady, st)
             "embed" -> EmbedTool(model, notReady, st)
             "rerank" -> RerankTool(model, notReady, st)
@@ -514,156 +514,6 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
         val img = images.first().dataUri
         val q = question
         st.run(tool) { c, store, p, _ -> if (ocr) Tools.ocr(c, store, m, img, p) else Tools.describe(c, store, m, img, q, p) }
-    }
-}
-
-@Composable
-private fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
-    var caps by remember { mutableStateOf<Tools.VoiceCaps?>(null) }
-    LaunchedEffect(model?.id, model?.running) {
-        caps = if (model?.running == true) withContext(Dispatchers.IO) { runCatching { Tools.voiceCaps(st.client(), model.id) }.getOrNull() } else null
-    }
-    val c = caps
-    val modes = buildList {
-        if (c != null && c.speakers.isNotEmpty()) add("speaker" to "Built-in voice")
-        if (c == null || c.clone) add("clone" to "Clone a voice")
-        if (c != null && c.design) add("design" to "Describe a voice")
-    }
-    var mode by rememberSaveable { mutableStateOf("") }
-    val m = if (modes.any { it.first == mode }) mode else modes.firstOrNull()?.first ?: "clone"
-    var text by rememberSaveable { mutableStateOf("") }
-    var speaker by rememberSaveable { mutableStateOf("") }
-    var design by rememberSaveable { mutableStateOf("") }
-    var refText by rememberSaveable { mutableStateOf("") }
-    var instruct by rememberSaveable { mutableStateOf("") }
-    var language by rememberSaveable { mutableStateOf("") }
-    var clip by remember { mutableStateOf<PickedAudio?>(null) }
-    var speakerOpen by remember { mutableStateOf(false) }
-
-    if (modes.size > 1) Chips(modes, m) { mode = it }
-    when (m) {
-        "speaker" -> {
-            val list = c?.speakers ?: emptyList()
-            val chosen = speaker.takeIf { it in list } ?: list.firstOrNull() ?: ""
-            Box {
-                OutlinedButton(onClick = { speakerOpen = true }) { Text("Voice: $chosen") }
-                DropdownMenu(expanded = speakerOpen, onDismissRequest = { speakerOpen = false }) {
-                    for (v in list) DropdownMenuItem(text = { Text(v) }, onClick = { speaker = v; speakerOpen = false })
-                }
-            }
-        }
-        "design" -> Field(design, { design = it }, "Describe the voice", lines = 2, placeholder = "e.g. a calm, deep male voice")
-        else -> {
-            Text("Record or pick a clear 3–20 second clip of the voice, and type exactly what's said in it.", style = MaterialTheme.typography.bodySmall)
-            AudioInput(clip) { clip = it }
-            Field(refText, { refText = it }, "What's said in the clip", lines = 2)
-            if (c?.instruct == true) Field(instruct, { instruct = it }, "Style (optional)", placeholder = "e.g. cheerful, slow")
-        }
-    }
-    Field(text, { text = it }, "Text to speak", lines = 4)
-    val langs = c?.languages ?: emptyList()
-    if (langs.isNotEmpty()) Chips(listOf("" to "Auto") + langs.map { it to it }, language) { language = it }
-    else Field(language, { language = it }, "Language (optional)")
-    val why = notReady ?: when {
-        text.isBlank() -> "Type something to say."
-        m == "clone" && clip == null -> "Record or pick a voice clip."
-        m == "clone" && refText.isBlank() -> "Type what's said in the clip."
-        m == "design" && design.isBlank() -> "Describe the voice."
-        else -> null
-    }
-    RunPanel("speech", "Speak", why == null, why, st) {
-        val id = model!!.id
-        val sp = if (m == "speaker") (speaker.takeIf { it in (c?.speakers ?: emptyList()) } ?: c?.speakers?.firstOrNull()) else null
-        val ds = if (m == "design") design else null
-        val ref = if (m == "clone") clip?.bytes else null
-        val rt = if (m == "clone") refText else null
-        val t = text
-        val lang = language
-        val ins = instruct
-        st.saveVoice(ref, rt, sp) // the chat's "speak" uses the voice last used here
-        st.run("speech") { cl, store, p, _ -> Tools.speech(cl, store, id, t, sp, ds, ref, rt, lang, ins, p) }
-    }
-}
-
-@Composable
-private fun TranscribeTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
-    var audio by remember { mutableStateOf<PickedAudio?>(null) }
-    var language by rememberSaveable { mutableStateOf("") }
-    AudioInput(audio) { audio = it }
-    Field(language, { language = it }, "Language (optional, e.g. en, de)")
-    val why = notReady ?: if (audio == null) "Record or pick something to transcribe." else null
-    RunPanel("transcribe", "Transcribe", why == null, why, st) {
-        val a = audio!!
-        val id = model!!.id
-        val lang = language.trim()
-        st.run("transcribe") { c, store, p, _ -> Tools.transcribe(c, store, id, a.bytes, a.mime, a.name, lang, p) }
-    }
-}
-
-@Composable
-private fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
-    var desc by rememberSaveable { mutableStateOf("Wavetable Synth, warm, chord progression") }
-    var bpm by rememberSaveable { mutableStateOf("120") }
-    var bars by rememberSaveable { mutableStateOf("4") }
-    var key by rememberSaveable { mutableStateOf("A minor") }
-    var steps by rememberSaveable { mutableStateOf("64") }
-    var cfg by rememberSaveable { mutableStateOf("6") }
-    var keyOpen by remember { mutableStateOf(false) }
-    var advanced by remember { mutableStateOf(false) }
-    Field(desc, { desc = it }, "Instrument and character", lines = 2)
-    Text("Tempo (BPM)", style = MaterialTheme.typography.labelLarge)
-    Chips(listOf("100", "110", "120", "128", "130", "140", "150").map { it to it }, bpm) { bpm = it }
-    Text("Length", style = MaterialTheme.typography.labelLarge)
-    Chips(listOf("4" to "4 bars", "8" to "8 bars"), bars) { bars = it }
-    Box {
-        OutlinedButton(onClick = { keyOpen = true }) { Text("Key: $key") }
-        DropdownMenu(expanded = keyOpen, onDismissRequest = { keyOpen = false }) {
-            for (k in KEYS) DropdownMenuItem(text = { Text(k) }, onClick = { key = k; keyOpen = false })
-        }
-    }
-    TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
-    if (advanced) {
-        Field(steps, { steps = it.filter(Char::isDigit) }, "Steps")
-        Field(cfg, { cfg = it.filter { ch -> ch.isDigit() || ch == '.' } }, "Guidance (CFG)")
-    }
-    val b = bpm.toInt()
-    val n = bars.toInt()
-    val prompt = "${desc.trim()}, $n bars, $b BPM, $key"
-    val secs = n * 4 * 60.0 / b
-    Text("Prompt: $prompt · %.1f s".format(secs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val why = notReady ?: if (desc.isBlank()) "Describe the loop." else null
-    RunPanel("loop", "Make loop", why == null, why, st) {
-        val id = model!!.id
-        val stp = steps.toIntOrNull() ?: 64
-        val cf = cfg.toDoubleOrNull() ?: 6.0
-        st.run("loop") { c, store, p, _ -> Tools.loop(c, store, id, prompt, secs, stp, cf, seedOf(""), p) }
-    }
-}
-
-@Composable
-private fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
-    var caption by rememberSaveable { mutableStateOf("") }
-    var type by rememberSaveable { mutableStateOf("mixed") }
-    var lyrics by rememberSaveable { mutableStateOf(LYRICS_TEMPLATE) }
-    var seconds by rememberSaveable { mutableStateOf("60") }
-    Field(caption, { caption = it }, "Style", lines = 2, placeholder = "e.g. upbeat pop, female vocals, synth")
-    Chips(listOf("mixed" to "With vocals", "bgm" to "Instrumental", "vocal" to "Vocals only"), type) { type = it }
-    if (type != "bgm") Field(lyrics, { lyrics = it }, "Lyrics (with [verse], [chorus] … tags)", lines = 8)
-    Text("Length", style = MaterialTheme.typography.labelLarge)
-    Chips(listOf("30" to "30 s", "60" to "1 min", "120" to "2 min", "180" to "3 min", "240" to "Full (4 min+)"), seconds) { seconds = it }
-    Text("Songs take a while: roughly 3–4 seconds of work per second of music.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val why = notReady ?: when {
-        caption.isBlank() -> "Describe the style."
-        type != "bgm" && lyrics.isBlank() -> "Add lyrics, or choose Instrumental."
-        else -> null
-    }
-    RunPanel("song", "Compose", why == null, why, st) {
-        val id = model!!.id
-        val cap = caption.trim()
-        val lyr = lyrics.trim()
-        val t = type
-        val secs = seconds.toInt()
-        st.run("song") { c, store, p, _ -> Tools.song(c, store, id, cap, lyr, t, secs, seedOf(""), p) }
     }
 }
 
@@ -820,7 +670,7 @@ private fun cutoutSize(w: Int, h: Int): String {
 }
 
 @Composable
-private fun SwitchRow(checked: Boolean, enabled: Boolean = true, title: String, detail: String, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(checked: Boolean, enabled: Boolean = true, title: String, detail: String, onChange: (Boolean) -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
             Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
@@ -834,7 +684,7 @@ private fun SwitchRow(checked: Boolean, enabled: Boolean = true, title: String, 
 }
 
 @Composable
-private fun LabelRow(label: String, hint: String = "") {
+internal fun LabelRow(label: String, hint: String = "") {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         if (hint.isNotBlank()) Text(hint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1110,11 +960,18 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                     bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
                 }
                 "speech", "loop", "song" -> file?.let { f ->
+                    if (e.kind != "speech" && e.text.isNotBlank()) {
+                        Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 12)
+                    }
                     var playing by remember(f.path) { mutableStateOf(Player.playing == f.name) }
                     Button(onClick = {
                         Player.toggle(f) { playing = false }
                         playing = Player.playing == f.name
                     }) { Text(if (playing) "Stop" else "Play") }
+                    if (e.kind == "song" && st.canContinue(e)) {
+                        OutlinedButton(onClick = { st.continueSong(e) }) { Text("Continue to full song") }
+                        Text("Takes about 15 minutes; the Tiiny keeps the preview's session only for a while.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 "video" -> file?.let { f ->
                     if (e.text.isNotBlank()) Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

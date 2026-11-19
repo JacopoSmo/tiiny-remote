@@ -25,6 +25,8 @@ data class JobUi(
     val result: ResultEntry? = null,
 )
 
+data class SavedVoice(val id: String, val name: String, val text: String)
+
 data class ChatMsg(
     val role: String,
     val text: String,
@@ -252,11 +254,148 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var lastChatImage: String? = null
 
+    // ---------- saved voices (cloned from a clip, kept in the app) ----------
+
+    private val voicesDir = java.io.File(app.filesDir, "voices").apply { mkdirs() }
+
+    private fun loadVoices(): List<SavedVoice> {
+        val a = try {
+            JSONArray(prefs.getString("voices", "[]"))
+        } catch (e: Exception) {
+            JSONArray()
+        }
+        return (0 until a.length()).mapNotNull { i ->
+            val o = a.optJSONObject(i) ?: return@mapNotNull null
+            SavedVoice(o.optString("id"), o.optString("name"), o.optString("text"))
+                .takeIf { voiceFile(it.id).exists() }
+        }
+    }
+
+    private val _voices = MutableStateFlow(loadVoices())
+    val voices: StateFlow<List<SavedVoice>> = _voices.asStateFlow()
+
+    fun voiceFile(id: String) = java.io.File(voicesDir, "voice_$id.wav")
+
+    private fun storeVoices(list: List<SavedVoice>) {
+        val a = JSONArray()
+        for (v in list) a.put(JSONObject().put("id", v.id).put("name", v.name).put("text", v.text))
+        prefs.edit().putString("voices", a.toString()).apply()
+        _voices.value = list
+    }
+
+    fun addVoice(name: String, clip: ByteArray, text: String): SavedVoice {
+        val v = SavedVoice(System.currentTimeMillis().toString(36), name.trim().ifBlank { "Voice ${_voices.value.size + 1}" }, text.trim())
+        voiceFile(v.id).writeBytes(clip)
+        storeVoices(_voices.value + v)
+        return v
+    }
+
+    fun deleteVoice(id: String) {
+        voiceFile(id).delete()
+        storeVoices(_voices.value.filter { it.id != id })
+    }
+
+    // ---------- helpers: a chat model suggests loop tags or writes lyrics, the ASR model transcribes a clip ----------
+
+    private val _helper = MutableStateFlow<String?>(null) // what a helper is doing, while it runs
+    val helper: StateFlow<String?> = _helper.asStateFlow()
+
+    /**
+     * Runs a helper with a model of the given kind: a loaded one if there is one, else the one picked for that tool,
+     * loaded for the job (making room) with your models put back afterwards, like Tiiny Studio does.
+     */
+    private fun helperRun(label: String, tool: String, models: List<ModelInfo>, fits: (ModelInfo) -> Boolean, block: (DeviceClient, String) -> String, onDone: (String) -> Unit) {
+        if (_helper.value != null) return
+        val ok = models.filter(fits)
+        val model = ok.firstOrNull { it.running && it.id == pick(tool) } ?: ok.firstOrNull { it.running }
+            ?: ok.firstOrNull { it.id == pick(tool) } ?: ok.firstOrNull()
+        if (model == null) {
+            note(if (tool == "chat") "This helper needs a chat model on the Tiiny." else "Auto-transcribe needs a speech-to-text (ASR) model on the Tiiny.")
+            return
+        }
+        if (_job.value?.running == true && !model.running) {
+            note("Wait for the running job: the helper would have to swap models.")
+            return
+        }
+        _helper.value = label
+        if (!model.running) note("Loading ${model.name} for this, then your models go back.")
+        viewModelScope.launch {
+            try {
+                val out = withContext(Dispatchers.IO) {
+                    val c = client()
+                    val p = Progress(update = { m, _ -> _helper.value = m }, cancelled = { false })
+                    val unloaded = Tools.makeRoom(c, model.id, p)
+                    try {
+                        _helper.value = label
+                        block(c, model.id)
+                    } finally {
+                        Tools.putBack(c, model.id, unloaded, p)
+                    }
+                }
+                onDone(out)
+            } catch (e: Exception) {
+                ApiLog.add("helper failed: ${e.message}")
+                note(e.message ?: e.toString())
+            } finally {
+                _helper.value = null
+            }
+        }
+    }
+
+    fun suggestTags(description: String, vocabulary: String, models: List<ModelInfo>, onDone: (String) -> Unit) =
+        helperRun("Suggesting tags…", "chat", models, { it.isChat }, { c, m ->
+            Tools.chatOnce(c, m, Tools.TAGS_SYSTEM, "$vocabulary\n\nDescription: ${description.trim()}", 120)
+        }, onDone)
+
+    fun writeLyrics(request: String, models: List<ModelInfo>, onDone: (String) -> Unit) =
+        helperRun("Writing lyrics…", "chat", models, { it.isChat }, { c, m ->
+            Tools.cleanLyrics(Tools.chatOnce(c, m, Tools.LYRICS_SYSTEM, request, 900))
+        }, onDone)
+
+    fun autoTranscribe(clip: PickedAudio, models: List<ModelInfo>, onDone: (String) -> Unit) =
+        helperRun("Transcribing the clip…", "transcribe", models, { it.isAsr }, { c, m ->
+            Tools.transcribe(c, store, m, clip.bytes, clip.mime, clip.name, "", Progress({ _, _ -> }, { false })).text
+        }, onDone)
+
+    // ---------- songs: a preview can be continued to the full song ----------
+
+    fun song(model: String, config: JSONObject, seconds: Int, preview: Boolean) {
+        run("song") { c, store, p, _ ->
+            val out = Tools.song(c, store, model, config, seconds, preview, null, p)
+            out.session?.let { sid ->
+                prefs.edit().putString("resume_${out.entry.id}", JSONObject().put("session", sid).put("model", model).put("config", config).toString()).apply()
+            }
+            out.entry
+        }
+    }
+
+    fun canContinue(e: ResultEntry): Boolean = prefs.contains("resume_${e.id}")
+
+    fun continueSong(e: ResultEntry) {
+        val o = try {
+            JSONObject(prefs.getString("resume_${e.id}", null) ?: return)
+        } catch (x: Exception) {
+            return
+        }
+        if (_job.value?.running == true) {
+            note("Something is already running on the Tiiny. Wait for it, or cancel it.")
+            return
+        }
+        prefs.edit().remove("resume_${e.id}").apply()
+        note("Continuing to the full song: this takes about 15 minutes.")
+        run("song") { c, store, p, _ ->
+            val model = o.getString("model")
+            Tools.makeRoom(c, model, p)
+            Tools.song(c, store, model, o.getJSONObject("config"), 0, false, o.getString("session"), p).entry
+        }
+    }
+
     // ---------- the saved voice for "speak" (set by the Voice tool) ----------
 
     fun saveVoice(clip: ByteArray?, refText: String?, speaker: String?) {
         val e = prefs.edit()
         if (speaker != null) e.putString("voice_speaker", speaker)
+        if (speaker == null && clip != null) e.remove("voice_speaker")
         if (clip != null && !refText.isNullOrBlank()) {
             java.io.File(getApplication<Application>().filesDir, "voice.wav").writeBytes(clip)
             e.putString("voice_text", refText.trim())
@@ -328,7 +467,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 else -> {
                     val lyrics = args.optString("lyrics").trim()
-                    Tools.song(c, store, model, args.optString("caption"), lyrics, if (lyrics.isEmpty()) "bgm" else "mixed", 30, kotlin.random.Random.nextLong(0, 1L shl 31), p)
+                    val cfg = JSONObject().put("caption", args.optString("caption"))
+                        .put("generation_type", if (lyrics.isEmpty()) "bgm" else "mixed")
+                        .put("seed", kotlin.random.Random.nextLong(0, 1L shl 31))
+                    if (lyrics.isNotEmpty()) cfg.put("lyrics", lyrics)
+                    Tools.song(c, store, model, cfg, 30, false, null, p).entry
                 }
             }
         } finally {
