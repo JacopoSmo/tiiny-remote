@@ -195,7 +195,14 @@ private fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, 
                 DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                     for (m in choices) {
                         DropdownMenuItem(
-                            text = { Text(m.name + if (m.running) "  (loaded)" else "") },
+                            text = {
+                                Column {
+                                    Text(m.name + if (m.running) "  (loaded)" else "")
+                                    if (m.abilities.isNotEmpty()) {
+                                        Text(m.abilities.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            },
                             onClick = {
                                 picked = m.id
                                 st.setPick(tool, m.id)
@@ -204,6 +211,9 @@ private fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, 
                         )
                     }
                 }
+            }
+            if (model.abilities.isNotEmpty()) {
+                Text(model.abilities.joinToString("  ·  "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val working = model.id in s.working || model.status == "loading"
@@ -896,19 +906,29 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Spacer(Modifier.height(8.dp))
         val model = ModelPicker("chat", { it.isChat }, s, vm, st)
+        val thinks = model?.thinks == true
+        val makes = model?.makesThings == true
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
-            FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text("Thinking") })
+            FilterChip(
+                selected = thinks && thinking,
+                onClick = { thinking = !thinking },
+                enabled = thinks,
+                label = { Text(if (model?.alwaysThinks == true) "Thinking: ${if (thinking) "more" else "less"}" else "Thinking") },
+            )
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text("Can make things") })
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = { st.clearChat() }, enabled = !busy && msgs.isNotEmpty()) { Text("New chat") }
         }
-        if (canMake) {
-            Text(
-                "The model may create and edit images, speak, and make loops and songs. Models are swapped on the Tiiny when needed, which can take a few minutes.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        val hint = when {
+            model == null -> null
+            canMake && !makes -> "This model isn't marked for tool use: it may not make things, or not reliably. Pick one marked \"Makes things\"."
+            canMake -> "The model may create and edit images, speak, and make loops and songs. Models are swapped on the Tiiny when needed, which can take a few minutes."
+            !thinks -> "This model doesn't think before answering."
+            else -> null
+        }
+        if (hint != null) {
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(
             Modifier
@@ -944,7 +964,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             } else {
                 Button(
                     onClick = {
-                        st.send(model!!.id, input, image.firstOrNull()?.dataUri, thinking, canMake, s.models)
+                        st.send(model!!.id, input, image.firstOrNull()?.dataUri, thinks && thinking, canMake, s.models)
                         input = ""
                         image = emptyList()
                     },

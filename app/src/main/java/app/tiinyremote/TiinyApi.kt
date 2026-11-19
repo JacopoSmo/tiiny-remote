@@ -26,7 +26,29 @@ data class ModelInfo(
     /** e.g. ["Image Editing", "Tool Use", "Voice Clone"] */
     val supported: List<String> = emptyList(),
     val desc: String = "",
+    /** From the model's "thinking" object: does it reason at all, and can that be switched off? */
+    val thinkingSupported: Boolean = false,
+    val thinkingToggleable: Boolean = false,
 ) {
+    /** Can reason before answering ("Thinking"). */
+    val thinks get() = isChat && (thinkingSupported || "Reasoning" in supported)
+    /** Always reasons; only the effort changes (like gpt-oss). */
+    val alwaysThinks get() = thinks && !thinkingToggleable
+    /** Marked for tool use: can call the chat's tools ("Can make things"). */
+    val makesThings get() = isChat && "Tool Use" in supported
+
+    /** Short labels for what a chat model can do. */
+    val abilities: List<String>
+        get() = if (!isChat) emptyList() else listOfNotNull(
+            when {
+                alwaysThinks -> "Always thinks"
+                thinks -> "Thinks"
+                else -> null
+            },
+            if (makesThings) "Makes things" else null,
+            if (seesImages) "Sees images" else null,
+        )
+
     val isChat get() = type == "Text Generation" || type == "Image-Text-to-Text"
     val seesImages get() = type == "Image-Text-to-Text" || input.contains("Image")
     val isImageGen get() = type == "Text-to-Image" || type == "Image-to-Image"
@@ -259,6 +281,8 @@ class TiinyApi(url: String, private val key: String) {
                     input = m.optString("input").takeIf { it != "null" } ?: "",
                     supported = m.optJSONArray("supported")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
                     desc = m.optString("desc").takeIf { it != "null" } ?: "",
+                    thinkingSupported = m.optJSONObject("thinking")?.optBoolean("supported", false) ?: false,
+                    thinkingToggleable = m.optJSONObject("thinking")?.optBoolean("toggleable", false) ?: false,
                 )
             )
         }

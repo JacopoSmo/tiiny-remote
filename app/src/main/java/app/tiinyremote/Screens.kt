@@ -365,6 +365,13 @@ private fun ModelCard(
             if (meta.isNotEmpty()) {
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (m.abilities.isNotEmpty()) {
+                Text(
+                    m.abilities.joinToString("  ·  "),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             if (unavailable) {
                 Text(
                     "The Tiiny lists this model but can't load it, often a leftover copy. Delete it in TiinyOS to remove it.",
