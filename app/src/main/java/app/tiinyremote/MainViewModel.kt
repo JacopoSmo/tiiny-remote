@@ -69,7 +69,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var statsOpen = false
 
-    /** The stats panel is open: read every 3 s instead of every 15 s. */
+    /** The stats panel is open: read every 3 s instead of every 5 s. */
     fun statsPanel(open: Boolean) {
         statsOpen = open
         if (open) viewModelScope.launch { readStats() }
@@ -85,7 +85,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun statsLoop() {
         var last = 0L
         while (true) {
-            val every = if (statsOpen) 3_000L else 15_000L
+            val every = if (statsOpen) 3_000L else 5_000L
             if (System.currentTimeMillis() - last >= every) {
                 readStats()
                 last = System.currentTimeMillis()

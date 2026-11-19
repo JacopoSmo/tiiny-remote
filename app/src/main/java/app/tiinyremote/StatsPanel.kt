@@ -1,5 +1,10 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,24 +34,87 @@ import java.util.Locale
 private fun fmt(v: Double?, unit: String, digits: Int = 0): String =
     if (v == null) "—" else String.format(Locale.ROOT, "%.${digits}f", v) + unit
 
-/** The top-bar button with the live device numbers; tap for the full panel (like Tiiny Studio's Models drawer). */
+/** Utilisation colours: up to 50 % green, 51–75 % orange, 76 % and more red. */
 @Composable
-fun StatsButton(s: UiState, vm: MainViewModel) {
+fun loadColor(v: Double?): Color = when {
+    v == null -> MaterialTheme.colorScheme.onSurfaceVariant
+    v >= 76 -> Color(0xFFE53935)
+    v >= 51 -> Color(0xFFFB8C00)
+    else -> Color(0xFF43A047)
+}
+
+/**
+ * A slim strip under the top bar with the live numbers: NPU and CPU load (colour-coded), board power and the hottest
+ * temperature. Tap it for the full panel.
+ */
+@Composable
+fun StatsStrip(s: UiState, vm: MainViewModel) {
     val stats by vm.stats.collectAsState()
     var open by remember { mutableStateOf(false) }
     val st = stats
-    val running = s.models.filter { it.running }
-    val used = running.sumOf { it.npuUsage ?: 0.0 }
-    Box {
-        TextButton(onClick = { open = true; vm.statsPanel(true) }) {
-            val temp = st?.npuTempC?.let { " · ${fmt(it, "°")}" } ?: ""
-            Text(
-                if (s.device != DeviceState.ONLINE) "NPU ▾" else "NPU ${fmt(used.coerceIn(0.0, 100.0), "%")}$temp ▾",
-                style = MaterialTheme.typography.labelLarge,
-                color = if ((st?.npuTempC ?: 0.0) > 80) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-            )
+    val online = s.device == DeviceState.ONLINE
+    Box(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .clickable { open = true; vm.statsPanel(true) }
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (!online) {
+                Text("Tiiny offline", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            } else {
+                Meter("NPU", st?.npuUtil, Modifier.weight(1f))
+                Meter("CPU", st?.cpuPct, Modifier.weight(1f))
+                Text(
+                    "⚡ " + fmt(st?.npuPowerW, " W", 1),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (st?.npuPowerW == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "🌡 " + fmt(st?.npuTempC, "°C"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = st?.npuTempC.let { t ->
+                        when {
+                            t == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                            t >= 85 -> Color(0xFFE53935)
+                            t >= 70 -> Color(0xFFFB8C00)
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+                    },
+                )
+            }
+            Text(if (open) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false; vm.statsPanel(false) }) {
+            StatsPanel(s, vm, st)
+        }
+    }
+}
+
+/** A label, a coloured percentage and a thin bar. */
+@Composable
+private fun Meter(label: String, v: Double?, modifier: Modifier) {
+    val c = loadColor(v)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text("$label ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(fmt(v, "%"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c)
+        Spacer(Modifier.width(6.dp))
+        LinearProgressIndicator(
+            progress = { ((v ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) },
+            color = c,
+            modifier = Modifier.weight(1f).height(4.dp),
+        )
+    }
+}
+
+/** The full panel: NPU memory per loaded model, live activity, temperatures and storage. */
+@Composable
+private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
+    val running = s.models.filter { it.running }
+    val used = running.sumOf { it.npuUsage ?: 0.0 }
             Column(Modifier.width(330.dp).padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (s.device != DeviceState.ONLINE) {
                     Text("The Tiiny isn't online, so there are no live numbers.", style = MaterialTheme.typography.bodyMedium)
@@ -59,7 +127,7 @@ fun StatsButton(s: UiState, vm: MainViewModel) {
                             Text("NPU memory", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                             Text("${fmt(used, "%")} used · ${fmt((100 - used).coerceAtLeast(0.0), "%")} free", style = MaterialTheme.typography.labelLarge)
                         }
-                        LinearProgressIndicator(progress = { (used / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        LinearProgressIndicator(progress = { (used / 100).toFloat().coerceIn(0f, 1f) }, color = loadColor(used), modifier = Modifier.fillMaxWidth())
                         if (running.isEmpty()) Text("Nothing loaded", style = MaterialTheme.typography.bodySmall)
                         for (m in running) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -76,9 +144,9 @@ fun StatsButton(s: UiState, vm: MainViewModel) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Device activity", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            Text("${fmt(st?.npuUtil, "%")} NPU busy", style = MaterialTheme.typography.labelLarge)
+                            Text("${fmt(st?.npuUtil, "%")} NPU busy", style = MaterialTheme.typography.labelLarge, color = loadColor(st?.npuUtil))
                         }
-                        LinearProgressIndicator(progress = { ((st?.npuUtil ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+                        LinearProgressIndicator(progress = { ((st?.npuUtil ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) }, color = loadColor(st?.npuUtil), modifier = Modifier.fillMaxWidth())
                         val mu = st?.npuMemUsedMb
                         val mt = st?.npuMemTotalMb
                         val memGb = if (mu != null && mt != null) "${Math.round(mu / 1024)} / ${Math.round(mt / 1024)} GB" else "—"
@@ -131,8 +199,6 @@ fun StatsButton(s: UiState, vm: MainViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
 }
 
 @Composable

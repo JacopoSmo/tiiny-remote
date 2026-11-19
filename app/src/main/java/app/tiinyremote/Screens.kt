@@ -263,7 +263,6 @@ fun AppRoot(vm: MainViewModel) {
                             Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
                         },
                         actions = {
-                            StatsButton(s, vm)
                             if (tab == 2) IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             IconButton(onClick = { vm.refreshNow() }) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
@@ -286,18 +285,19 @@ fun AppRoot(vm: MainViewModel) {
                 },
                 snackbarHost = { SnackbarHost(snackbar) },
             ) { pad ->
-                Box(
+                Column(
                     Modifier
                         .padding(pad)
                         .fillMaxSize()
                 ) {
-                    when (tab) {
+                    if (s.settings.tiinyConfigured) StatsStrip(s, vm)
+                    Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
                         0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 4 })
                         1 -> CreateScreen(s, vm, st, openChat = { tab = 2 })
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
                         else -> SettingsScreen(s, vm)
-                    }
+                    } }
                 }
             }
         }
