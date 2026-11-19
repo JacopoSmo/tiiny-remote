@@ -117,7 +117,7 @@ private fun Dropdown(label: String, options: List<Pair<String, String>>, selecte
 }
 
 @Composable
-private fun Hint(text: String, warn: Boolean = false) {
+internal fun Hint(text: String, warn: Boolean = false) {
     Text(
         text,
         style = MaterialTheme.typography.bodySmall,

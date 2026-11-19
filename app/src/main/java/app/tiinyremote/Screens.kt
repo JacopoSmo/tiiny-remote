@@ -117,6 +117,10 @@ fun AppRoot(vm: MainViewModel) {
     val chatBusy by st.chatBusy.collectAsState()
     val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    val openTool by st.openTool.collectAsState()
+    LaunchedEffect(openTool) {
+        if (openTool != null) tab = 1 // "Edit this" from the chat or results goes to the Create tab
+    }
     val snackbar = remember { SnackbarHostState() }
 
     // Keep the screen on while the Tiiny works on something, so Android doesn't stop the app mid-job.

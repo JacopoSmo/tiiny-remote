@@ -122,36 +122,53 @@ object Tools {
     fun image(
         c: DeviceClient, store: ResultStore, model: String, prompt: String, negative: String,
         size: String, steps: Int?, seed: Long?, sources: List<String>, p: Progress,
+        count: Int = 1, guidance: Double? = null,
     ): ResultEntry {
         val body = JSONObject().put("model", model).put("prompt", prompt).put("n", 1)
             .put("response_format", "b64_json")
         if (negative.isNotBlank()) body.put("negative_prompt", negative)
         if (size.isNotBlank()) body.put("size", size)
         steps?.let { body.put("steps", it) }
-        seed?.let { body.put("seed", it) }
+        guidance?.let { body.put("guidance_scale", it) }
         if (sources.size == 1) body.put("image", sources[0])
         else if (sources.size > 1) body.put("images", JSONArray(sources))
-        val verb = if (sources.isEmpty()) "Generating the image" else "Editing the image"
-        var reply: Reply? = null
-        for (attempt in 0..6) {
-            check(p)
-            p.update(if (attempt == 0) verb else "Waiting for the model to warm up", null)
-            val r = c.request("POST", "/v1/images/generations", body, 3600)
-            val data = r.json().optJSONArray("data")
-            if (r.ok && data != null && data.length() > 0) {
-                reply = r
-                break
-            }
-            // A freshly loaded image model answers "backend fail" for a while: wait and try again.
-            if (!r.error().contains("backend fail") || attempt == 6) throw MediaException(r.error())
-            Thread.sleep(10_000)
-        }
-        val b = reply!!.json().getJSONArray("data").getJSONObject(0).optString("b64_json")
-        if (b.isEmpty()) throw MediaException("The Tiiny sent no picture back.")
+        val n = count.coerceIn(1, 4)
+        val verb = if (sources.isEmpty()) "Generating" else "Editing"
         val id = store.newId()
-        val file = store.saveFile(id, "image.png", unb64(b))
+        val files = ArrayList<String>()
+        // The device makes one image per request, so several are separate requests with consecutive seeds.
+        for (i in 0 until n) {
+            seed?.let { body.put("seed", it + i) }
+            var got: String? = null
+            for (attempt in 0..6) {
+                check(p)
+                p.update(
+                    if (attempt > 0) "Waiting for the model to warm up" else if (n == 1) "$verb the image" else "$verb image ${i + 1} of $n",
+                    if (n > 1) i * 100 / n else null,
+                )
+                val r = c.request("POST", "/v1/images/generations", body, 3600)
+                val data = r.json().optJSONArray("data")
+                if (r.ok && data != null && data.length() > 0) {
+                    got = data.getJSONObject(0).optString("b64_json").takeIf { it.isNotEmpty() }
+                    if (got == null) throw MediaException("The Tiiny sent no picture back.")
+                    break
+                }
+                // A freshly loaded image model answers "backend fail" for a while: wait and try again.
+                if (!r.error().contains("backend fail") || attempt == 6) {
+                    if (files.isNotEmpty()) break // keep the images that did come out
+                    throw MediaException(r.error())
+                }
+                Thread.sleep(10_000)
+            }
+            if (got == null) break
+            files.add(store.saveFile(id, if (n == 1) "image.png" else "image_${i + 1}.png", unb64(got)))
+        }
         val mode = if (sources.isEmpty()) "Image" else "Edited image"
-        return ResultEntry(id, "image", "$mode: ${prompt.take(60)}", listOf(file), "", model, System.currentTimeMillis())
+        val details = listOfNotNull(
+            size.takeIf { it.isNotBlank() }?.replace("x", " × "),
+            steps?.let { "$it steps" }, guidance?.let { "cfg $it" }, seed?.let { "seed $it" },
+        ).joinToString(" · ")
+        return ResultEntry(id, "image", "$mode: ${prompt.take(60)}", files, "$prompt\n$details".trim(), model, System.currentTimeMillis())
     }
 
     /** Reads the text in a picture with an OCR model (Image-to-Text). */
@@ -171,6 +188,21 @@ object Tools {
         if (text == null) throw MediaException(r.error())
         val id = store.newId()
         return ResultEntry(id, "ocr", "Text from image", emptyList(), text.trim(), model, System.currentTimeMillis())
+    }
+
+    /** Reads a PDF's rendered pages one by one into one text, with page markers. */
+    fun ocrPages(c: DeviceClient, store: ResultStore, model: String, name: String, pages: List<String>, total: Int, p: Progress): ResultEntry {
+        val out = StringBuilder()
+        for ((i, page) in pages.withIndex()) {
+            check(p)
+            p.update("Reading page ${i + 1} of ${pages.size}", i * 100 / pages.size)
+            val e = ocr(c, store, model, page, Progress({ _, _ -> }, p.cancelled))
+            if (pages.size > 1) out.append("— Page ${i + 1} —\n")
+            out.append(e.text.trim()).append("\n\n")
+        }
+        if (total > pages.size) out.append("(Only the first ${pages.size} of $total pages were read.)")
+        val id = store.newId()
+        return ResultEntry(id, "ocr", "Text from $name", emptyList(), out.toString().trim(), model, System.currentTimeMillis())
     }
 
     private fun ocrDirect(c: DeviceClient, model: String, image: String): String {
@@ -513,6 +545,14 @@ object Tools {
         if (out.isEmpty()) throw MediaException("The chat model sent an empty answer. Try again.")
         return out
     }
+
+    const val PROMPT_SYSTEM = "You improve prompts for a text-to-image model. Rewrite the user's idea as one vivid, concrete prompt: " +
+        "subject, setting, composition, lighting, style, mood. Keep everything the user asked for and invent nothing " +
+        "that contradicts it. Under 80 words. Reply with the prompt only: no preamble, no quotes, no lists."
+
+    const val EDIT_SYSTEM = "You improve instructions for an image-editing model that changes an existing picture. Rewrite the user's " +
+        "request as one clear, specific edit instruction: say exactly what to change and what must stay the same " +
+        "(subject, pose, framing, style). Under 60 words. Reply with the instruction only: no preamble, no quotes."
 
     const val LYRICS_SYSTEM = "You write song lyrics for a singing model. Use only these section tags, each alone on its own line: " +
         "[verse], [chorus], [bridge]. Under each tag write 2-4 short singable lines, one per line, then a blank line " +

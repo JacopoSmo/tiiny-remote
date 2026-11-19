@@ -102,6 +102,13 @@ internal const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI ke
 fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: () -> Unit) {
     var toolId by rememberSaveable { mutableStateOf<String?>(null) }
     BackHandler(enabled = toolId != null) { toolId = null }
+    val openTool by st.openTool.collectAsState()
+    LaunchedEffect(openTool) {
+        openTool?.let {
+            toolId = it
+            st.toolOpened()
+        }
+    }
     val tool = TOOLS.firstOrNull { it.id == toolId }
     if (tool == null) {
         ToolHub(s, st) { id ->
@@ -109,7 +116,7 @@ fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: (
             if (id != "chat") toolId = id
         }
     } else {
-        ToolScreen(tool, s, vm, st) { toolId = null }
+        ToolScreen(tool, s, vm, st, { toolId = it }) { toolId = null }
     }
 }
 
@@ -301,7 +308,7 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
 }
 
 @Composable
-private fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, onPicked: (List<PickedImage>) -> Unit) {
+internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, onPicked: (List<PickedImage>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
@@ -421,7 +428,7 @@ internal fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.n
 // ---------------- the tools ----------------
 
 @Composable
-private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, back: () -> Unit) {
+private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, switchTo: (String) -> Unit, back: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -437,6 +444,10 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
                 Text(tool.type, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        if (tool.id in setOf("image", "edit", "ocr")) {
+            // Tiiny Studio's image workspace: Create, Edit and Text side by side.
+            Chips(listOf("image" to "✦ Create", "edit" to "✎ Edit", "ocr" to "Aa Text"), tool.id) { if (it != tool.id) switchTo(it) }
+        }
         val model = ModelPicker(tool.id, tool.fits, s, vm, st)
         val notReady = when {
             model == null -> "No model to use."
@@ -444,9 +455,9 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             else -> null
         }
         when (tool.id) {
-            "image" -> ImageTool(model, notReady, st, edit = false)
-            "edit" -> ImageTool(model, notReady, st, edit = true)
-            "ocr" -> ReadTool(model, notReady, st, ocr = true)
+            "image" -> ImageTool(model, notReady, st, s.models, edit = false)
+            "edit" -> ImageTool(model, notReady, st, s.models, edit = true)
+            "ocr" -> TextTool(model, notReady, st)
             "describe" -> ReadTool(model, notReady, st, ocr = false)
             "speech" -> SpeechTool(model, notReady, st, s.models)
             "transcribe" -> TranscribeTool(model, notReady, st)
@@ -458,39 +469,6 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             "classify" -> ClassifyTool(model, notReady, st)
             "mesh" -> MeshTool(model, notReady, st, s.models)
         }
-    }
-}
-
-@Composable
-private fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, edit: Boolean) {
-    var prompt by rememberSaveable { mutableStateOf("") }
-    var negative by rememberSaveable { mutableStateOf("") }
-    var size by rememberSaveable { mutableStateOf(if (edit) "" else "1024x1024") }
-    var steps by rememberSaveable { mutableStateOf("") }
-    var seed by rememberSaveable { mutableStateOf("") }
-    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
-    var advanced by remember { mutableStateOf(false) }
-    if (edit) ImagePickerRow(images, 4, "Choose photo(s) to edit") { images = it }
-    Field(prompt, { prompt = it }, if (edit) "What to change" else "Describe the picture", lines = 3)
-    val sizes = listOf("1024x1024" to "Square", "768x1024" to "Portrait", "1024x768" to "Landscape", "512x512" to "Small")
-    Chips(if (edit) listOf("" to "Keep size") + sizes else sizes, size) { size = it }
-    TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
-    if (advanced) {
-        Field(negative, { negative = it }, "Avoid (negative prompt)")
-        Field(steps, { steps = it.filter(Char::isDigit) }, "Steps (empty = model default)")
-        Field(seed, { seed = it.filter(Char::isDigit) }, "Seed (empty = random)")
-    }
-    val why = notReady ?: when {
-        prompt.isBlank() -> if (edit) "Say what to change." else "Describe the picture."
-        edit && images.isEmpty() -> "Choose a photo to edit."
-        else -> null
-    }
-    RunPanel(if (edit) "edit" else "image", if (edit) "Edit" else "Create", why == null, why, st) {
-        val m = model!!.id
-        val srcs = images.map { it.dataUri }
-        val stp = steps.toIntOrNull()
-        val sd = seed.toLongOrNull()
-        st.run(if (edit) "edit" else "image") { c, store, p, _ -> Tools.image(c, store, m, prompt.trim(), negative, size, stp, sd, srcs, p) }
     }
 }
 
@@ -955,9 +933,17 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
             if (!open) return@Column
             val file = e.mainFile?.let { st.store.file(it) }
             when (e.kind) {
-                "image" -> file?.let { f ->
-                    val bmp = remember(f.path) { Inputs.thumbnail(f) }
-                    bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
+                "image" -> {
+                    for (name in e.files) {
+                        val f = st.store.file(name)
+                        val bmp = remember(f.path) { Inputs.thumbnail(f) }
+                        bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
+                        if (e.files.size > 1) TextButton(onClick = { st.editThis(name) }) { Text("Edit this one") }
+                    }
+                    e.text.lines().drop(1).joinToString(" ").takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (e.files.size == 1) OutlinedButton(onClick = { st.editThis(e.files[0]) }) { Text("✎ Edit this") }
                 }
                 "speech", "loop", "song" -> file?.let { f ->
                     if (e.kind != "speech" && e.text.isNotBlank()) {

@@ -357,6 +357,31 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             Tools.transcribe(c, store, m, clip.bytes, clip.mime, clip.name, "", Progress({ _, _ -> }, { false })).text
         }, onDone)
 
+    fun improvePrompt(text: String, edit: Boolean, models: List<ModelInfo>, onDone: (String) -> Unit) =
+        helperRun(if (edit) "Improving the instruction…" else "Improving the prompt…", "chat", models, { it.isChat }, { c, m ->
+            Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200)
+        }, onDone)
+
+    // ---------- "Edit this": a made picture goes to the Edit tool ----------
+
+    private val _openTool = MutableStateFlow<String?>(null)
+    val openTool: StateFlow<String?> = _openTool.asStateFlow()
+    private val _editSource = MutableStateFlow<String?>(null) // a file in the results store
+    val editSource: StateFlow<String?> = _editSource.asStateFlow()
+
+    fun editThis(file: String) {
+        _editSource.value = file
+        _openTool.value = "edit"
+    }
+
+    fun toolOpened() {
+        _openTool.value = null
+    }
+
+    fun editSourceTaken() {
+        _editSource.value = null
+    }
+
     // ---------- songs: a preview can be continued to the full song ----------
 
     fun song(model: String, config: JSONObject, seconds: Int, preview: Boolean) {
