@@ -2,6 +2,12 @@
 
 package app.tiinyremote
 
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.MediaController
@@ -194,6 +200,55 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
     var picked by remember(tool) { mutableStateOf(st.pick(tool)) }
     val model = choices.firstOrNull { it.id == picked } ?: choices.firstOrNull { it.running } ?: choices.first()
     var open by remember { mutableStateOf(false) }
+    if (LocalUi.current.compact) {
+        // One line: the model (tap to switch; ● = loaded) and Load.
+        val working = model.id in s.working || model.status == "loading"
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Box(Modifier.weight(1f)) {
+                OutlinedButton(
+                    onClick = { open = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        (if (model.running) "● " else "○ ") + model.name + "  ▾",
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color = if (model.running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    for (m in choices) {
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(m.name + if (m.running) "  (loaded)" else "")
+                                    if (m.abilities.isNotEmpty()) {
+                                        Text(m.abilities.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            },
+                            onClick = {
+                                picked = m.id
+                                st.setPick(tool, m.id)
+                                open = false
+                            },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(6.dp))
+            when {
+                model.running -> {}
+                working -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                else -> Button(
+                    onClick = { vm.load(model) },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                ) { Text("Load") }
+            }
+        }
+        return model
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Box {
@@ -430,17 +485,27 @@ internal fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.n
 
 @Composable
 private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, switchTo: (String) -> Unit, back: () -> Unit) {
+    val compact = LocalUi.current.compact
+    val scroll = rememberScrollState()
+    val job by st.job.collectAsState()
+    val mine = job?.takeIf { it.tool == tool.id }
+    // When this tool's job finishes, scroll down to the result.
+    LaunchedEffect(mine?.running, mine?.result?.id, mine?.error) {
+        if (mine != null && mine.running != true) scroll.animateScrollTo(scroll.maxValue)
+    }
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .verticalScroll(scroll)
+            .padding(if (compact) 10.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = back) { Text("‹ Tools") }
             Spacer(Modifier.width(6.dp))
-            Column {
+            if (compact) {
+                Text(tool.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+            } else Column {
                 Text(tool.title, style = MaterialTheme.typography.titleLarge)
                 Text(tool.type, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -923,9 +988,15 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
     var open by remember(e.id) { mutableStateOf(expanded) }
     var confirmDelete by remember(e.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    var full by remember(e.id) { mutableStateOf(false) }
+    if (full) FullView(e, st) { full = false }
+    val canFull = e.kind == "image" || e.kind == "video" || (e.kind in TEXT_KINDS && e.text.isNotBlank())
     Card(onClick = { open = !open }, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = if (open) 4 else 1)
+        Column(Modifier.padding(if (LocalUi.current.compact) 10.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = if (open) 4 else 1, modifier = Modifier.weight(1f))
+                if (canFull && open) TextButton(onClick = { full = true }) { Text("⛶ Full") }
+            }
             Text(
                 "${dateFmt.format(Date(e.created))} · ${e.model.substringAfterLast('/')}",
                 style = MaterialTheme.typography.bodySmall,
@@ -1012,12 +1083,48 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     val scroll = rememberScrollState()
     LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) { scroll.animateScrollTo(scroll.maxValue) }
-    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
-        Spacer(Modifier.height(8.dp))
-        val model = ModelPicker("chat", { it.isChat }, s, vm, st)
+    val ui = LocalUi.current
+    val current by st.currentChat.collectAsState()
+    // Each chat keeps its own scroll; switching chats jumps to the end.
+    LaunchedEffect(current) { scroll.scrollTo(scroll.maxValue) }
+    Column(Modifier.fillMaxSize().padding(horizontal = if (ui.compact) 8.dp else 12.dp)) {
+        Spacer(Modifier.height(if (ui.compact) 4.dp else 8.dp))
+        var options by remember { mutableStateOf(false) }
+        var model: ModelInfo? = null
+        if (ui.compact) {
+            // One line: model picker and a menu with the chat options.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { model = ModelPicker("chat", { it.isChat }, s, vm, st) }
+                Box {
+                    TextButton(onClick = { options = true }) {
+                        Text(listOfNotNull(
+                            if (model?.thinks == true && thinking) "💭" else null,
+                            if (canMake) "✦" else null,
+                            if (web && hasSearx) "🌐" else null,
+                        ).joinToString("").ifEmpty { "⋯" } + " ▾")
+                    }
+                    DropdownMenu(expanded = options, onDismissRequest = { options = false }) {
+                        DropdownMenuItem(
+                            text = { Text((if (model?.thinks == true && thinking) "☑ " else "☐ ") + if (model?.alwaysThinks == true) "Think more" else "Thinking") },
+                            enabled = model?.thinks == true,
+                            onClick = { thinking = !thinking },
+                        )
+                        DropdownMenuItem(text = { Text((if (canMake) "☑ " else "☐ ") + "Can make things") }, onClick = { canMake = !canMake })
+                        DropdownMenuItem(
+                            text = { Text((if (web && hasSearx) "☑ " else "☐ ") + "Web search") },
+                            enabled = hasSearx,
+                            onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") },
+                        )
+                        DropdownMenuItem(text = { Text("New chat") }, enabled = msgs.isNotEmpty(), onClick = { st.newChat(); options = false })
+                    }
+                }
+            }
+        } else {
+            model = ModelPicker("chat", { it.isChat }, s, vm, st)
+        }
         val thinks = model?.thinks == true
         val makes = model?.makesThings == true
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        if (!ui.compact) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
             FilterChip(
                 selected = thinks && thinking,
                 onClick = { thinking = !thinking },
@@ -1029,7 +1136,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { Text("Web search") })
             Spacer(Modifier.width(8.dp))
-            TextButton(onClick = { st.clearChat() }, enabled = !busy && msgs.isNotEmpty()) { Text("New chat") }
+            TextButton(onClick = { st.newChat() }, enabled = msgs.isNotEmpty()) { Text("New chat") }
         }
         val hint = when {
             model == null -> null
@@ -1040,7 +1147,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             !thinks -> "This model doesn't think before answering."
             else -> null
         }
-        if (hint != null) {
+        // On compact screens the hint shows only before the chat starts, to leave room for the conversation.
+        if (hint != null && (!ui.compact || msgs.isEmpty())) {
             Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(
@@ -1052,7 +1160,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         ) {
             if (msgs.isEmpty()) {
                 Text(
-                    "Chat with the loaded model. For web search, use RikkaHub.",
+                    "Chat with the loaded model. Earlier chats are in the ☰ sidebar; several can answer at the same time.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),
@@ -1063,26 +1171,34 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         if (model?.seesImages == true) {
             ImagePickerRow(image, 1, "Add a picture") { image = it }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
+        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty()) && !busy
+        fun doSend() {
+            val m = model ?: return
+            st.send(m.id, input, image.firstOrNull()?.dataUri, thinks && thinking, canMake, web && hasSearx, s.models)
+            input = ""
+            image = emptyList()
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
-                placeholder = { Text("Message") },
-                modifier = Modifier.weight(1f),
-                maxLines = 5,
+                placeholder = { Text(if (ui.enterSends) "Message · Enter sends" else "Message") },
+                modifier = Modifier
+                    .weight(1f)
+                    .onPreviewKeyEvent { k ->
+                        // Hardware keyboard (e.g. the Titan 2's): Enter sends, Shift+Enter makes a new line.
+                        if (ui.enterSends && (k.key == Key.Enter || k.key == Key.NumPadEnter) && !k.isShiftPressed) {
+                            if (k.type == KeyEventType.KeyDown && canSend) doSend()
+                            true
+                        } else false
+                    },
+                maxLines = if (ui.compact) 3 else 5,
             )
             Spacer(Modifier.width(8.dp))
             if (busy) {
                 OutlinedButton(onClick = { st.stopChat() }) { Text("Stop") }
             } else {
-                Button(
-                    onClick = {
-                        st.send(model!!.id, input, image.firstOrNull()?.dataUri, thinks && thinking, canMake, web && hasSearx, s.models)
-                        input = ""
-                        image = emptyList()
-                    },
-                    enabled = model?.running == true && (input.isNotBlank() || image.isNotEmpty()),
-                ) { Text("Send") }
+                Button(onClick = { doSend() }, enabled = canSend) { Text("Send") }
             }
         }
     }

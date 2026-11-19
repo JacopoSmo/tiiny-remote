@@ -426,6 +426,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- settings ----------
 
+    /** Display settings apply at once, without re-checking the Tiiny. */
+    fun setDisplay(s: AppSettings) {
+        store.save(s)
+        _state.update { it.copy(settings = s) }
+    }
+
     fun saveSettings(s: AppSettings) {
         store.save(s)
         _state.update { it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") }

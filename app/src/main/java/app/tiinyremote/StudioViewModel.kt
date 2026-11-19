@@ -6,6 +6,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -28,6 +31,8 @@ data class JobUi(
 data class SavedVoice(val id: String, val name: String, val text: String)
 
 data class Source(val title: String, val url: String)
+
+data class ChatInfo(val id: String, val title: String, val updated: Long)
 
 data class ChatMsg(
     val role: String,
@@ -110,11 +115,27 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val _results = MutableStateFlow(store.all())
     val results: StateFlow<List<ResultEntry>> = _results.asStateFlow()
 
-    private val _chat = MutableStateFlow<List<ChatMsg>>(emptyList())
-    val chat: StateFlow<List<ChatMsg>> = _chat.asStateFlow()
-    private val _chatBusy = MutableStateFlow(false)
-    val chatBusy: StateFlow<Boolean> = _chatBusy.asStateFlow()
-    private val chatStop = AtomicBoolean(false)
+    // ---------- chats: several, each saved on the phone, able to run side by side ----------
+
+    private val chatsDir = java.io.File(app.filesDir, "chats").apply { mkdirs() }
+    private val _all = MutableStateFlow<Map<String, List<ChatMsg>>>(emptyMap())
+    private val _chatList = MutableStateFlow(loadChatList())
+    /** Saved chats, newest first. */
+    val chatList: StateFlow<List<ChatInfo>> = _chatList.asStateFlow()
+    private val _currentChat = MutableStateFlow(
+        prefs.getString("chat_current", null)?.takeIf { java.io.File(chatsDir, "$it.json").exists() } ?: newChatId(),
+    )
+    val currentChat: StateFlow<String> = _currentChat.asStateFlow()
+    val chat: StateFlow<List<ChatMsg>> = combine(_all, _currentChat) { all, id -> all[id] ?: emptyList() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val _busyChats = MutableStateFlow<Set<String>>(emptySet())
+    /** Chats that are answering right now. */
+    val busyChats: StateFlow<Set<String>> = _busyChats.asStateFlow()
+    val chatBusy: StateFlow<Boolean> = combine(_busyChats, _currentChat) { b, id -> id in b }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    private val stops = java.util.concurrent.ConcurrentHashMap<String, AtomicBoolean>()
+    /** The newest picture in each chat (attached or made), for edit_image. */
+    private val lastImages = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private val _note = MutableStateFlow<String?>(null)
     val note: StateFlow<String?> = _note.asStateFlow()
@@ -263,20 +284,129 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- chat ----------
 
-    fun clearChat() {
-        if (!_chatBusy.value) {
-            _chat.value = emptyList()
-            lastChatImage = null
+    init {
+        loadMessages(_currentChat.value)
+    }
+
+    private fun newChatId() = System.currentTimeMillis().toString(36) + kotlin.random.Random.nextInt(1296).toString(36)
+
+    private fun chatFile(id: String) = java.io.File(chatsDir, "$id.json")
+
+    private fun loadChatList(): List<ChatInfo> =
+        (chatsDir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray()).mapNotNull { f ->
+            try {
+                val o = JSONObject(f.readText())
+                ChatInfo(f.nameWithoutExtension, o.optString("title", "Chat"), o.optLong("updated", f.lastModified()))
+            } catch (e: Exception) {
+                null
+            }
+        }.sortedByDescending { it.updated }
+
+    private fun loadMessages(id: String) {
+        if (_all.value.containsKey(id)) return
+        val f = chatFile(id)
+        val msgs = if (!f.exists()) emptyList() else try {
+            val byId = store.all().associateBy { it.id }
+            val a = JSONObject(f.readText()).optJSONArray("messages") ?: JSONArray()
+            (0 until a.length()).mapNotNull { i ->
+                val o = a.optJSONObject(i) ?: return@mapNotNull null
+                val res = o.optJSONArray("results")
+                val src = o.optJSONArray("sources")
+                ChatMsg(
+                    role = o.optString("role"),
+                    text = o.optString("text"),
+                    reasoning = o.optString("reasoning"),
+                    image = o.optString("image").takeIf { it.isNotBlank() },
+                    results = (0 until (res?.length() ?: 0)).mapNotNull { j -> byId[res!!.optString(j)] },
+                    sources = (0 until (src?.length() ?: 0)).mapNotNull { j ->
+                        src!!.optJSONObject(j)?.let { Source(it.optString("title"), it.optString("url")) }
+                    },
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        _all.update { it + (id to msgs) }
+    }
+
+    private fun saveChat(id: String) {
+        val msgs = _all.value[id] ?: return
+        val f = chatFile(id)
+        if (msgs.isEmpty()) {
+            f.delete()
+            _chatList.update { l -> l.filter { it.id != id } }
+            return
+        }
+        val old = try {
+            if (f.exists()) JSONObject(f.readText()) else JSONObject()
+        } catch (e: Exception) {
+            JSONObject()
+        }
+        val title = if (old.optBoolean("custom")) old.optString("title")
+        else msgs.firstOrNull { it.role == "user" && it.text.isNotBlank() }?.text?.lines()?.first()?.take(48)
+            ?: if (msgs.any { it.image != null }) "Picture" else "Chat"
+        val a = JSONArray()
+        for (m in msgs) {
+            val o = JSONObject().put("role", m.role).put("text", m.text)
+            if (m.reasoning.isNotBlank()) o.put("reasoning", m.reasoning)
+            m.image?.let { o.put("image", it) }
+            if (m.results.isNotEmpty()) o.put("results", JSONArray(m.results.map { it.id }))
+            if (m.sources.isNotEmpty()) o.put("sources", JSONArray().apply { m.sources.forEach { put(JSONObject().put("title", it.title).put("url", it.url)) } })
+            a.put(o)
+        }
+        val now = System.currentTimeMillis()
+        f.writeText(JSONObject().put("title", title).put("custom", old.optBoolean("custom")).put("updated", now).put("messages", a).toString())
+        _chatList.update { l -> (listOf(ChatInfo(id, title, now)) + l.filter { it.id != id }).sortedByDescending { it.updated } }
+    }
+
+    private fun upd(id: String, f: (List<ChatMsg>) -> List<ChatMsg>) = _all.update { all -> all + (id to f(all[id] ?: emptyList())) }
+
+    fun selectChat(id: String) {
+        loadMessages(id)
+        _currentChat.value = id
+        prefs.edit().putString("chat_current", id).apply()
+    }
+
+    /** Starts a new chat; the current one stays in the list. */
+    fun newChat() {
+        if ((_all.value[_currentChat.value] ?: emptyList()).isEmpty()) return
+        val id = newChatId()
+        _all.update { it + (id to emptyList()) }
+        selectChat(id)
+    }
+
+    fun clearChat() = newChat()
+
+    fun renameChat(id: String, title: String) {
+        val f = chatFile(id)
+        if (!f.exists() || title.isBlank()) return
+        try {
+            val o = JSONObject(f.readText()).put("title", title.trim().take(60)).put("custom", true)
+            f.writeText(o.toString())
+            _chatList.update { l -> l.map { if (it.id == id) it.copy(title = title.trim().take(60)) else it } }
+        } catch (e: Exception) {
+        }
+    }
+
+    fun deleteChat(id: String) {
+        stops[id]?.set(true)
+        chatFile(id).delete()
+        _all.update { it - id }
+        lastImages.remove(id)
+        _chatList.update { l -> l.filter { it.id != id } }
+        if (_currentChat.value == id) {
+            val next = _chatList.value.firstOrNull()?.id
+            if (next != null) selectChat(next) else {
+                val n = newChatId()
+                _all.update { it + (n to emptyList()) }
+                selectChat(n)
+            }
         }
     }
 
     fun stopChat() {
-        chatStop.set(true)
+        stops[_currentChat.value]?.set(true)
     }
-
-    /** The newest picture in the chat (attached or made), for edit_image. */
-    @Volatile
-    private var lastChatImage: String? = null
 
     // ---------- saved voices (cloned from a clip, kept in the app) ----------
 
@@ -464,20 +594,20 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         return ok.firstOrNull { it.id == pick(tool) }?.id ?: ok.firstOrNull { it.running }?.id ?: ok.firstOrNull()?.id
     }
 
-    private fun setStatus(text: String) {
-        _chat.update { list -> list.dropLast(1) + list.last().copy(status = text) }
+    private fun setStatus(id: String, text: String) {
+        upd(id) { list -> if (list.isEmpty()) list else list.dropLast(1) + list.last().copy(status = text) }
     }
 
     /** Runs web_search or open_page and notes the sources on the reply. */
-    private fun webTool(name: String, args: JSONObject, cfg: AppSettings): String {
+    private fun webTool(id: String, name: String, args: JSONObject, cfg: AppSettings): String {
         if (name == "web_search") {
             val q = args.optString("query").trim().ifBlank { return "Give a query to search for." }
-            setStatus("Searching the web: $q")
+            setStatus(id, "Searching the web: $q")
             val found = WebSearch.search(cfg, q)
             val hits = found.hits
             ApiLog.add("web search via ${found.via}: ${hits.size} results" + if (found.skipped.isNotEmpty()) " (skipped: ${found.skipped.joinToString("; ")})" else "")
             if (hits.isEmpty()) return "No results for \"$q\". Try other words."
-            _chat.update { list ->
+            upd(id) { list ->
                 list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
             }
             return hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(400)}" }.joinToString("\n\n")
@@ -485,25 +615,25 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (name == "news") {
             val topic = args.optString("topic").trim()
             val region = args.optString("region").trim()
-            setStatus(if (topic.isEmpty()) "Getting today's headlines" else "Getting news: $topic")
+            setStatus(id, if (topic.isEmpty()) "Getting today's headlines" else "Getting news: $topic")
             val found = WebSearch.news(cfg, topic, region)
             ApiLog.add("news via ${found.via}: ${found.hits.size} items" + if (found.skipped.isNotEmpty()) " (skipped: ${found.skipped.joinToString("; ")})" else "")
-            _chat.update { list ->
+            upd(id) { list ->
                 list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + found.hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
             }
             return "News (via ${found.via}):\n\n" + found.hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(300)}" }.joinToString("\n\n")
         }
         val url = args.optString("url").trim()
-        setStatus("Reading ${url.substringAfter("://").substringBefore('/')}")
+        setStatus(id, "Reading ${url.substringAfter("://").substringBefore('/')}")
         val text = WebSearch.read(url)
-        _chat.update { list ->
+        upd(id) { list ->
             list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(url.substringAfter("://").substringBefore('/'), url)) }
         }
         return "Page $url:\n\n$text"
     }
 
     /** Runs one tool call for the chat model; returns (result or null, text for the model). */
-    private fun runTool(c: DeviceClient, name: String, args: JSONObject, models: List<ModelInfo>, p: Progress): Pair<ResultEntry?, String> {
+    private fun runTool(id: String, c: DeviceClient, name: String, args: JSONObject, models: List<ModelInfo>, p: Progress): Pair<ResultEntry?, String> {
         val (tool, fits) = when (name) {
             "create_image" -> "image" to { m: ModelInfo -> m.isImageGen }
             "edit_image" -> "edit" to { m: ModelInfo -> m.canEditImages }
@@ -513,7 +643,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             else -> return null to "Unknown tool $name"
         }
         val model = modelFor(tool, models, fits) ?: return null to "No model for ${name.replace('_', ' ')} is installed on the device."
-        if (name == "edit_image" && lastChatImage == null) {
+        if (name == "edit_image" && lastImages[id] == null) {
             return null to "There's no image in the conversation to edit. Ask the user to attach one."
         }
         val unloaded = Tools.makeRoom(c, model, p)
@@ -528,7 +658,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     Tools.image(c, store, model, args.optString("prompt"), "", size, null, null, emptyList(), p)
                 }
-                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastChatImage!!), p)
+                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImages[id]!!), p)
                 "speak" -> {
                     val caps = Tools.voiceCaps(c, model)
                     val savedSpeaker = prefs.getString("voice_speaker", null)
@@ -565,7 +695,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
         store.add(result)
         if (result.kind == "image") result.mainFile?.let { f ->
-            lastChatImage = "data:image/png;base64," + android.util.Base64.encodeToString(store.file(f).readBytes(), android.util.Base64.NO_WRAP)
+            lastImages[id] = "data:image/png;base64," + android.util.Base64.encodeToString(store.file(f).readBytes(), android.util.Base64.NO_WRAP)
         }
         val what = mapOf("image" to "image", "speech" to "audio", "loop" to "loop", "song" to "song").getValue(result.kind)
         return result to "Done: the $what is shown to the user and saved in the app's results (made with ${model.substringAfterLast('/')})."
@@ -576,12 +706,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards.
      */
     fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, web: Boolean, models: List<ModelInfo>) {
-        if (_chatBusy.value || (text.isBlank() && image == null)) return
-        if (image != null) lastChatImage = image
-        val history = _chat.value + ChatMsg("user", text.trim(), image = image)
-        _chat.value = history + ChatMsg("assistant", "")
-        _chatBusy.value = true
-        chatStop.set(false)
+        val id = _currentChat.value
+        if (id in _busyChats.value || (text.isBlank() && image == null)) return
+        if (image != null) lastImages[id] = image
+        val history = (_all.value[id] ?: emptyList()) + ChatMsg("user", text.trim(), image = image)
+        upd(id) { history + ChatMsg("assistant", "") }
+        saveChat(id)
+        _busyChats.update { it + id }
+        val chatStop = AtomicBoolean(false)
+        stops[id] = chatStop
         val convo = JSONArray()
         convo.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "")))
         for (m in history) {
@@ -605,7 +738,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     if (web) webSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
                     val searchCfg = settingsStore.load()
                     val maxRounds = if (web) 8 else 4
-                    val p = Progress({ m, _ -> setStatus(m) }, { chatStop.get() })
+                    val p = Progress({ m, _ -> setStatus(id, m) }, { chatStop.get() })
                     for (round in 0..maxRounds) {
                         val body = JSONObject().put("model", model).put("messages", convo).put("stream", true).put("max_tokens", 4096)
                         when (mode) {
@@ -613,15 +746,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", thinking))
                         }
                         if (tools.length() > 0 && round < maxRounds) body.put("tools", tools)
-                        setStatus("")
+                        setStatus(id, "")
                         val done = c.streamChat(body, { content, reasoning ->
-                            _chat.update { list ->
+                            upd(id) { list ->
                                 val last = list.last()
                                 list.dropLast(1) + last.copy(text = last.text + content, reasoning = last.reasoning + reasoning)
                             }
                         }, { chatStop.get() })
                         if (chatStop.get() || done.calls.isEmpty()) {
-                            if (done.calls.isEmpty() && done.finish == "length" && _chat.value.last().text.isBlank()) {
+                            if (done.calls.isEmpty() && done.finish == "length" && (_all.value[id]?.lastOrNull()?.text ?: "").isBlank()) {
                                 throw MediaException("The model reasoned until it ran out of room and gave no answer. Try again, or ask for less.")
                             }
                             break
@@ -640,33 +773,35 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 JSONObject()
                             }
                             val (entry, answer) = try {
-                                if (call.name in setOf("web_search", "open_page", "news")) null to webTool(call.name, args, searchCfg)
-                                else runTool(c, call.name, args, models, p)
+                                if (call.name in setOf("web_search", "open_page", "news")) null to webTool(id, call.name, args, searchCfg)
+                                else runTool(id, c, call.name, args, models, p)
                             } catch (e: Exception) {
                                 if (chatStop.get()) throw e
                                 null to "That didn't work: ${e.message}"
                             }
                             if (entry != null) {
                                 _results.value = store.all()
-                                _chat.update { list -> list.dropLast(1) + list.last().let { it.copy(results = it.results + entry) } }
+                                upd(id) { list -> list.dropLast(1) + list.last().let { it.copy(results = it.results + entry) } }
                             }
                             convo.put(JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", answer))
                         }
                         // keep what was said before the tool call on screen while the reply goes on
-                        _chat.update { list ->
+                        upd(id) { list ->
                             val last = list.last()
                             list.dropLast(1) + last.copy(text = if (last.text.isBlank()) last.text else last.text + "\n\n")
                         }
                     }
                 }
             } catch (e: Exception) {
-                _chat.update { list ->
+                upd(id) { list ->
                     val last = list.last()
                     list.dropLast(1) + last.copy(text = last.text + (if (last.text.isEmpty()) "" else "\n\n") + "Error: ${e.message}")
                 }
             } finally {
-                setStatus("")
-                _chatBusy.value = false
+                setStatus(id, "")
+                _busyChats.update { it - id }
+                stops.remove(id)
+                if (_all.value.containsKey(id)) saveChat(id)
             }
         }
     }

@@ -1,5 +1,23 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.RadioButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -119,7 +137,7 @@ fun AppRoot(vm: MainViewModel) {
     val s by vm.state.collectAsState()
     val st: StudioViewModel = viewModel()
     val job by st.job.collectAsState()
-    val chatBusy by st.chatBusy.collectAsState()
+    val anyChatBusy by st.busyChats.collectAsState()
     val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val openTool by st.openTool.collectAsState()
@@ -130,7 +148,7 @@ fun AppRoot(vm: MainViewModel) {
 
     // Keep the screen on while the Tiiny works on something, so Android doesn't stop the app mid-job.
     val view = LocalView.current
-    val working = job?.running == true || chatBusy
+    val working = job?.running == true || anyChatBusy.isNotEmpty()
     DisposableEffect(working) {
         view.keepScreenOn = working
         onDispose { view.keepScreenOn = false }
@@ -151,51 +169,148 @@ fun AppRoot(vm: MainViewModel) {
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Tiiny Remote") },
-                actions = {
-                    IconButton(onClick = { vm.refreshNow() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+    // Display: compact on square screens (like the Titan 2) or when chosen; overall and text size from Settings.
+    val conf = LocalConfiguration.current
+    val compact = when (s.settings.layout) {
+        "square" -> true
+        "tall" -> false
+        else -> isSquare(conf.screenWidthDp, conf.screenHeightDp)
+    }
+    val base = LocalDensity.current
+    val uiScale = s.settings.uiScale.toFloatOrNull() ?: 1f
+    val textScale = s.settings.textScale.toFloatOrNull() ?: 1f
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val chats by st.chatList.collectAsState()
+    val current by st.currentChat.collectAsState()
+    val busyChats by st.busyChats.collectAsState()
+    var chatMenu by remember { mutableStateOf<ChatInfo?>(null) }
+    var renaming by remember { mutableStateOf<ChatInfo?>(null) }
+    val sections = listOf(
+        Triple("Models", Icons.Filled.Home, 0),
+        Triple("Create", Icons.Filled.Create, 1),
+        Triple("Chat", Icons.Filled.Send, 2),
+        Triple("Activity", Icons.Filled.Lock, 3),
+        Triple("Settings", Icons.Filled.Settings, 4),
+    )
+    fun go(i: Int) {
+        tab = i
+        scope.launch { drawer.close() }
+    }
+
+    CompositionLocalProvider(
+        LocalDensity provides Density(base.density * uiScale, base.fontScale * textScale),
+        LocalUi provides UiPrefs(compact = compact, enterSends = s.settings.enterSends),
+    ) {
+        ModalNavigationDrawer(
+            drawerState = drawer,
+            drawerContent = {
+                ModalDrawerSheet(Modifier.widthIn(max = 300.dp)) {
+                    Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                        Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                        for ((label, icon, i) in sections) {
+                            NavigationDrawerItem(
+                                label = { Text(label) },
+                                icon = { Icon(icon, contentDescription = null) },
+                                selected = tab == i && i != 2,
+                                onClick = { go(i) },
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            )
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Chats", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { st.newChat(); go(2) }) { Text("+ New chat") }
+                        }
+                        if (chats.isEmpty()) {
+                            Text("No saved chats yet.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp))
+                        }
+                        for (c in chats) {
+                            Box {
+                                NavigationDrawerItem(
+                                    label = { Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    badge = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (c.id in busyChats) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                            IconButton(onClick = { chatMenu = c }, modifier = Modifier.size(32.dp)) {
+                                                Icon(Icons.Filled.MoreVert, contentDescription = "Chat options")
+                                            }
+                                        }
+                                    },
+                                    selected = tab == 2 && c.id == current,
+                                    onClick = { st.selectChat(c.id); go(2) },
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                )
+                                DropdownMenu(expanded = chatMenu?.id == c.id, onDismissRequest = { chatMenu = null }) {
+                                    DropdownMenuItem(text = { Text("Rename") }, onClick = { renaming = c; chatMenu = null })
+                                    DropdownMenuItem(text = { Text("Delete") }, onClick = { st.deleteChat(c.id); chatMenu = null })
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+        ) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        expandedHeight = if (compact) 48.dp else TopAppBarDefaults.TopAppBarExpandedHeight,
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Filled.Menu, contentDescription = "Menu") }
+                        },
+                        title = {
+                            val t = if (tab == 2) chats.firstOrNull { it.id == current }?.title ?: "New chat" else sections[tab].first
+                            Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+                        },
+                        actions = {
+                            if (tab == 2) IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
+                            IconButton(onClick = { vm.refreshNow() }) {
+                                Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                            }
+                        },
+                    )
+                },
+                bottomBar = {
+                    // On square screens the sidebar replaces the bottom bar, leaving more room for the output.
+                    if (!compact) NavigationBar {
+                        for ((label, icon, i) in sections) {
+                            NavigationBarItem(
+                                selected = tab == i,
+                                onClick = { tab = i },
+                                icon = { Icon(icon, contentDescription = null) },
+                                label = { Text(label, maxLines = 1) },
+                            )
+                        }
                     }
                 },
-            )
-        },
-        bottomBar = {
-            NavigationBar {
-                val items = listOf(
-                    Triple("Models", Icons.Filled.Home, 0),
-                    Triple("Create", Icons.Filled.Create, 1),
-                    Triple("Chat", Icons.Filled.Send, 2),
-                    Triple("Activity", Icons.Filled.Lock, 3),
-                    Triple("Settings", Icons.Filled.Settings, 4),
-                )
-                for ((label, icon, i) in items) {
-                    NavigationBarItem(
-                        selected = tab == i,
-                        onClick = { tab = i },
-                        icon = { Icon(icon, contentDescription = null) },
-                        label = { Text(label, maxLines = 1) },
-                    )
+                snackbarHost = { SnackbarHost(snackbar) },
+            ) { pad ->
+                Box(
+                    Modifier
+                        .padding(pad)
+                        .fillMaxSize()
+                ) {
+                    when (tab) {
+                        0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 4 })
+                        1 -> CreateScreen(s, vm, st, openChat = { tab = 2 })
+                        2 -> ChatScreen(s, vm, st)
+                        3 -> UnlockScreen(s, vm)
+                        else -> SettingsScreen(s, vm)
+                    }
                 }
             }
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { pad ->
-        Box(
-            Modifier
-                .padding(pad)
-                .fillMaxSize()
-        ) {
-            when (tab) {
-                0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 4 })
-                1 -> CreateScreen(s, vm, st, openChat = { tab = 2 })
-                2 -> ChatScreen(s, vm, st)
-                3 -> UnlockScreen(s, vm)
-                else -> SettingsScreen(s, vm)
-            }
         }
+    }
+
+    renaming?.let { c ->
+        var name by remember(c.id) { mutableStateOf(c.title) }
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename chat") },
+            text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true) },
+            confirmButton = { TextButton(onClick = { st.renameChat(c.id, name); renaming = null }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+        )
     }
 
     s.swap?.let { sw ->
@@ -487,24 +602,39 @@ private fun SecretField(value: String, onChange: (String) -> Unit, label: String
 }
 
 @Composable
+private fun SettingDropdown(label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+            Text("$label: ${options.firstOrNull { it.first == selected }?.second ?: selected}  ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for ((v, l) in options) DropdownMenuItem(text = { Text(l) }, onClick = { onSelect(v); open = false })
+        }
+    }
+}
+
+@Composable
 private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     val cur = s.settings
-    var url by remember(cur) { mutableStateOf(cur.tiinyUrl) }
-    var key by remember(cur) { mutableStateOf(cur.apiKey) }
-    var host by remember(cur) { mutableStateOf(cur.nasHost) }
-    var port by remember(cur) { mutableStateOf(cur.nasPort.toString()) }
-    var user by remember(cur) { mutableStateOf(cur.nasUser) }
-    var pw by remember(cur) { mutableStateOf(cur.nasPassword) }
-    var auto by remember(cur) { mutableStateOf(cur.autoUnlock) }
-    var cmd by remember(cur) { mutableStateOf(cur.unlockCommand) }
-    var tpw by remember(cur) { mutableStateOf(cur.tiinyPassword) }
-    var tunnel by remember(cur) { mutableStateOf(cur.wgTunnel) }
-    var autoVpn by remember(cur) { mutableStateOf(cur.autoVpn) }
-    var offHome by remember(cur) { mutableStateOf(cur.vpnOffAtHome) }
-    var searx by remember(cur) { mutableStateOf(cur.searxUrl) }
+    // Display changes save at once; they shouldn't reset what is being typed in the other fields.
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true)
+    var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
+    var key by remember(formKey) { mutableStateOf(cur.apiKey) }
+    var host by remember(formKey) { mutableStateOf(cur.nasHost) }
+    var port by remember(formKey) { mutableStateOf(cur.nasPort.toString()) }
+    var user by remember(formKey) { mutableStateOf(cur.nasUser) }
+    var pw by remember(formKey) { mutableStateOf(cur.nasPassword) }
+    var auto by remember(formKey) { mutableStateOf(cur.autoUnlock) }
+    var cmd by remember(formKey) { mutableStateOf(cur.unlockCommand) }
+    var tpw by remember(formKey) { mutableStateOf(cur.tiinyPassword) }
+    var tunnel by remember(formKey) { mutableStateOf(cur.wgTunnel) }
+    var autoVpn by remember(formKey) { mutableStateOf(cur.autoVpn) }
+    var offHome by remember(formKey) { mutableStateOf(cur.vpnOffAtHome) }
+    var searx by remember(formKey) { mutableStateOf(cur.searxUrl) }
     var searxTest by remember { mutableStateOf<String?>(null) }
-    var searchMode by remember(cur) { mutableStateOf(cur.searchMode) }
-    var tavily by remember(cur) { mutableStateOf(cur.tavilyKey) }
+    var searchMode by remember(formKey) { mutableStateOf(cur.searchMode) }
+    var tavily by remember(formKey) { mutableStateOf(cur.tavilyKey) }
     val scope = rememberCoroutineScope()
     var showDebug by remember { mutableStateOf(false) }
 
@@ -524,6 +654,10 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         searxUrl = searx.trim(),
         searchMode = searchMode,
         tavilyKey = tavily.trim(),
+        layout = cur.layout,
+        uiScale = cur.uiScale,
+        textScale = cur.textScale,
+        enterSends = cur.enterSends,
     )
 
     Column(
@@ -533,6 +667,23 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        Text("Display", style = MaterialTheme.typography.titleMedium)
+        Text("Changes apply right away.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingDropdown("Layout", LAYOUTS, cur.layout) { vm.setDisplay(cur.copy(layout = it)) }
+        Text(
+            "Square · compact puts the sections in the ☰ sidebar instead of a bottom bar, uses a slim top bar and folds the model and chat options into one line, leaving more room for chats, pictures and video.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SettingDropdown("Size of everything", UI_SCALES, cur.uiScale) { vm.setDisplay(cur.copy(uiScale = it)) }
+        SettingDropdown("Text size", TEXT_SCALES, cur.textScale) { vm.setDisplay(cur.copy(textScale = it)) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = cur.enterSends, onCheckedChange = { vm.setDisplay(cur.copy(enterSends = it)) })
+            Spacer(Modifier.width(10.dp))
+            Text("Enter key sends chat messages (Shift+Enter for a new line), for the hardware keyboard")
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Tiiny", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = url,

@@ -35,6 +35,11 @@ data class AppSettings(
     val searchMode: String = "auto",
     /** Optional Tavily API key (free tier) for better searches from the phone. */
     val tavilyKey: String = "",
+    /** Display: layout (auto, square, tall), overall size and text size, and whether Enter sends a chat message. */
+    val layout: String = "auto",
+    val uiScale: String = "1.0",
+    val textScale: String = "1.0",
+    val enterSends: Boolean = true,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -63,6 +68,10 @@ class Store(context: Context) {
         searxUrl = prefs.getString("searx_url", "") ?: "",
         searchMode = prefs.getString("search_mode", "auto") ?: "auto",
         tavilyKey = Crypto.decrypt(prefs.getString("tavily_key", null)) ?: "",
+        layout = prefs.getString("layout", "auto") ?: "auto",
+        uiScale = prefs.getString("ui_scale", "1.0") ?: "1.0",
+        textScale = prefs.getString("text_scale", "1.0") ?: "1.0",
+        enterSends = prefs.getBoolean("enter_sends", true),
     )
 
     fun save(s: AppSettings) {
@@ -82,6 +91,10 @@ class Store(context: Context) {
             .putString("searx_url", s.searxUrl.trim())
             .putString("search_mode", s.searchMode)
             .putString("tavily_key", Crypto.encrypt(s.tavilyKey.trim()))
+            .putString("layout", s.layout)
+            .putString("ui_scale", s.uiScale)
+            .putString("text_scale", s.textScale)
+            .putBoolean("enter_sends", s.enterSends)
             .apply()
     }
 
