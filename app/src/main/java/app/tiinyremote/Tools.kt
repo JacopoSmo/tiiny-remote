@@ -32,6 +32,85 @@ object Tools {
 
     private fun short(model: String) = model.substringAfterLast('/')
 
+    // ---------------- loading models for a job (Tiiny Studio's make_room / put_back) ----------------
+
+    fun runningIds(c: DeviceClient): Set<String> {
+        val run = c.request("GET", "/api/v1/models/running", null, 15).json()
+        val list = run.optJSONObject("instances")?.optJSONArray("running") ?: return emptySet()
+        return (0 until list.length()).mapNotNull { list.optJSONObject(it)?.optString("model_id")?.takeIf { s -> s.isNotBlank() } }.toSet()
+    }
+
+    private fun waitLoaded(c: DeviceClient, model: String, p: Progress) {
+        val until = System.currentTimeMillis() + 420_000 // the biggest models take about 2 minutes
+        while (System.currentTimeMillis() < until) {
+            check(p)
+            if (model in runningIds(c)) return
+            Thread.sleep(3_000)
+        }
+        throw MediaException("${short(model)} didn't finish loading.")
+    }
+
+    /** Loads `target`, unloading whatever the Tiiny says must go to make room. Returns what it unloaded. */
+    fun makeRoom(c: DeviceClient, target: String, p: Progress): List<String> {
+        if (target in runningIds(c)) return emptyList()
+        val unloaded = ArrayList<String>()
+        for (round in 0 until 4) {
+            val plan = c.request("GET", "/api/v1/models/${c.quote(target)}/unload_candidate", null, 30)
+            if (!plan.ok) throw MediaException(plan.error())
+            val o = plan.json()
+            if (!o.optBoolean("unload_required", false)) break
+            val victims = o.optJSONArray("model_id")?.let { a -> (0 until a.length()).map { a.optString(it) } }
+                ?: listOfNotNull(o.optJSONObject("candidate")?.optString("model_id"))
+            for (v in victims.filter { it.isNotBlank() }) {
+                p.update("Unloading ${short(v)} to make room", null)
+                val r = c.request("POST", "/api/v1/models/${c.quote(v)}/stop", null, 120)
+                if (!r.ok) throw MediaException(r.error())
+                unloaded.add(v)
+            }
+        }
+        p.update("Loading ${short(target)}", null)
+        val r = c.request("POST", "/api/v1/models/${c.quote(target)}/launch", JSONObject().put("model_id", target), 120)
+        if (!r.ok) throw MediaException(r.error())
+        waitLoaded(c, target, p)
+        return unloaded
+    }
+
+    /** After a job: if models had to make room, unload `target` and load them back. */
+    fun putBack(c: DeviceClient, target: String, unloaded: List<String>, p: Progress) {
+        if (unloaded.isEmpty()) return
+        p.update("Unloading ${short(target)}", null)
+        c.request("POST", "/api/v1/models/${c.quote(target)}/stop", null, 120)
+        for (m in unloaded) {
+            p.update("Loading ${short(m)} back", null)
+            val r = c.request("POST", "/api/v1/models/${c.quote(m)}/launch", JSONObject().put("model_id", m), 120)
+            if (!r.ok) throw MediaException("Couldn't load ${short(m)} back: ${r.error()}")
+        }
+        for (m in unloaded) waitLoaded(c, m, p)
+    }
+
+    /**
+     * How a chat model thinks, from its /v1/models entry: "switch" (enable_thinking on or off), "always"
+     * (reasons whatever it's sent, like gpt-oss: only the effort can change) or "none".
+     */
+    fun thinkingMode(c: DeviceClient, model: String): String {
+        val data = try {
+            c.request("GET", "/v1/models", null, 15).json().optJSONArray("data")
+        } catch (e: Exception) {
+            null
+        }
+        var t: JSONObject? = null
+        if (data != null) for (i in 0 until data.length()) {
+            val item = data.optJSONObject(i) ?: continue
+            if (item.optString("id") == model) t = item.optJSONObject("thinking")
+        }
+        return when {
+            t == null -> if (model.contains("gpt-oss")) "always" else "switch"
+            !t.optBoolean("supported", false) -> "none"
+            t.optBoolean("toggleable", false) -> "switch"
+            else -> "always"
+        }
+    }
+
     // ---------------- images ----------------
 
     fun image(

@@ -31,7 +31,46 @@ data class ChatMsg(
     val reasoning: String = "",
     /** A picture sent with the message, as a data URI. */
     val image: String? = null,
+    /** What the model made with its tools during this reply. */
+    val results: List<ResultEntry> = emptyList(),
+    /** What a tool is doing right now (loading a model, making an image, …). */
+    val status: String = "",
 )
+
+private const val SYSTEM_PROMPT = "You are the assistant in Tiiny Remote, an Android app for the user's own Tiiny AI device. " +
+    "Be direct and helpful. Use Markdown when it helps."
+
+private const val TOOLS_PROMPT = " When the user wants something made (an image, an edit of an image, speech, a music " +
+    "loop, a song), call the matching tool instead of describing it; write rich, specific prompts for it. Nothing is " +
+    "made unless you call a tool: never claim you made or changed something without calling the tool in this turn. " +
+    "The result appears in the chat and in the app's results, so after the tool returns just tell the user briefly " +
+    "what you made. Making things can take a minute or more because models may be swapped on the device."
+
+/** The tools the chat model may call, as in Tiiny Studio's "Can make things". */
+private fun toolSpecs(): JSONArray {
+    fun fn(name: String, desc: String, params: JSONObject) = JSONObject().put("type", "function")
+        .put("function", JSONObject().put("name", name).put("description", desc).put("parameters", params))
+    fun obj(props: JSONObject, vararg required: String) = JSONObject().put("type", "object")
+        .put("properties", props).put("required", JSONArray(required.toList()))
+    fun str(desc: String) = JSONObject().put("type", "string").put("description", desc)
+    return JSONArray()
+        .put(fn("create_image", "Create a new image from a detailed text-to-image prompt.", obj(
+            JSONObject().put("prompt", str("Detailed visual description: subject, setting, style, lighting."))
+                .put("shape", JSONObject().put("type", "string").put("enum", JSONArray(listOf("square", "portrait", "landscape", "wide"))).put("description", "Aspect ratio.")),
+            "prompt")))
+        .put(fn("edit_image", "Edit the most recent image in the conversation (attached by the user or made earlier) with a plain-language instruction.", obj(
+            JSONObject().put("instruction", str("What to change, and what to keep the same.")), "instruction")))
+        .put(fn("speak", "Read text aloud in the user's saved voice and return the audio.", obj(
+            JSONObject().put("text", JSONObject().put("type", "string")), "text")))
+        .put(fn("make_loop", "Make a short instrument loop for music production.", obj(
+            JSONObject().put("tags", str("Comma-separated tags: one instrument first, then character, phrase and effect tags."))
+                .put("bpm", JSONObject().put("type", "integer").put("minimum", 100).put("maximum", 150)),
+            "tags")))
+        .put(fn("make_song", "Make a short song (about 30 seconds).", obj(
+            JSONObject().put("caption", str("Genre, mood, instruments, voice."))
+                .put("lyrics", str("Lyrics with [verse] and [chorus] tags on their own lines. Empty for an instrumental.")),
+            "caption")))
+}
 
 /** The media tools, the chat and the results library. */
 class StudioViewModel(app: Application) : AndroidViewModel(app) {
@@ -188,42 +227,195 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- chat ----------
 
     fun clearChat() {
-        if (!_chatBusy.value) _chat.value = emptyList()
+        if (!_chatBusy.value) {
+            _chat.value = emptyList()
+            lastChatImage = null
+        }
     }
 
     fun stopChat() {
         chatStop.set(true)
     }
 
-    fun send(model: String, text: String, image: String?, thinking: Boolean) {
+    /** The newest picture in the chat (attached or made), for edit_image. */
+    @Volatile
+    private var lastChatImage: String? = null
+
+    // ---------- the saved voice for "speak" (set by the Voice tool) ----------
+
+    fun saveVoice(clip: ByteArray?, refText: String?, speaker: String?) {
+        val e = prefs.edit()
+        if (speaker != null) e.putString("voice_speaker", speaker)
+        if (clip != null && !refText.isNullOrBlank()) {
+            java.io.File(getApplication<Application>().filesDir, "voice.wav").writeBytes(clip)
+            e.putString("voice_text", refText.trim())
+        }
+        e.apply()
+    }
+
+    private fun savedClip(): Pair<ByteArray, String>? {
+        val f = java.io.File(getApplication<Application>().filesDir, "voice.wav")
+        val t = prefs.getString("voice_text", null)
+        return if (f.exists() && !t.isNullOrBlank()) f.readBytes() to t else null
+    }
+
+    /** Which installed model a tool uses: the one picked in that tool, else a loaded one, else the first. */
+    private fun modelFor(tool: String, models: List<ModelInfo>, fits: (ModelInfo) -> Boolean): String? {
+        val ok = models.filter(fits)
+        return ok.firstOrNull { it.id == pick(tool) }?.id ?: ok.firstOrNull { it.running }?.id ?: ok.firstOrNull()?.id
+    }
+
+    private fun setStatus(text: String) {
+        _chat.update { list -> list.dropLast(1) + list.last().copy(status = text) }
+    }
+
+    /** Runs one tool call for the chat model; returns (result or null, text for the model). */
+    private fun runTool(c: DeviceClient, name: String, args: JSONObject, models: List<ModelInfo>, p: Progress): Pair<ResultEntry?, String> {
+        val (tool, fits) = when (name) {
+            "create_image" -> "image" to { m: ModelInfo -> m.isImageGen }
+            "edit_image" -> "edit" to { m: ModelInfo -> m.canEditImages }
+            "speak" -> "speech" to { m: ModelInfo -> m.isSpeech }
+            "make_loop" -> "loop" to { m: ModelInfo -> m.isLoopModel }
+            "make_song" -> "song" to { m: ModelInfo -> m.isSongModel }
+            else -> return null to "Unknown tool $name"
+        }
+        val model = modelFor(tool, models, fits) ?: return null to "No model for ${name.replace('_', ' ')} is installed on the device."
+        if (name == "edit_image" && lastChatImage == null) {
+            return null to "There's no image in the conversation to edit. Ask the user to attach one."
+        }
+        val unloaded = Tools.makeRoom(c, model, p)
+        val result = try {
+            when (name) {
+                "create_image" -> {
+                    val size = when (args.optString("shape")) {
+                        "portrait" -> "768x1024"
+                        "landscape" -> "1024x768"
+                        "wide" -> "1024x576"
+                        else -> "1024x1024"
+                    }
+                    Tools.image(c, store, model, args.optString("prompt"), "", size, null, null, emptyList(), p)
+                }
+                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastChatImage!!), p)
+                "speak" -> {
+                    val caps = Tools.voiceCaps(c, model)
+                    val savedSpeaker = prefs.getString("voice_speaker", null)
+                    val clip = savedClip()
+                    val text = args.optString("text")
+                    when {
+                        caps != null && savedSpeaker != null && savedSpeaker in caps.speakers ->
+                            Tools.speech(c, store, model, text, savedSpeaker, null, null, null, "", "", p)
+                        clip != null && (caps == null || caps.clone) ->
+                            Tools.speech(c, store, model, text, null, null, clip.first, clip.second, "", "", p)
+                        caps != null && caps.speakers.isNotEmpty() ->
+                            Tools.speech(c, store, model, text, caps.speakers.first(), null, null, null, "", "", p)
+                        else -> null
+                    }
+                }
+                "make_loop" -> {
+                    val bpm = args.optInt("bpm", 120).let { if (it in 100..150) it else 120 }
+                    Tools.loop(c, store, model, "${args.optString("tags")}, 8 bars, $bpm BPM", 8 * 4 * 60.0 / bpm, 64, 6.0, kotlin.random.Random.nextLong(0, 1L shl 31), p)
+                }
+                else -> {
+                    val lyrics = args.optString("lyrics").trim()
+                    Tools.song(c, store, model, args.optString("caption"), lyrics, if (lyrics.isEmpty()) "bgm" else "mixed", 30, kotlin.random.Random.nextLong(0, 1L shl 31), p)
+                }
+            }
+        } finally {
+            Tools.putBack(c, model, unloaded, p)
+        }
+        if (result == null) {
+            return null to "No saved voice to speak with. Tell the user to clone a voice (or pick a built-in one) once in the Voice tool first."
+        }
+        store.add(result)
+        if (result.kind == "image") result.mainFile?.let { f ->
+            lastChatImage = "data:image/png;base64," + android.util.Base64.encodeToString(store.file(f).readBytes(), android.util.Base64.NO_WRAP)
+        }
+        val what = mapOf("image" to "image", "speech" to "audio", "loop" to "loop", "song" to "song").getValue(result.kind)
+        return result to "Done: the $what is shown to the user and saved in the app's results (made with ${model.substringAfterLast('/')})."
+    }
+
+    /**
+     * Sends a message. With canMake on, the model may call tools (images, edits, speech, loops, songs); a tool's model
+     * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards.
+     */
+    fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, models: List<ModelInfo>) {
         if (_chatBusy.value || (text.isBlank() && image == null)) return
+        if (image != null) lastChatImage = image
         val history = _chat.value + ChatMsg("user", text.trim(), image = image)
         _chat.value = history + ChatMsg("assistant", "")
         _chatBusy.value = true
         chatStop.set(false)
-        val messages = JSONArray()
+        val convo = JSONArray()
+        convo.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT + if (canMake) TOOLS_PROMPT else ""))
         for (m in history) {
             if (m.role == "assistant" && m.text.isBlank()) continue
             if (m.image != null) {
                 val content = JSONArray()
                     .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", m.image)))
                 if (m.text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", m.text))
-                messages.put(JSONObject().put("role", m.role).put("content", content))
+                convo.put(JSONObject().put("role", m.role).put("content", content))
             } else {
-                messages.put(JSONObject().put("role", m.role).put("content", m.text))
+                convo.put(JSONObject().put("role", m.role).put("content", m.text))
             }
         }
-        val body = JSONObject().put("model", model).put("stream", true).put("messages", messages)
-        if (!thinking) body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    client().streamChat(body, { content, reasoning ->
+                    val c = client()
+                    val mode = Tools.thinkingMode(c, model)
+                    val tools = toolSpecs()
+                    val p = Progress({ m, _ -> setStatus(m) }, { chatStop.get() })
+                    for (round in 0..4) {
+                        val body = JSONObject().put("model", model).put("messages", convo).put("stream", true).put("max_tokens", 4096)
+                        when (mode) {
+                            "always" -> body.put("reasoning_effort", if (thinking) "medium" else "low")
+                            "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", thinking))
+                        }
+                        if (canMake && round < 4) body.put("tools", tools)
+                        setStatus("")
+                        val done = c.streamChat(body, { content, reasoning ->
+                            _chat.update { list ->
+                                val last = list.last()
+                                list.dropLast(1) + last.copy(text = last.text + content, reasoning = last.reasoning + reasoning)
+                            }
+                        }, { chatStop.get() })
+                        if (chatStop.get() || done.calls.isEmpty()) {
+                            if (done.calls.isEmpty() && done.finish == "length" && _chat.value.last().text.isBlank()) {
+                                throw MediaException("The model reasoned until it ran out of room and gave no answer. Try again, or ask for less.")
+                            }
+                            break
+                        }
+                        val calls = JSONArray()
+                        done.calls.forEachIndexed { i, call ->
+                            if (call.id.isBlank()) call.id = "call_$i"
+                            calls.put(JSONObject().put("id", call.id).put("type", "function").put("function",
+                                JSONObject().put("name", call.name).put("arguments", call.args.toString().ifBlank { "{}" })))
+                        }
+                        convo.put(JSONObject().put("role", "assistant").put("content", done.content).put("tool_calls", calls))
+                        for (call in done.calls) {
+                            val args = try {
+                                JSONObject(call.args.toString().ifBlank { "{}" })
+                            } catch (e: Exception) {
+                                JSONObject()
+                            }
+                            val (entry, answer) = try {
+                                runTool(c, call.name, args, models, p)
+                            } catch (e: Exception) {
+                                if (chatStop.get()) throw e
+                                null to "That didn't work: ${e.message}"
+                            }
+                            if (entry != null) {
+                                _results.value = store.all()
+                                _chat.update { list -> list.dropLast(1) + list.last().let { it.copy(results = it.results + entry) } }
+                            }
+                            convo.put(JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", answer))
+                        }
+                        // keep what was said before the tool call on screen while the reply goes on
                         _chat.update { list ->
                             val last = list.last()
-                            list.dropLast(1) + last.copy(text = last.text + content, reasoning = last.reasoning + reasoning)
+                            list.dropLast(1) + last.copy(text = if (last.text.isBlank()) last.text else last.text + "\n\n")
                         }
-                    }, { chatStop.get() })
+                    }
                 }
             } catch (e: Exception) {
                 _chat.update { list ->
@@ -231,6 +423,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     list.dropLast(1) + last.copy(text = last.text + (if (last.text.isEmpty()) "" else "\n\n") + "Error: ${e.message}")
                 }
             } finally {
+                setStatus("")
                 _chatBusy.value = false
             }
         }

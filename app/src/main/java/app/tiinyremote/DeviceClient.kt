@@ -119,12 +119,20 @@ class DeviceClient(url: String, private val key: String) {
         }
     }
 
+    class ToolCall(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
+
+    class Completion(val content: String, val reasoning: String, val calls: List<ToolCall>, val finish: String)
+
     /**
-     * Streams an OpenAI chat completion (server-sent events): calls onDelta(content, reasoning) for each piece.
-     * Returns normally when the answer ends; `stop()` returning true aborts it.
+     * Streams an OpenAI chat completion (server-sent events): onDelta(content, reasoning) for each piece of text;
+     * tool calls are collected and returned at the end. `stop()` returning true ends it early.
      */
-    fun streamChat(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean) {
-        val conn = open("POST", "/v1/chat/completions", 600)
+    fun streamChat(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion {
+        val conn = open("POST", "/v1/chat/completions", 900)
+        val content = StringBuilder()
+        val reasoning = StringBuilder()
+        val calls = java.util.TreeMap<Int, ToolCall>()
+        var finish = ""
         try {
             val bytes = body.toString().toByteArray(Charsets.UTF_8)
             conn.doOutput = true
@@ -142,7 +150,7 @@ class DeviceClient(url: String, private val key: String) {
             ApiLog.add("POST /v1/chat/completions -> HTTP $code (streaming)")
             conn.inputStream.bufferedReader().use { reader ->
                 while (true) {
-                    if (stop()) return
+                    if (stop()) break
                     val line = reader.readLine() ?: break
                     if (!line.startsWith("data:")) continue
                     val data = line.removePrefix("data:").trim()
@@ -152,21 +160,43 @@ class DeviceClient(url: String, private val key: String) {
                     } catch (e: Exception) {
                         continue
                     }
-                    val delta = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("delta") ?: continue
-                    val content = delta.optString("content").takeIf { it != "null" } ?: ""
-                    val reasoning = delta.optString("reasoning_content").takeIf { it != "null" }
+                    val choice = o.optJSONArray("choices")?.optJSONObject(0) ?: continue
+                    val fr = choice.optString("finish_reason")
+                    if (fr.isNotBlank() && fr != "null") finish = fr
+                    val delta = choice.optJSONObject("delta") ?: continue
+                    val c = delta.optString("content").takeIf { it != "null" } ?: ""
+                    val r = delta.optString("reasoning_content").takeIf { it != "null" }
                         ?: delta.optString("reasoning").takeIf { it != "null" } ?: ""
-                    if (content.isNotEmpty() || reasoning.isNotEmpty()) onDelta(content, reasoning)
+                    delta.optJSONArray("tool_calls")?.let { tcs ->
+                        for (i in 0 until tcs.length()) {
+                            val tc = tcs.optJSONObject(i) ?: continue
+                            val slot = calls.getOrPut(tc.optInt("index", 0)) { ToolCall() }
+                            val tid = tc.optString("id")
+                            if (tid.isNotBlank() && tid != "null") slot.id = tid
+                            val f = tc.optJSONObject("function")
+                            if (f != null) {
+                                val n = f.optString("name")
+                                if (n != "null") slot.name += n
+                                val a = f.optString("arguments")
+                                if (a != "null") slot.args.append(a)
+                            }
+                        }
+                    }
+                    content.append(c)
+                    reasoning.append(r)
+                    if (c.isNotEmpty() || r.isNotEmpty()) onDelta(c, r)
                 }
             }
         } catch (e: MediaException) {
             throw e
         } catch (e: Exception) {
-            if (stop()) return
-            ApiLog.add("POST /v1/chat/completions -> ${e.javaClass.simpleName}: ${e.message}")
-            throw MediaException("Lost the connection to the Tiiny (${e.message ?: e.javaClass.simpleName}).")
+            if (!stop()) {
+                ApiLog.add("POST /v1/chat/completions -> ${e.javaClass.simpleName}: ${e.message}")
+                throw MediaException("Lost the connection to the Tiiny (${e.message ?: e.javaClass.simpleName}).")
+            }
         } finally {
             conn.disconnect()
         }
+        return Completion(content.toString(), reasoning.toString(), calls.values.toList(), finish)
     }
 }

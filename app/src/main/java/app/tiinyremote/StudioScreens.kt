@@ -570,6 +570,7 @@ private fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         val t = text
         val lang = language
         val ins = instruct
+        st.saveVoice(ref, rt, sp) // the chat's "speak" uses the voice last used here
         st.run("speech") { cl, store, p, _ -> Tools.speech(cl, store, id, t, sp, ds, ref, rt, lang, ins, p) }
     }
 }
@@ -888,17 +889,26 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val busy by st.chatBusy.collectAsState()
     var input by rememberSaveable { mutableStateOf("") }
     var thinking by rememberSaveable { mutableStateOf(true) }
+    var canMake by rememberSaveable { mutableStateOf(true) }
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     val scroll = rememberScrollState()
     LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) { scroll.animateScrollTo(scroll.maxValue) }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Spacer(Modifier.height(8.dp))
         val model = ModelPicker("chat", { it.isChat }, s, vm, st)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = thinking, onCheckedChange = { thinking = it })
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            FilterChip(selected = thinking, onClick = { thinking = !thinking }, label = { Text("Thinking") })
             Spacer(Modifier.width(8.dp))
-            Text("Thinking", modifier = Modifier.weight(1f))
+            FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text("Can make things") })
+            Spacer(Modifier.width(8.dp))
             TextButton(onClick = { st.clearChat() }, enabled = !busy && msgs.isNotEmpty()) { Text("New chat") }
+        }
+        if (canMake) {
+            Text(
+                "The model may create and edit images, speak, and make loops and songs. Models are swapped on the Tiiny when needed, which can take a few minutes.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         Column(
             Modifier
@@ -915,7 +925,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
             }
-            for ((i, m) in msgs.withIndex()) ChatBubble(m, live = busy && i == msgs.lastIndex)
+            for ((i, m) in msgs.withIndex()) ChatBubble(m, live = busy && i == msgs.lastIndex, st = st)
         }
         if (model?.seesImages == true) {
             ImagePickerRow(image, 1, "Add a picture") { image = it }
@@ -934,7 +944,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             } else {
                 Button(
                     onClick = {
-                        st.send(model!!.id, input, image.firstOrNull()?.dataUri, thinking)
+                        st.send(model!!.id, input, image.firstOrNull()?.dataUri, thinking, canMake, s.models)
                         input = ""
                         image = emptyList()
                     },
@@ -946,7 +956,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 }
 
 @Composable
-private fun ChatBubble(m: ChatMsg, live: Boolean) {
+private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel) {
     val mine = m.role == "user"
     var showThinking by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
@@ -965,7 +975,15 @@ private fun ChatBubble(m: ChatMsg, live: Boolean) {
                     if (showThinking) Text(m.reasoning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (m.text.isNotEmpty()) SelectionContainer { Text(m.text) }
-                else if (live && m.reasoning.isBlank()) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                else if (live && m.reasoning.isBlank() && m.status.isBlank()) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                for (r in m.results) ResultCard(r, st, expanded = true)
+                if (live && m.status.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(m.status, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
         }
     }

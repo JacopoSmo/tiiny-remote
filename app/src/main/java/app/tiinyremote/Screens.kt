@@ -114,13 +114,14 @@ fun AppRoot(vm: MainViewModel) {
     val s by vm.state.collectAsState()
     val st: StudioViewModel = viewModel()
     val job by st.job.collectAsState()
+    val chatBusy by st.chatBusy.collectAsState()
     val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
 
     // Keep the screen on while the Tiiny works on something, so Android doesn't stop the app mid-job.
     val view = LocalView.current
-    val working = job?.running == true
+    val working = job?.running == true || chatBusy
     DisposableEffect(working) {
         view.keepScreenOn = working
         onDispose { view.keepScreenOn = false }
