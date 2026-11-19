@@ -17,6 +17,9 @@ data class DeviceStats(
     val npuPowerW: Double? = null,
     val cpuPct: Double? = null,
     val memPct: Double? = null,
+    /** The Tiiny's RAM in GB: used and total (the total from the device if it says, else its 80 GB). */
+    val ramUsedGb: Double? = null,
+    val ramTotalGb: Double? = null,
     val npuStatus: String? = null,
     val diskFreeGb: Double? = null,
     val diskTotalGb: Double? = null,
@@ -31,6 +34,17 @@ object Stats {
     private fun JSONObject.num(k: String): Double? = if (has(k) && !isNull(k)) optDouble(k).takeIf { !it.isNaN() } else null
 
     @Volatile
+    private var logged = false
+
+    /** A size in GB from whichever field the device uses (…_bytes, …_mb, …_gb, or bytes with no suffix). */
+    private fun JSONObject.gb(name: String): Double? =
+        num("${name}_bytes")?.let { it / 1e9 } ?: num("${name}_mb")?.let { it / 1024 } ?: num("${name}_gb")
+            ?: num(name)?.let { if (it > 1e6) it / 1e9 else null }
+
+    @Volatile
+    private var ramTotal: Double? = null
+
+    @Volatile
     private var disk: Pair<Long, Pair<Double, Double>?>? = null
 
     fun read(settings: AppSettings): DeviceStats {
@@ -40,6 +54,10 @@ object Stats {
             val r = c.request("GET", "/api/v1/npu/status", null, 5)
             if (r.ok) {
                 val o = r.json()
+                if (!logged) {
+                    logged = true
+                    ApiLog.add("npu/status: ${o.toString().take(600)}")
+                }
                 val dev = o.optJSONArray("devices")?.optJSONObject(0) ?: JSONObject()
                 s = s.copy(
                     gateway = true,
@@ -50,11 +68,27 @@ object Stats {
                     npuPowerW = dev.num("power_w"),
                     cpuPct = o.optJSONObject("cpu")?.num("total_percent"),
                     memPct = o.optJSONObject("memory")?.num("usage_percent"),
+                    ramUsedGb = o.optJSONObject("memory")?.gb("used"),
+                    ramTotalGb = o.optJSONObject("memory")?.gb("total"),
                     npuStatus = o.optJSONObject("npu")?.optString("status")?.takeIf { it.isNotBlank() && it != "null" },
                 )
             }
         } catch (e: Exception) {
         }
+        // RAM: the sizes if the status has them; the total otherwise from /api/v1/sys/status, else the Tiiny's 80 GB.
+        if (s.ramTotalGb != null) ramTotal = s.ramTotalGb
+        if (ramTotal == null && s.gateway) {
+            ramTotal = try {
+                c.request("GET", "/api/v1/sys/status", null, 5).json().let { o ->
+                    (o.optJSONObject("memory") ?: o.optJSONObject("mem") ?: o.optJSONObject("ram"))?.gb("total")
+                }
+            } catch (e: Exception) {
+                null
+            } ?: 80.0
+        }
+        val total = s.ramTotalGb ?: ramTotal
+        if (total != null) s = s.copy(ramTotalGb = total, ramUsedGb = s.ramUsedGb ?: s.memPct?.let { it / 100 * total })
+
         // Storage changes slowly: read it once a minute.
         val d = disk
         if (d == null || System.currentTimeMillis() - d.first > 60_000) {

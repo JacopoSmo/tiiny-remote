@@ -66,8 +66,12 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
             if (!online) {
                 Text("Tiiny offline", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             } else {
-                Meter("NPU", st?.npuUtil, Modifier.weight(1f))
-                Meter("CPU", st?.cpuPct, Modifier.weight(1f))
+                val mu = st?.npuMemUsedMb
+                val mt = st?.npuMemTotalMb
+                Meter("NPU", st?.npuUtil, Modifier.weight(1f), "Mem " + if (mu != null && mt != null) "${gbText(mu / 1024)} / ${gbText(mt / 1024)} GB" else "—")
+                val ru = st?.ramUsedGb
+                val rt = st?.ramTotalGb
+                Meter("CPU", st?.cpuPct, Modifier.weight(1f), "RAM " + if (ru != null && rt != null) "${gbText(ru)} / ${gbText(rt)} GB" else "—")
                 Text(
                     "⚡ " + fmt(st?.npuPowerW, " W", 1),
                     style = MaterialTheme.typography.labelMedium,
@@ -94,19 +98,24 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
     }
 }
 
-/** A label, a coloured percentage and a thin bar. */
+private fun gbText(v: Double) = if (v < 10) String.format(Locale.ROOT, "%.1f", v) else Math.round(v).toString()
+
+/** A label, a coloured percentage and a thin bar, with the memory in GB underneath. */
 @Composable
-private fun Meter(label: String, v: Double?, modifier: Modifier) {
+private fun Meter(label: String, v: Double?, modifier: Modifier, sub: String) {
     val c = loadColor(v)
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text("$label ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(fmt(v, "%"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c)
-        Spacer(Modifier.width(6.dp))
-        LinearProgressIndicator(
-            progress = { ((v ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) },
-            color = c,
-            modifier = Modifier.weight(1f).height(4.dp),
-        )
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("$label ", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(fmt(v, "%"), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c)
+            Spacer(Modifier.width(6.dp))
+            LinearProgressIndicator(
+                progress = { ((v ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) },
+                color = c,
+                modifier = Modifier.weight(1f).height(4.dp),
+            )
+        }
+        Text(sub, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }
 
@@ -156,7 +165,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
                         }
                         Row {
                             Stat("Hottest sensor", fmt(st?.npuTempC, " °C"), Modifier.weight(1f), hot = (st?.npuTempC ?: 0.0) > 80)
-                            Stat("CPU / RAM", "${fmt(st?.cpuPct, "%")} / ${fmt(st?.memPct, "%")}", Modifier.weight(1f))
+                            Stat("CPU / RAM", "${fmt(st?.cpuPct, "%")} / " + (st?.ramUsedGb?.let { u -> st?.ramTotalGb?.let { t -> "${gbText(u)} of ${gbText(t)} GB" } } ?: fmt(st?.memPct, "%")), Modifier.weight(1f))
                         }
                         val temps = st?.temps.orEmpty()
                         if (temps.isNotEmpty()) {

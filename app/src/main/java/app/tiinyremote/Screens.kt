@@ -1,5 +1,7 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -288,6 +290,9 @@ fun AppRoot(vm: MainViewModel) {
                 Column(
                     Modifier
                         .padding(pad)
+                        .consumeWindowInsets(pad)
+                        // Android 15 draws apps under the keyboard: lift the content above it so you see what you type.
+                        .imePadding()
                         .fillMaxSize()
                 ) {
                     if (s.settings.tiinyConfigured) StatsStrip(s, vm)
