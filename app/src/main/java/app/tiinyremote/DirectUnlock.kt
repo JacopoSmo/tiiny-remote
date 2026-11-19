@@ -121,7 +121,7 @@ class DirectUnlock(tiinyUrl: String, private val store: Store, private val passw
                 out.write(payload)
                 out.flush()
                 val (code, text) = readResponse(s.getInputStream().readBytes())
-                ApiLog.add("$method $AUTH_HOST$path\n  -> HTTP $code: ${redact(text).take(500)}")
+                ApiLog.add("$method $AUTH_HOST$path\n  -> HTTP $code: ${text.take(800)}")
                 return code to text
             }
         } catch (e: UnlockException) {
@@ -131,9 +131,6 @@ class DirectUnlock(tiinyUrl: String, private val store: Store, private val passw
             throw UnlockException("Can't reach the Tiiny at $host:$port (${e.message ?: e.javaClass.simpleName}).")
         }
     }
-
-    /** Keys never go to the log: the "auth_key" value in an answer is shown as ***. */
-    private fun redact(text: String) = text.replace(Regex("(\"auth_key\"\\s*:\\s*\")[^\"]*\""), "$1***\"")
 
     private fun readResponse(raw: ByteArray): Pair<Int, String> {
         val sep = indexOf(raw, "\r\n\r\n".toByteArray())

@@ -42,9 +42,16 @@ object ApiLog {
     private val entries = ArrayDeque<String>()
     private val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
 
+    private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+    private val secretFields = Regex("(\"(?:auth_key|attestation)\"\\s*:\\s*\")[^\"]*\"")
+
+    /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
+    fun redact(text: String): String =
+        secretFields.replace(email.replace(text, "***@***"), "$1***\"")
+
     @Synchronized
     fun add(line: String) {
-        entries.addFirst("${time.format(Date())}  $line")
+        entries.addFirst("${time.format(Date())}  ${redact(line)}")
         while (entries.size > 100) entries.removeLast()
     }
 

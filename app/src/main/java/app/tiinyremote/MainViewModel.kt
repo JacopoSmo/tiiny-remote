@@ -102,8 +102,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun maybeAutoUnlock() {
         val s = _state.value
         val now = System.currentTimeMillis()
-        // At most one automatic try every 5 minutes, so a wrong password doesn't hammer the NAS.
-        if (s.settings.autoUnlock && canUnlock(s.settings) && !s.unlocking && now - lastAutoUnlock > 5 * 60_000) {
+        // Direct unlocking is one quick request to the Tiiny: retry every 30 s. Through the NAS only, at most
+        // every 5 minutes, so a wrong NAS password doesn't hammer it.
+        val gap = if (s.settings.directConfigured) 30_000L else 5 * 60_000L
+        if (s.settings.autoUnlock && canUnlock(s.settings) && !s.unlocking && now - lastAutoUnlock > gap) {
             lastAutoUnlock = now
             unlock(automatic = true)
         }
