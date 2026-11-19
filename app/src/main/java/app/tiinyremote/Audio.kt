@@ -1,0 +1,152 @@
+package app.tiinyremote
+
+import android.annotation.SuppressLint
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaPlayer
+import android.media.MediaRecorder
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+/**
+ * Records from the microphone straight into a 16 kHz mono 16-bit WAV, the format the Tiiny's speech recognition
+ * wants (Tiiny Studio converts to exactly this before transcribing). Also fine as a voice-cloning clip.
+ */
+class WavRecorder {
+    private val rate = 16_000
+    private var record: AudioRecord? = null
+    private var thread: Thread? = null
+    private val pcm = ByteArrayOutputStream()
+
+    @Volatile
+    var recording = false
+        private set
+
+    val seconds get() = pcm.size() / (rate * 2.0)
+
+    @SuppressLint("MissingPermission") // the caller asks for RECORD_AUDIO first
+    fun start() {
+        if (recording) return
+        val min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val r = AudioRecord(
+            MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO,
+            AudioFormat.ENCODING_PCM_16BIT, maxOf(min, rate),
+        )
+        pcm.reset()
+        r.startRecording()
+        record = r
+        recording = true
+        thread = Thread {
+            val buf = ByteArray(4096)
+            while (recording) {
+                val n = r.read(buf, 0, buf.size)
+                if (n > 0) synchronized(pcm) { pcm.write(buf, 0, n) }
+            }
+        }.also { it.start() }
+    }
+
+    /** Stops and returns the recording as WAV bytes. */
+    fun stop(): ByteArray {
+        recording = false
+        thread?.join(1000)
+        record?.let {
+            try {
+                it.stop()
+            } catch (e: Exception) {
+            }
+            it.release()
+        }
+        record = null
+        val data = synchronized(pcm) { pcm.toByteArray() }
+        return Wav.build(data, rate, 1)
+    }
+}
+
+object Wav {
+    fun build(pcm: ByteArray, rate: Int, channels: Int): ByteArray {
+        val b = ByteBuffer.allocate(44 + pcm.size).order(ByteOrder.LITTLE_ENDIAN)
+        b.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray())
+        b.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(channels.toShort())
+            .putInt(rate).putInt(rate * channels * 2).putShort((channels * 2).toShort()).putShort(16)
+        b.put("data".toByteArray()).putInt(pcm.size).put(pcm)
+        return b.array()
+    }
+
+    /** (fmt chunk bytes, sample data) of a WAV file, or null if it isn't one. */
+    private fun split(wav: ByteArray): Pair<ByteArray, ByteArray>? {
+        if (wav.size < 12 || String(wav, 0, 4) != "RIFF" || String(wav, 8, 4) != "WAVE") return null
+        var i = 12
+        var fmt: ByteArray? = null
+        val bb = ByteBuffer.wrap(wav).order(ByteOrder.LITTLE_ENDIAN)
+        while (i + 8 <= wav.size) {
+            val id = String(wav, i, 4)
+            val size = bb.getInt(i + 4)
+            val start = i + 8
+            val end = minOf(wav.size, start + maxOf(size, 0))
+            if (id == "fmt ") fmt = wav.copyOfRange(start, end)
+            if (id == "data") return (fmt ?: return null) to wav.copyOfRange(start, end)
+            i = end + (size and 1)
+        }
+        return null
+    }
+
+    /** Joins WAV pieces of the same format into one (speech made in parts). */
+    fun join(parts: List<ByteArray>): ByteArray {
+        if (parts.size == 1) return parts[0]
+        val first = split(parts[0]) ?: return parts[0]
+        val fmt = first.first
+        val data = ByteArrayOutputStream()
+        for (p in parts) split(p)?.let { data.write(it.second) }
+        val pcm = data.toByteArray()
+        val b = ByteBuffer.allocate(20 + fmt.size + 8 + pcm.size).order(ByteOrder.LITTLE_ENDIAN)
+        b.put("RIFF".toByteArray()).putInt(4 + 8 + fmt.size + 8 + pcm.size).put("WAVE".toByteArray())
+        b.put("fmt ".toByteArray()).putInt(fmt.size).put(fmt)
+        b.put("data".toByteArray()).putInt(pcm.size).put(pcm)
+        return b.array()
+    }
+}
+
+/** Plays one file at a time. */
+object Player {
+    private var mp: MediaPlayer? = null
+    var playing: String? = null
+        private set
+
+    fun toggle(file: File, onEnd: () -> Unit) {
+        if (playing == file.name) {
+            stop()
+            onEnd()
+            return
+        }
+        stop()
+        val p = MediaPlayer()
+        try {
+            p.setDataSource(file.absolutePath)
+            p.setOnCompletionListener {
+                stop()
+                onEnd()
+            }
+            p.prepare()
+            p.start()
+            mp = p
+            playing = file.name
+        } catch (e: Exception) {
+            p.release()
+            onEnd()
+        }
+    }
+
+    fun stop() {
+        mp?.let {
+            try {
+                it.stop()
+            } catch (e: Exception) {
+            }
+            it.release()
+        }
+        mp = null
+        playing = null
+    }
+}

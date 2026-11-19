@@ -16,7 +16,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = buildNumber
-        versionName = "1.0.$buildNumber"
+        versionName = "2.0.$buildNumber"
     }
 
     // A fixed key, kept in the repo, so each new build installs over the previous one.

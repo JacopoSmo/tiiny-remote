@@ -20,7 +20,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -57,7 +59,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -107,8 +112,26 @@ private fun shareLog(ctx: Context, s: UiState) {
 @Composable
 fun AppRoot(vm: MainViewModel) {
     val s by vm.state.collectAsState()
+    val st: StudioViewModel = viewModel()
+    val job by st.job.collectAsState()
+    val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val snackbar = remember { SnackbarHostState() }
+
+    // Keep the screen on while the Tiiny works on something, so Android doesn't stop the app mid-job.
+    val view = LocalView.current
+    val working = job?.running == true
+    DisposableEffect(working) {
+        view.keepScreenOn = working
+        onDispose { view.keepScreenOn = false }
+    }
+    LaunchedEffect(studioNote) {
+        val msg = studioNote
+        if (msg != null) {
+            snackbar.showSnackbar(msg)
+            st.noteShown()
+        }
+    }
 
     LaunchedEffect(s.toast) {
         val msg = s.toast
@@ -131,24 +154,21 @@ fun AppRoot(vm: MainViewModel) {
         },
         bottomBar = {
             NavigationBar {
-                NavigationBarItem(
-                    selected = tab == 0,
-                    onClick = { tab = 0 },
-                    icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                    label = { Text("Models") },
+                val items = listOf(
+                    Triple("Models", Icons.Filled.Home, 0),
+                    Triple("Create", Icons.Filled.Create, 1),
+                    Triple("Chat", Icons.Filled.Send, 2),
+                    Triple("Activity", Icons.Filled.Lock, 3),
+                    Triple("Settings", Icons.Filled.Settings, 4),
                 )
-                NavigationBarItem(
-                    selected = tab == 1,
-                    onClick = { tab = 1 },
-                    icon = { Icon(Icons.Filled.Lock, contentDescription = null) },
-                    label = { Text("Activity") },
-                )
-                NavigationBarItem(
-                    selected = tab == 2,
-                    onClick = { tab = 2 },
-                    icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                    label = { Text("Settings") },
-                )
+                for ((label, icon, i) in items) {
+                    NavigationBarItem(
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        icon = { Icon(icon, contentDescription = null) },
+                        label = { Text(label, maxLines = 1) },
+                    )
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -159,8 +179,10 @@ fun AppRoot(vm: MainViewModel) {
                 .fillMaxSize()
         ) {
             when (tab) {
-                0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 2 })
-                1 -> UnlockScreen(s, vm)
+                0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 4 })
+                1 -> CreateScreen(s, vm, st)
+                2 -> ChatScreen(s, vm, st)
+                3 -> UnlockScreen(s, vm)
                 else -> SettingsScreen(s, vm)
             }
         }

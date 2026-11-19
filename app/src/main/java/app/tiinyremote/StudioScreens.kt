@@ -1,0 +1,851 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
+package app.tiinyremote
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.MediaController
+import android.widget.VideoView
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.random.Random
+
+private class Tool(val id: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
+
+private val TOOLS = listOf(
+    Tool("image", "Create image", "A picture from a description", { it.isImageGen }),
+    Tool("edit", "Edit image", "Change a photo with words", { it.canEditImages }),
+    Tool("read", "Image to text", "Read the text in a picture, or describe it", { it.isOcr || it.seesImages }),
+    Tool("speech", "Voice", "Text to speech, built-in or cloned voices", { it.isSpeech }),
+    Tool("transcribe", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
+    Tool("loop", "Loop", "Short music loops at a set tempo and key", { it.isLoopModel }),
+    Tool("song", "Song", "Full songs with lyrics, or instrumentals", { it.isSongModel }),
+    Tool("video", "Video", "Short clips from a description or a picture", { it.isVideo }),
+    Tool("mesh", "3D model", "A 3D model (.glb) from one picture", { it.is3d }),
+)
+
+private val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    .flatMap { listOf("$it major", "$it minor") }
+
+private const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI keep walking where the rivers go\n\n" +
+    "[chorus]\nHold on, hold on to the night\nWe're burning like a paper kite"
+
+// ---------------- the Create tab ----------------
+
+@Composable
+fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
+    var toolId by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = toolId != null) { toolId = null }
+    val tool = TOOLS.firstOrNull { it.id == toolId }
+    if (tool == null) {
+        ToolHub(s, st) { toolId = it }
+    } else {
+        ToolScreen(tool, s, vm, st) { toolId = null }
+    }
+}
+
+@Composable
+private fun ToolHub(s: UiState, st: StudioViewModel, open: (String) -> Unit) {
+    val results by st.results.collectAsState()
+    val job by st.job.collectAsState()
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (s.device != DeviceState.ONLINE) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+                Text("The Tiiny isn't online: see the Models tab.", Modifier.padding(14.dp))
+            }
+        }
+        job?.takeIf { it.running }?.let { j ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text("Working: ${TOOLS.firstOrNull { it.id == j.tool }?.title ?: j.tool}", style = MaterialTheme.typography.titleSmall)
+                    Text(j.message, style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { open(j.tool) }) { Text("Open") }
+                }
+            }
+        }
+        Text("Tools", style = MaterialTheme.typography.titleMedium)
+        for (t in TOOLS) {
+            val installed = s.models.count(t.fits)
+            val loaded = s.models.count { t.fits(it) && it.running }
+            Card(onClick = { open(t.id) }, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(t.title, style = MaterialTheme.typography.titleMedium)
+                    Text(t.what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        when {
+                            installed == 0 -> "No model for this on your Tiiny"
+                            loaded > 0 -> "$loaded model${if (loaded == 1) "" else "s"} loaded"
+                            else -> "$installed model${if (installed == 1) "" else "s"} installed, none loaded"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (loaded > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text("Your results", style = MaterialTheme.typography.titleMedium)
+        if (results.isEmpty()) Text("Nothing yet. What you make is kept here.", style = MaterialTheme.typography.bodyMedium)
+        for (e in results.take(60)) ResultCard(e, st)
+    }
+}
+
+// ---------------- shared pieces ----------------
+
+/** Picks the model for a tool and offers to load it. Returns the chosen model, or null if none fits. */
+@Composable
+private fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, vm: MainViewModel, st: StudioViewModel): ModelInfo? {
+    val choices = s.models.filter(fits).filter { it.id !in s.unavailable }
+    if (choices.isEmpty()) {
+        Text(
+            if (s.device == DeviceState.ONLINE) "No model for this is installed on your Tiiny. Download one in TiinyOS."
+            else "The Tiiny isn't online: see the Models tab.",
+            color = MaterialTheme.colorScheme.error,
+        )
+        return null
+    }
+    var picked by remember(tool) { mutableStateOf(st.pick(tool)) }
+    val model = choices.firstOrNull { it.id == picked } ?: choices.firstOrNull { it.running } ?: choices.first()
+    var open by remember { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box {
+                OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text(model.name, maxLines = 1)
+                }
+                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                    for (m in choices) {
+                        DropdownMenuItem(
+                            text = { Text(m.name + if (m.running) "  (loaded)" else "") },
+                            onClick = {
+                                picked = m.id
+                                st.setPick(tool, m.id)
+                                open = false
+                            },
+                        )
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val working = model.id in s.working || model.status == "loading"
+                Text(
+                    when {
+                        model.running -> "Loaded and ready"
+                        working -> "Loading…"
+                        else -> "Not loaded" + (model.loadTimeSec?.let { " · loads in ~$it s" } ?: "")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (model.running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                when {
+                    model.running -> {}
+                    working -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else -> Button(onClick = { vm.load(model) }) { Text("Load") }
+                }
+            }
+        }
+    }
+    return model
+}
+
+@Composable
+private fun Chips(options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for ((value, label) in options) {
+            FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label) })
+        }
+    }
+}
+
+@Composable
+private fun Field(value: String, onChange: (String) -> Unit, label: String, lines: Int = 1, placeholder: String = "") {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        placeholder = { if (placeholder.isNotEmpty()) Text(placeholder) },
+        singleLine = lines == 1,
+        minLines = lines,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** Progress, error and result of the tool's last job, plus the Run button. */
+@Composable
+private fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: String?, st: StudioViewModel, onRun: () -> Unit) {
+    val job by st.job.collectAsState()
+    val mine = job?.takeIf { it.tool == tool }
+    val busyElsewhere = job?.running == true && job?.tool != tool
+    if (whyNot != null && mine?.running != true) {
+        Text(whyNot, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (mine?.running == true) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(mine.message.ifBlank { "Working…" })
+                val pct = mine.percent
+                if (pct != null && pct > 0) LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(
+                    "Keep the app open until it's done; the screen stays on meanwhile." +
+                        if (tool == "video") " A video still rendering is picked up again if the app closes." else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = { st.cancel() }) { Text("Cancel") }
+            }
+        }
+    } else {
+        Button(
+            onClick = onRun,
+            enabled = ready && !busyElsewhere,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (busyElsewhere) "Busy with another tool…" else label) }
+    }
+    mine?.error?.let {
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+            Text(it, Modifier.padding(14.dp))
+        }
+    }
+    mine?.result?.let { ResultCard(it, st, expanded = true) }
+}
+
+@Composable
+private fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, onPicked: (List<PickedImage>) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    val single = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                onPicked(listOf(withContext(Dispatchers.IO) { Inputs.image(ctx, uri) }))
+                error = null
+            } catch (e: Exception) {
+                error = e.message ?: "Couldn't read that picture."
+            }
+        }
+    }
+    val multi = if (max > 1) rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(max)) { uris ->
+        if (uris.isNotEmpty()) scope.launch {
+            try {
+                onPicked(withContext(Dispatchers.IO) { uris.map { Inputs.image(ctx, it) } })
+                error = null
+            } catch (e: Exception) {
+                error = e.message ?: "Couldn't read that picture."
+            }
+        }
+    } else null
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = {
+                val req = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                if (multi != null) multi.launch(req) else single.launch(req)
+            }) { Text(if (images.isEmpty()) label else "Choose again") }
+            if (images.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = { onPicked(emptyList()) }) { Text("Remove") }
+            }
+        }
+        if (images.isNotEmpty()) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (img in images) {
+                    Image(img.preview.asImageBitmap(), null, Modifier.size(110.dp), contentScale = ContentScale.Crop)
+                }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
+/** Record from the microphone (16 kHz WAV) or pick an audio file. */
+@Composable
+private fun AudioInput(audio: PickedAudio?, onAudio: (PickedAudio?) -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val recorder = remember { WavRecorder() }
+    var recording by remember { mutableStateOf(false) }
+    var seconds by remember { mutableStateOf(0.0) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(recording) {
+        while (recording) {
+            seconds = recorder.seconds
+            delay(250)
+        }
+    }
+    val startRecording: () -> Unit = {
+        try {
+            recorder.start()
+            recording = true
+            error = null
+        } catch (e: Exception) {
+            error = "Couldn't start recording: ${e.message}"
+        }
+    }
+    val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) startRecording()
+        if (!ok) error = "Recording needs microphone access."
+    }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) scope.launch {
+            try {
+                onAudio(withContext(Dispatchers.IO) { Inputs.audio(ctx, uri) })
+                error = null
+            } catch (e: Exception) {
+                error = e.message
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (recording) {
+                Button(onClick = {
+                    val wav = recorder.stop()
+                    recording = false
+                    onAudio(PickedAudio(wav, "audio/wav", "recording.wav", wav.size / 32000.0))
+                }) { Text("Stop (%.0f s)".format(seconds)) }
+            } else {
+                OutlinedButton(onClick = {
+                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startRecording()
+                    else perm.launch(Manifest.permission.RECORD_AUDIO)
+                }) { Text("Record") }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { pick.launch("audio/*") }) { Text("Pick a file") }
+            }
+        }
+        audio?.let { a ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    a.name + (a.seconds?.let { " · %.0f s".format(it) } ?: "") + " · ${a.bytes.size / 1024} KB",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onAudio(null) }) { Text("Remove") }
+            }
+        }
+        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    }
+}
+
+private fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.nextLong(0, 1L shl 31)
+
+// ---------------- the tools ----------------
+
+@Composable
+private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, back: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = back) { Text("‹ Tools") }
+            Spacer(Modifier.width(6.dp))
+            Text(tool.title, style = MaterialTheme.typography.titleLarge)
+        }
+        val model = ModelPicker(tool.id, tool.fits, s, vm, st)
+        val notReady = when {
+            model == null -> "No model to use."
+            !model.running -> "Load the model first."
+            else -> null
+        }
+        when (tool.id) {
+            "image" -> ImageTool(model, notReady, st, edit = false)
+            "edit" -> ImageTool(model, notReady, st, edit = true)
+            "read" -> ReadTool(model, notReady, st)
+            "speech" -> SpeechTool(model, notReady, st)
+            "transcribe" -> TranscribeTool(model, notReady, st)
+            "loop" -> LoopTool(model, notReady, st)
+            "song" -> SongTool(model, notReady, st)
+            "video" -> VideoTool(model, notReady, st)
+            "mesh" -> MeshTool(model, notReady, st)
+        }
+    }
+}
+
+@Composable
+private fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, edit: Boolean) {
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var negative by rememberSaveable { mutableStateOf("") }
+    var size by rememberSaveable { mutableStateOf(if (edit) "" else "1024x1024") }
+    var steps by rememberSaveable { mutableStateOf("") }
+    var seed by rememberSaveable { mutableStateOf("") }
+    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    var advanced by remember { mutableStateOf(false) }
+    if (edit) ImagePickerRow(images, 4, "Choose photo(s) to edit") { images = it }
+    Field(prompt, { prompt = it }, if (edit) "What to change" else "Describe the picture", lines = 3)
+    val sizes = listOf("1024x1024" to "Square", "768x1024" to "Portrait", "1024x768" to "Landscape", "512x512" to "Small")
+    Chips(if (edit) listOf("" to "Keep size") + sizes else sizes, size) { size = it }
+    TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
+    if (advanced) {
+        Field(negative, { negative = it }, "Avoid (negative prompt)")
+        Field(steps, { steps = it.filter(Char::isDigit) }, "Steps (empty = model default)")
+        Field(seed, { seed = it.filter(Char::isDigit) }, "Seed (empty = random)")
+    }
+    val why = notReady ?: when {
+        prompt.isBlank() -> if (edit) "Say what to change." else "Describe the picture."
+        edit && images.isEmpty() -> "Choose a photo to edit."
+        else -> null
+    }
+    RunPanel(if (edit) "edit" else "image", if (edit) "Edit" else "Create", why == null, why, st) {
+        val m = model!!.id
+        val srcs = images.map { it.dataUri }
+        val stp = steps.toIntOrNull()
+        val sd = seed.toLongOrNull()
+        st.run(if (edit) "edit" else "image") { c, store, p, _ -> Tools.image(c, store, m, prompt.trim(), negative, size, stp, sd, srcs, p) }
+    }
+}
+
+@Composable
+private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    var question by rememberSaveable { mutableStateOf("") }
+    ImagePickerRow(images, 1, "Choose a picture") { images = it }
+    val ocr = model?.isOcr == true
+    if (model != null) {
+        Text(
+            if (ocr) "This model reads the text in the picture (OCR)." else "This chat model describes the picture or answers your question about it.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+    if (!ocr) Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
+    val why = notReady ?: if (images.isEmpty()) "Choose a picture." else null
+    RunPanel("read", if (ocr) "Read text" else "Ask", why == null, why, st) {
+        val m = model!!.id
+        val img = images.first().dataUri
+        val q = question
+        st.run("read") { c, store, p, _ -> if (ocr) Tools.ocr(c, store, m, img, p) else Tools.describe(c, store, m, img, q, p) }
+    }
+}
+
+@Composable
+private fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var caps by remember { mutableStateOf<Tools.VoiceCaps?>(null) }
+    LaunchedEffect(model?.id, model?.running) {
+        caps = if (model?.running == true) withContext(Dispatchers.IO) { runCatching { Tools.voiceCaps(st.client(), model.id) }.getOrNull() } else null
+    }
+    val c = caps
+    val modes = buildList {
+        if (c != null && c.speakers.isNotEmpty()) add("speaker" to "Built-in voice")
+        if (c == null || c.clone) add("clone" to "Clone a voice")
+        if (c != null && c.design) add("design" to "Describe a voice")
+    }
+    var mode by rememberSaveable { mutableStateOf("") }
+    val m = if (modes.any { it.first == mode }) mode else modes.firstOrNull()?.first ?: "clone"
+    var text by rememberSaveable { mutableStateOf("") }
+    var speaker by rememberSaveable { mutableStateOf("") }
+    var design by rememberSaveable { mutableStateOf("") }
+    var refText by rememberSaveable { mutableStateOf("") }
+    var instruct by rememberSaveable { mutableStateOf("") }
+    var language by rememberSaveable { mutableStateOf("") }
+    var clip by remember { mutableStateOf<PickedAudio?>(null) }
+    var speakerOpen by remember { mutableStateOf(false) }
+
+    if (modes.size > 1) Chips(modes, m) { mode = it }
+    when (m) {
+        "speaker" -> {
+            val list = c?.speakers ?: emptyList()
+            val chosen = speaker.takeIf { it in list } ?: list.firstOrNull() ?: ""
+            Box {
+                OutlinedButton(onClick = { speakerOpen = true }) { Text("Voice: $chosen") }
+                DropdownMenu(expanded = speakerOpen, onDismissRequest = { speakerOpen = false }) {
+                    for (v in list) DropdownMenuItem(text = { Text(v) }, onClick = { speaker = v; speakerOpen = false })
+                }
+            }
+        }
+        "design" -> Field(design, { design = it }, "Describe the voice", lines = 2, placeholder = "e.g. a calm, deep male voice")
+        else -> {
+            Text("Record or pick a clear 3–20 second clip of the voice, and type exactly what's said in it.", style = MaterialTheme.typography.bodySmall)
+            AudioInput(clip) { clip = it }
+            Field(refText, { refText = it }, "What's said in the clip", lines = 2)
+            if (c?.instruct == true) Field(instruct, { instruct = it }, "Style (optional)", placeholder = "e.g. cheerful, slow")
+        }
+    }
+    Field(text, { text = it }, "Text to speak", lines = 4)
+    val langs = c?.languages ?: emptyList()
+    if (langs.isNotEmpty()) Chips(listOf("" to "Auto") + langs.map { it to it }, language) { language = it }
+    else Field(language, { language = it }, "Language (optional)")
+    val why = notReady ?: when {
+        text.isBlank() -> "Type something to say."
+        m == "clone" && clip == null -> "Record or pick a voice clip."
+        m == "clone" && refText.isBlank() -> "Type what's said in the clip."
+        m == "design" && design.isBlank() -> "Describe the voice."
+        else -> null
+    }
+    RunPanel("speech", "Speak", why == null, why, st) {
+        val id = model!!.id
+        val sp = if (m == "speaker") (speaker.takeIf { it in (c?.speakers ?: emptyList()) } ?: c?.speakers?.firstOrNull()) else null
+        val ds = if (m == "design") design else null
+        val ref = if (m == "clone") clip?.bytes else null
+        val rt = if (m == "clone") refText else null
+        val t = text
+        val lang = language
+        val ins = instruct
+        st.run("speech") { cl, store, p, _ -> Tools.speech(cl, store, id, t, sp, ds, ref, rt, lang, ins, p) }
+    }
+}
+
+@Composable
+private fun TranscribeTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var audio by remember { mutableStateOf<PickedAudio?>(null) }
+    var language by rememberSaveable { mutableStateOf("") }
+    AudioInput(audio) { audio = it }
+    Field(language, { language = it }, "Language (optional, e.g. en, de)")
+    val why = notReady ?: if (audio == null) "Record or pick something to transcribe." else null
+    RunPanel("transcribe", "Transcribe", why == null, why, st) {
+        val a = audio!!
+        val id = model!!.id
+        val lang = language.trim()
+        st.run("transcribe") { c, store, p, _ -> Tools.transcribe(c, store, id, a.bytes, a.mime, a.name, lang, p) }
+    }
+}
+
+@Composable
+private fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var desc by rememberSaveable { mutableStateOf("Wavetable Synth, warm, chord progression") }
+    var bpm by rememberSaveable { mutableStateOf("120") }
+    var bars by rememberSaveable { mutableStateOf("4") }
+    var key by rememberSaveable { mutableStateOf("A minor") }
+    var steps by rememberSaveable { mutableStateOf("64") }
+    var cfg by rememberSaveable { mutableStateOf("6") }
+    var keyOpen by remember { mutableStateOf(false) }
+    var advanced by remember { mutableStateOf(false) }
+    Field(desc, { desc = it }, "Instrument and character", lines = 2)
+    Text("Tempo (BPM)", style = MaterialTheme.typography.labelLarge)
+    Chips(listOf("100", "110", "120", "128", "130", "140", "150").map { it to it }, bpm) { bpm = it }
+    Text("Length", style = MaterialTheme.typography.labelLarge)
+    Chips(listOf("4" to "4 bars", "8" to "8 bars"), bars) { bars = it }
+    Box {
+        OutlinedButton(onClick = { keyOpen = true }) { Text("Key: $key") }
+        DropdownMenu(expanded = keyOpen, onDismissRequest = { keyOpen = false }) {
+            for (k in KEYS) DropdownMenuItem(text = { Text(k) }, onClick = { key = k; keyOpen = false })
+        }
+    }
+    TextButton(onClick = { advanced = !advanced }) { Text(if (advanced) "Hide advanced" else "Advanced") }
+    if (advanced) {
+        Field(steps, { steps = it.filter(Char::isDigit) }, "Steps")
+        Field(cfg, { cfg = it.filter { ch -> ch.isDigit() || ch == '.' } }, "Guidance (CFG)")
+    }
+    val b = bpm.toInt()
+    val n = bars.toInt()
+    val prompt = "${desc.trim()}, $n bars, $b BPM, $key"
+    val secs = n * 4 * 60.0 / b
+    Text("Prompt: $prompt · %.1f s".format(secs), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val why = notReady ?: if (desc.isBlank()) "Describe the loop." else null
+    RunPanel("loop", "Make loop", why == null, why, st) {
+        val id = model!!.id
+        val stp = steps.toIntOrNull() ?: 64
+        val cf = cfg.toDoubleOrNull() ?: 6.0
+        st.run("loop") { c, store, p, _ -> Tools.loop(c, store, id, prompt, secs, stp, cf, seedOf(""), p) }
+    }
+}
+
+@Composable
+private fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var caption by rememberSaveable { mutableStateOf("") }
+    var type by rememberSaveable { mutableStateOf("mixed") }
+    var lyrics by rememberSaveable { mutableStateOf(LYRICS_TEMPLATE) }
+    var seconds by rememberSaveable { mutableStateOf("60") }
+    Field(caption, { caption = it }, "Style", lines = 2, placeholder = "e.g. upbeat pop, female vocals, synth")
+    Chips(listOf("mixed" to "With vocals", "bgm" to "Instrumental", "vocal" to "Vocals only"), type) { type = it }
+    if (type != "bgm") Field(lyrics, { lyrics = it }, "Lyrics (with [verse], [chorus] … tags)", lines = 8)
+    Text("Length", style = MaterialTheme.typography.labelLarge)
+    Chips(listOf("30" to "30 s", "60" to "1 min", "120" to "2 min", "180" to "3 min", "240" to "Full (4 min+)"), seconds) { seconds = it }
+    Text("Songs take a while: roughly 3–4 seconds of work per second of music.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val why = notReady ?: when {
+        caption.isBlank() -> "Describe the style."
+        type != "bgm" && lyrics.isBlank() -> "Add lyrics, or choose Instrumental."
+        else -> null
+    }
+    RunPanel("song", "Compose", why == null, why, st) {
+        val id = model!!.id
+        val cap = caption.trim()
+        val lyr = lyrics.trim()
+        val t = type
+        val secs = seconds.toInt()
+        st.run("song") { c, store, p, _ -> Tools.song(c, store, id, cap, lyr, t, secs, seedOf(""), p) }
+    }
+}
+
+@Composable
+private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var info by remember { mutableStateOf<Tools.VideoInfo?>(null) }
+    LaunchedEffect(model?.id, model?.running) {
+        info = if (model?.running == true) withContext(Dispatchers.IO) { runCatching { Tools.videoInfo(st.client(), model.id) }.getOrNull() } else null
+    }
+    val canvases = info?.canvases?.takeIf { it.isNotEmpty() } ?: listOf("832x480", "480x832", "1344x768", "768x1344")
+    val stepOptions = info?.steps?.takeIf { it.isNotEmpty() } ?: listOf(4, 5, 6, 7, 8)
+    var prompt by rememberSaveable { mutableStateOf("") }
+    var size by rememberSaveable { mutableStateOf("832x480") }
+    var seconds by rememberSaveable { mutableStateOf("2") }
+    var steps by rememberSaveable { mutableStateOf("4") }
+    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    Field(prompt, { prompt = it }, "Describe the clip", lines = 3)
+    ImagePickerRow(images, 1, "Start from a picture (optional)") { images = it }
+    Text("Size", style = MaterialTheme.typography.labelLarge)
+    val sz = if (size in canvases) size else canvases.first()
+    Chips(canvases.map { it to it }, sz) { size = it }
+    Text("Length", style = MaterialTheme.typography.labelLarge)
+    Chips((2..7).map { "$it" to "$it s" }, seconds) { seconds = it }
+    Text("Steps (fewer is faster)", style = MaterialTheme.typography.labelLarge)
+    val stp = if (steps.toIntOrNull()?.let { it in stepOptions } == true) steps else stepOptions.first().toString()
+    Chips(stepOptions.map { "$it" to "$it" }, stp) { steps = it }
+    Text(
+        "A 2-second clip at 832x480 with 4 steps takes about 7 minutes; 1344x768 or more seconds take much longer (the Tiiny stops at 1 hour).",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it a picture to start from." else null
+    RunPanel("video", "Render video", why == null, why, st) {
+        st.video(model!!.id, prompt.trim(), sz, seconds.toInt(), stp.toInt(), null, images.firstOrNull()?.dataUri)
+    }
+}
+
+@Composable
+private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
+    var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    var textured by rememberSaveable { mutableStateOf(true) }
+    var quality by rememberSaveable { mutableStateOf("fast") }
+    ImagePickerRow(images, 1, "Choose a picture of one object") { images = it }
+    Text("Works best with a single object on a plain background.", style = MaterialTheme.typography.bodySmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Switch(checked = textured, onCheckedChange = { textured = it })
+        Spacer(Modifier.width(10.dp))
+        Text("With colours and texture (takes about twice as long)")
+    }
+    Text("Quality", style = MaterialTheme.typography.labelLarge)
+    Chips(listOf("fast" to "Fast", "balance" to "Balanced", "quality" to "Best"), quality) { quality = it }
+    Text("Expect several minutes. The result is a .glb file you can open in a 3D viewer app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val why = notReady ?: if (images.isEmpty()) "Choose a picture." else null
+    RunPanel("mesh", "Make 3D model", why == null, why, st) {
+        val id = model!!.id
+        val img = images.first().bytes
+        val tx = textured
+        val qu = quality
+        st.run("mesh") { c, store, p, rj -> Tools.mesh(c, store, id, img, tx, qu, rj, p) }
+    }
+}
+
+// ---------------- results ----------------
+
+private val dateFmt = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
+
+@Composable
+fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
+    var open by remember(e.id) { mutableStateOf(expanded) }
+    var confirmDelete by remember(e.id) { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    Card(onClick = { open = !open }, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = if (open) 4 else 1)
+            Text(
+                "${dateFmt.format(Date(e.created))} · ${e.model.substringAfterLast('/')}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!open) return@Column
+            val file = e.mainFile?.let { st.store.file(it) }
+            when (e.kind) {
+                "image" -> file?.let { f ->
+                    val bmp = remember(f.path) { Inputs.thumbnail(f) }
+                    bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
+                }
+                "speech", "loop", "song" -> file?.let { f ->
+                    var playing by remember(f.path) { mutableStateOf(Player.playing == f.name) }
+                    Button(onClick = {
+                        Player.toggle(f) { playing = false }
+                        playing = Player.playing == f.name
+                    }) { Text(if (playing) "Stop" else "Play") }
+                }
+                "video" -> file?.let { f ->
+                    AndroidView(
+                        factory = { ctx ->
+                            VideoView(ctx).apply {
+                                setVideoPath(f.absolutePath)
+                                val mc = MediaController(ctx)
+                                mc.setAnchorView(this)
+                                setMediaController(mc)
+                                setOnPreparedListener { it.isLooping = true; start() }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(240.dp),
+                    )
+                }
+                "mesh" -> file?.let { f -> Button(onClick = { st.open(f.name) }) { Text("Open in a 3D viewer") } }
+            }
+            if ((e.kind == "ocr" || e.kind == "transcript") && e.text.isNotBlank()) {
+                SelectionContainer {
+                    Text(e.text, fontSize = 14.sp)
+                }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (e.files.isNotEmpty()) TextButton(onClick = { st.saveToPhone(e) }) { Text("Save to phone") }
+                if (e.text.isNotBlank() && (e.kind == "ocr" || e.kind == "transcript")) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(e.text)) }) { Text("Copy") }
+                }
+                TextButton(onClick = { st.share(e) }) { Text("Share") }
+                if (confirmDelete) TextButton(onClick = { st.delete(e) }) { Text("Really delete", color = MaterialTheme.colorScheme.error) }
+                else TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
+            }
+        }
+    }
+}
+
+// ---------------- chat ----------------
+
+@Composable
+fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
+    val msgs by st.chat.collectAsState()
+    val busy by st.chatBusy.collectAsState()
+    var input by rememberSaveable { mutableStateOf("") }
+    var thinking by rememberSaveable { mutableStateOf(true) }
+    var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    val scroll = rememberScrollState()
+    LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) { scroll.animateScrollTo(scroll.maxValue) }
+    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+        Spacer(Modifier.height(8.dp))
+        val model = ModelPicker("chat", { it.isChat }, s, vm, st)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = thinking, onCheckedChange = { thinking = it })
+            Spacer(Modifier.width(8.dp))
+            Text("Thinking", modifier = Modifier.weight(1f))
+            TextButton(onClick = { st.clearChat() }, enabled = !busy && msgs.isNotEmpty()) { Text("New chat") }
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (msgs.isEmpty()) {
+                Text(
+                    "Chat with the loaded model. For web search, use RikkaHub.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            }
+            for ((i, m) in msgs.withIndex()) ChatBubble(m, live = busy && i == msgs.lastIndex)
+        }
+        if (model?.seesImages == true) {
+            ImagePickerRow(image, 1, "Add a picture") { image = it }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it },
+                placeholder = { Text("Message") },
+                modifier = Modifier.weight(1f),
+                maxLines = 5,
+            )
+            Spacer(Modifier.width(8.dp))
+            if (busy) {
+                OutlinedButton(onClick = { st.stopChat() }) { Text("Stop") }
+            } else {
+                Button(
+                    onClick = {
+                        st.send(model!!.id, input, image.firstOrNull()?.dataUri, thinking)
+                        input = ""
+                        image = emptyList()
+                    },
+                    enabled = model?.running == true && (input.isNotBlank() || image.isNotEmpty()),
+                ) { Text("Send") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatBubble(m: ChatMsg, live: Boolean) {
+    val mine = m.role == "user"
+    var showThinking by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+            ),
+            modifier = Modifier.fillMaxWidth(0.88f),
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (m.image != null) Text("(picture attached)", style = MaterialTheme.typography.bodySmall)
+                if (m.reasoning.isNotBlank()) {
+                    TextButton(onClick = { showThinking = !showThinking }) {
+                        Text(if (showThinking) "Hide thinking" else if (live && m.text.isEmpty()) "Thinking…" else "Show thinking")
+                    }
+                    if (showThinking) Text(m.reasoning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (m.text.isNotEmpty()) SelectionContainer { Text(m.text) }
+                else if (live && m.reasoning.isBlank()) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+        }
+    }
+}

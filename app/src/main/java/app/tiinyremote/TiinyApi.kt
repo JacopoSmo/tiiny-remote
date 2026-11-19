@@ -21,8 +21,26 @@ data class ModelInfo(
     /** "running", "loading" or "stopped", worked out the same way Tiiny Studio does. */
     val status: String,
     val busy: Boolean,
+    /** e.g. "Text,Image" */
+    val input: String = "",
+    /** e.g. ["Image Editing", "Tool Use", "Voice Clone"] */
+    val supported: List<String> = emptyList(),
+    val desc: String = "",
 ) {
     val isChat get() = type == "Text Generation" || type == "Image-Text-to-Text"
+    val seesImages get() = type == "Image-Text-to-Text" || input.contains("Image")
+    val isImageGen get() = type == "Text-to-Image" || type == "Image-to-Image"
+    /** Same test as Tiiny Studio: "Image Editing" listed, or images accepted as input. */
+    val canEditImages get() = isImageGen && ("Image Editing" in supported || Regex("\\bImage\\b").containsMatchIn(input))
+    val isOcr get() = type == "Image-to-Text"
+    val isSpeech get() = type == "Text-to-Speech"
+    val isAsr get() = type == "ASR"
+    val isMusic get() = type == "Music Generation"
+    val isSongModel get() = isMusic && Regex("song|lyric", RegexOption.IGNORE_CASE).containsMatchIn(id + desc.take(300))
+    val isLoopModel get() = isMusic && !isSongModel
+    val isVideo get() = type == "Text-to-Video"
+    val is3d get() = type == "Image-to-3D"
+    val running get() = status == "running"
 }
 
 data class Catalog(val models: List<ModelInfo>, val npuUsed: Double)
@@ -235,6 +253,9 @@ class TiinyApi(url: String, private val key: String) {
                     loadTimeSec = m.optDouble("load_time").takeIf { !it.isNaN() }?.toInt(),
                     status = status,
                     busy = r != null && r.optInt("active_request_count", 0) > 0,
+                    input = m.optString("input").takeIf { it != "null" } ?: "",
+                    supported = m.optJSONArray("supported")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                    desc = m.optString("desc").takeIf { it != "null" } ?: "",
                 )
             )
         }
