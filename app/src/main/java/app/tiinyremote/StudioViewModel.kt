@@ -163,14 +163,25 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- video: survives the app being closed ----------
 
-    fun video(model: String, prompt: String, size: String, seconds: Int, steps: Int, seed: Long?, image: String?) {
+    /** Small remembered settings (e.g. the video size), like Tiiny Studio keeps them. */
+    fun setting(key: String, default: String): String = prefs.getString("set_$key", null) ?: default
+    fun setSetting(key: String, value: String) {
+        prefs.edit().putString("set_$key", value).apply()
+    }
+
+    fun video(model: String, prompt: String, size: String, seconds: Int, steps: Int?, seed: Long?, image: String?) {
         val title = "Video: " + prompt.ifBlank { "from a picture" }.take(60)
+        val details = "$size · $seconds s · ${steps?.let { "$it steps" } ?: "default steps"}" + (seed?.let { " · seed $it" } ?: "")
         run("video") { c, store, p, rj ->
             p.update("Sending the clip to the Tiiny", null)
+            val started = System.currentTimeMillis()
             val vid = Tools.videoStart(c, model, prompt, size, seconds, steps, seed, image)
-            prefs.edit().putString("pending_video", JSONObject().put("id", vid).put("model", model).put("title", title).toString()).apply()
+            prefs.edit().putString(
+                "pending_video",
+                JSONObject().put("id", vid).put("model", model).put("title", title).put("details", details).put("started", started).toString(),
+            ).apply()
             try {
-                Tools.videoFinish(c, store, model, vid, title, rj, p)
+                Tools.videoFinish(c, store, model, vid, title, rj, p, details, started)
             } finally {
                 prefs.edit().remove("pending_video").apply()
             }
@@ -190,7 +201,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         run("video") { c, store, p, rj ->
             p.update("Picking up the video that was still rendering", null)
             try {
-                Tools.videoFinish(c, store, o.optString("model"), vid, o.optString("title"), rj, p)
+                Tools.videoFinish(c, store, o.optString("model"), vid, o.optString("title"), rj, p, o.optString("details"), o.optLong("started", 0))
             } finally {
                 prefs.edit().remove("pending_video").apply()
             }

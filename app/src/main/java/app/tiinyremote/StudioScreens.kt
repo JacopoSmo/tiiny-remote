@@ -667,37 +667,139 @@ private fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) 
     }
 }
 
+/** Tiiny Studio's estimate, measured on TiinyOS 0.1.38: ~5 min per clip, then ~1 min per second at 480p; more pixels and steps cost more. */
+private fun videoEstimate(size: String, seconds: Int, steps: Int): Double {
+    val (w, h) = size.split("x").map { it.toDoubleOrNull() ?: 0.0 }.let { (it.getOrElse(0) { 832.0 }) to (it.getOrElse(1) { 480.0 }) }
+    return (314 + 60.4 * seconds * Math.pow(w * h / (832.0 * 480.0), 1.75)) * Math.pow(steps / 4.0, 1.4)
+}
+
+private const val VIDEO_LIMIT = 3600.0 // the Tiiny stops a video render after 1 hour
+
+private fun sizeLabel(c: String): String {
+    val (w, h) = c.split("x").map { it.toIntOrNull() ?: 0 }.let { it.getOrElse(0) { 0 } to it.getOrElse(1) { 0 } }
+    return "${if (w > h) "Wide" else "Tall"} ${minOf(w, h)}p"
+}
+
 @Composable
 private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel) {
     var info by remember { mutableStateOf<Tools.VideoInfo?>(null) }
     LaunchedEffect(model?.id, model?.running) {
         info = if (model?.running == true) withContext(Dispatchers.IO) { runCatching { Tools.videoInfo(st.client(), model.id) }.getOrNull() } else null
     }
+    // MiniMax-H3-Turbo's values when the model doesn't say (or isn't loaded yet)
     val canvases = info?.canvases?.takeIf { it.isNotEmpty() } ?: listOf("832x480", "480x832", "1344x768", "768x1344")
     val stepOptions = info?.steps?.takeIf { it.isNotEmpty() } ?: listOf(4, 5, 6, 7, 8)
+    val defSteps = info?.defaultSteps ?: 7
+    val fps = info?.fps ?: 24
+    val audio = info?.audio ?: true
+
     var prompt by rememberSaveable { mutableStateOf("") }
-    var size by rememberSaveable { mutableStateOf("832x480") }
-    var seconds by rememberSaveable { mutableStateOf("2") }
-    var steps by rememberSaveable { mutableStateOf("4") }
+    var size by remember { mutableStateOf(st.setting("video.size", "832x480")) }
+    var seconds by remember { mutableStateOf(st.setting("video.seconds", "2")) }
+    var steps by remember { mutableStateOf(st.setting("video.steps", "4")) } // "0" = the model's default
+    var seed by rememberSaveable { mutableStateOf("") }
+    var advanced by remember { mutableStateOf(false) }
+    var longOk by remember { mutableStateOf(false) }
     var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
-    Field(prompt, { prompt = it }, "Describe the clip", lines = 3)
-    ImagePickerRow(images, 1, "Start from a picture (optional)") { images = it }
+
+    val sz = if (size in canvases) size else canvases.firstOrNull { it == "832x480" } ?: canvases.first()
+    val stp = if (steps == "0" || steps.toIntOrNull()?.let { it in stepOptions } == true) steps else "0"
+    val usedSteps = stp.toInt().takeIf { it > 0 } ?: defSteps
+    val secs = seconds.toIntOrNull() ?: 2
+    val est = videoEstimate(sz, secs, usedSteps)
+    val over = est > VIDEO_LIMIT
+    LaunchedEffect(over) { if (!over) longOk = false }
+
+    Text("Prompt", style = MaterialTheme.typography.labelLarge)
+    Field(prompt, { prompt = it }, "Describe the clip", lines = 4, placeholder = "What happens in the clip: subject, motion, camera, sound…")
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+        Text(
+            "Video is slow on the Tiiny: about ${Tools.fmtDuration(est.toLong())} for these settings (2 s at 480p with 4 steps took 7 minutes). " +
+                "The device does nothing else meanwhile; start small.",
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(12.dp),
+        )
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Start from a picture", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text("optional", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    ImagePickerRow(images, 1, "First frame") { images = it }
+
     Text("Size", style = MaterialTheme.typography.labelLarge)
-    val sz = if (size in canvases) size else canvases.first()
-    Chips(canvases.map { it to it }, sz) { size = it }
-    Text("Length", style = MaterialTheme.typography.labelLarge)
-    Chips((2..7).map { "$it" to "$it s" }, seconds) { seconds = it }
-    Text("Steps (fewer is faster)", style = MaterialTheme.typography.labelLarge)
-    val stp = if (steps.toIntOrNull()?.let { it in stepOptions } == true) steps else stepOptions.first().toString()
-    Chips(stepOptions.map { "$it" to "$it" }, stp) { steps = it }
-    Text(
-        "A 2-second clip at 832x480 with 4 steps takes about 7 minutes; 1344x768 or more seconds take much longer (the Tiiny stops at 1 hour).",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Chips(canvases.map { it to sizeLabel(it) }, sz) { size = it; st.setSetting("video.size", it) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Length", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text("$fps fps" + if (audio) " · with sound" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    // MiniMax-H3-Turbo is built for clips up to 7 s; longer ones fail at once
+    Chips(listOf(2, 3, 5, 7).map { "$it" to "$it s" }, seconds) { seconds = it; st.setSetting("video.seconds", it) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { advanced = !advanced }) { Text((if (advanced) "▾ " else "▸ ") + "Advanced") }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "$usedSteps steps" + (if (seed.isNotBlank()) " · seed $seed" else ""),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (advanced) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Steps", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    Text("fewer is faster", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Chips(listOf("0" to "Default ($defSteps)") + stepOptions.map { "$it" to "$it" }, stp) { steps = it; st.setSetting("video.steps", it) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Seed", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    Text("blank = new each run", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = seed,
+                        onValueChange = { v -> seed = v.filter { it.isDigit() }.take(10) },
+                        placeholder = { Text("random") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = { seed = Random.nextLong(0, 1L shl 31).toString() }) { Text("Roll") }
+                }
+            }
+        }
+    }
+
+    if (over) {
+        // what would finish inside the hour: the smallest size in this shape, the fewest steps, as many seconds as fit
+        val tall = sz.split("x").let { (it.getOrNull(1)?.toIntOrNull() ?: 0) > (it.getOrNull(0)?.toIntOrNull() ?: 0) }
+        val small = canvases.filter { c -> c.split("x").let { (it.getOrNull(1)?.toIntOrNull() ?: 0) > (it.getOrNull(0)?.toIntOrNull() ?: 0) } == tall }
+            .minByOrNull { c -> c.split("x").mapNotNull { it.toIntOrNull() }.fold(1) { a, b -> a * b } } ?: sz
+        val few = stepOptions.minOrNull() ?: 4
+        var fit = secs
+        while (fit > 1 && videoEstimate(small, fit, few) > VIDEO_LIMIT * 0.9) fit--
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+            Text(
+                "Estimated at ${Tools.fmtDuration(est.toLong())}, but the Tiiny stops a video after 1 hour, so it would end unfinished. " +
+                    "At ${sizeLabel(small).substringAfter(' ')} and $few steps, $fit s should fit." +
+                    if (longOk) " Tap again to start it anyway." else "",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(12.dp),
+            )
+        }
+    }
+
     val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it a picture to start from." else null
-    RunPanel("video", "Render video", why == null, why, st) {
-        st.video(model!!.id, prompt.trim(), sz, seconds.toInt(), stp.toInt(), null, images.firstOrNull()?.dataUri)
+    RunPanel("video", "Make video  (~${Tools.fmtDuration(est.toLong())})", why == null, why, st) {
+        if (over && !longOk) {
+            longOk = true
+            return@RunPanel
+        }
+        longOk = false
+        st.video(model!!.id, prompt.trim(), sz, secs, stp.toInt().takeIf { it > 0 }, seed.toLongOrNull(), images.firstOrNull()?.dataUri)
     }
 }
 
@@ -858,6 +960,7 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                     }) { Text(if (playing) "Stop" else "Play") }
                 }
                 "video" -> file?.let { f ->
+                    if (e.text.isNotBlank()) Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     AndroidView(
                         factory = { ctx ->
                             VideoView(ctx).apply {

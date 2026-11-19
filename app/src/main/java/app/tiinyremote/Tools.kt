@@ -32,6 +32,12 @@ object Tools {
 
     private fun short(model: String) = model.substringAfterLast('/')
 
+    fun fmtDuration(sec: Long): String = when {
+        sec >= 3600 -> "${sec / 3600} h ${sec % 3600 / 60} min"
+        sec >= 60 -> "${sec / 60} min" + (if (sec % 60 > 0) " ${sec % 60} s" else "")
+        else -> "$sec s"
+    }
+
     // ---------------- loading models for a job (Tiiny Studio's make_room / put_back) ----------------
 
     fun runningIds(c: DeviceClient): Set<String> {
@@ -546,7 +552,7 @@ object Tools {
 
     // ---------------- video ----------------
 
-    data class VideoInfo(val canvases: List<String>, val steps: List<Int>, val defaultSteps: Int)
+    data class VideoInfo(val canvases: List<String>, val steps: List<Int>, val defaultSteps: Int, val fps: Int, val audio: Boolean)
 
     fun videoInfo(c: DeviceClient, model: String): VideoInfo? {
         val r = c.request("GET", "/v1/video/info?model=${c.quote(model)}", null, 15)
@@ -563,7 +569,7 @@ object Tools {
             }
         } ?: emptyList()
         val steps = o.optJSONArray("step_options")?.let { a -> (0 until a.length()).map { a.optInt(it) } } ?: emptyList()
-        return VideoInfo(canv, steps, o.optInt("default_steps", 4))
+        return VideoInfo(canv, steps, o.optInt("default_steps", 7), o.optInt("fps", 24), o.has("audio") || !o.has("fps"))
     }
 
     private fun explainVideo(e: String) = when {
@@ -577,11 +583,12 @@ object Tools {
     /** Starts a clip and returns the device's id for it. */
     fun videoStart(
         c: DeviceClient, model: String, prompt: String, size: String, seconds: Int,
-        steps: Int, seed: Long?, image: String?,
+        steps: Int?, seed: Long?, image: String?,
     ): String {
         val body = JSONObject().put("model", model)
             .put("prompt", prompt.ifBlank { "Bring this picture to life" })
-            .put("size", size).put("seconds", seconds.toString()).put("steps", steps)
+            .put("size", size).put("seconds", seconds.toString())
+        steps?.let { body.put("steps", it) } // none: the model's own default
         seed?.let { body.put("seed", it) }
         if (image != null) body.put("image", image)
         val r = c.request("POST", "/v1/videos", body, 120)
@@ -592,6 +599,7 @@ object Tools {
     /** Waits for a clip, downloads it and deletes it from the device. Also used to pick up a clip after a restart. */
     fun videoFinish(
         c: DeviceClient, store: ResultStore, model: String, vid: String, title: String, job: RemoteJob, p: Progress,
+        details: String = "", startedAt: Long = 0,
     ): ResultEntry {
         val path = "/v1/videos/${c.quote(vid)}"
         job.cancelPath = "DELETE" to path
@@ -648,7 +656,8 @@ object Tools {
             c.request("DELETE", path, null, 30) // the device keeps it an hour otherwise
         } catch (e: Exception) {
         }
-        return ResultEntry(id, "video", title, listOf(file), "", model, System.currentTimeMillis())
+        val took = if (startedAt > 0) "Took ${fmtDuration((System.currentTimeMillis() - startedAt) / 1000)} to render" else "Saved from the Tiiny after it finished"
+        return ResultEntry(id, "video", title, listOf(file), listOf(took, details).filter { it.isNotBlank() }.joinToString(" · "), model, System.currentTimeMillis())
     }
 
     // ---------------- 3D ----------------
