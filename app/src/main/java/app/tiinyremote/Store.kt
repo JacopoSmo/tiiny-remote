@@ -25,7 +25,12 @@ data class AppSettings(
     val autoUnlock: Boolean = true,
     /** The Tiiny's own password (the one "tiiny login" asks for), used to unlock it directly. */
     val tiinyPassword: String = "",
+    /** The WireGuard tunnel's name, exactly as shown in the WireGuard app. */
+    val wgTunnel: String = "",
+    val autoVpn: Boolean = false,
+    val vpnOffAtHome: Boolean = true,
 ) {
+    val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
     val directConfigured get() = tiinyUrl.isNotBlank() && tiinyPassword.isNotBlank()
     val nasConfigured get() = nasHost.isNotBlank() && nasUser.isNotBlank() && nasPassword.isNotBlank()
@@ -46,6 +51,9 @@ class Store(context: Context) {
             ?: DEFAULT_UNLOCK_COMMAND,
         autoUnlock = prefs.getBoolean("auto_unlock", true),
         tiinyPassword = Crypto.decrypt(prefs.getString("tiiny_password", null)) ?: "",
+        wgTunnel = prefs.getString("wg_tunnel", "") ?: "",
+        autoVpn = prefs.getBoolean("auto_vpn", false),
+        vpnOffAtHome = prefs.getBoolean("vpn_off_at_home", true),
     )
 
     fun save(s: AppSettings) {
@@ -59,6 +67,9 @@ class Store(context: Context) {
             .putString("unlock_command", s.unlockCommand)
             .putBoolean("auto_unlock", s.autoUnlock)
             .putString("tiiny_password", Crypto.encrypt(s.tiinyPassword))
+            .putString("wg_tunnel", s.wgTunnel.trim())
+            .putBoolean("auto_vpn", s.autoVpn)
+            .putBoolean("vpn_off_at_home", s.vpnOffAtHome)
             .apply()
     }
 

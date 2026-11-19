@@ -9,6 +9,12 @@ A small Android app for a Tiiny AI Pocket Lab on your home network:
   NAS over SSH and runs `tiiny login` there (the Tiiny CLI must be installed on the NAS). With
   automatic unlock on, it does this by itself when it finds the Tiiny locked.
 
+- **VPN:** shows whether your WireGuard VPN is on and whether you're on your home network, switches the
+  tunnel with one tap, and can switch it automatically: on when you're away from home (or the Tiiny isn't
+  reachable), off again at home. It controls the official WireGuard app, which must allow this under
+  Settings → *Allow remote control apps*. Home is recognised by your Wi-Fi having the Tiiny's address range,
+  so no location access is needed.
+
 It talks to the Tiiny the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does,
 over plain HTTP, so use it on home wifi or over WireGuard only.
 

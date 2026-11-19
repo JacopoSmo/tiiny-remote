@@ -34,6 +34,16 @@ data class UiState(
     val log: List<String> = emptyList(),
     val toast: String? = null,
     val updatedAt: Long = 0,
+    val vpn: VpnStatus = VpnStatus(),
+)
+
+data class VpnStatus(
+    val wireguardInstalled: Boolean = false,
+    val permitted: Boolean = false,
+    val active: Boolean = false,
+    /** True on the home network, false elsewhere, null when the app can't tell. */
+    val onHome: Boolean? = null,
+    val switching: Boolean = false,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -43,6 +53,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
     private var lastAutoUnlock = 0L
+    private var lastVpnSwitch = 0L
+    /** After you switch the VPN yourself, automatic switching pauses for 10 minutes. */
+    private var vpnPausedUntil = 0L
+    private val app get() = getApplication<Application>()
 
     private val settings get() = _state.value.settings
     private fun api() = TiinyApi(settings.tiinyUrl, settings.apiKey)
@@ -52,7 +66,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         while (true) {
             refresh()
             val s = _state.value
-            val fast = s.device == DeviceState.LOCKED || s.unlocking || s.working.isNotEmpty() ||
+            val fast = s.device == DeviceState.LOCKED || s.unlocking || s.working.isNotEmpty() || s.vpn.switching ||
                 s.models.any { it.status == "loading" }
             delay(if (fast) 5_000 else 15_000)
         }
@@ -63,6 +77,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun refresh() {
+        updateVpnStatus()
         val st = settings
         if (!st.tiinyConfigured) {
             _state.update {
@@ -87,6 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     updatedAt = System.currentTimeMillis(),
                 )
             }
+            autoVpn(reachable = true)
         } catch (e: TiinyException) {
             val ds = when (e.kind) {
                 TiinyException.Kind.LOCKED -> DeviceState.LOCKED
@@ -95,6 +111,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 TiinyException.Kind.NOT_FOUND, TiinyException.Kind.HTTP -> DeviceState.ERROR
             }
             _state.update { it.copy(device = ds, deviceMessage = e.message ?: "") }
+            autoVpn(reachable = ds != DeviceState.UNREACHABLE)
             if (ds == DeviceState.LOCKED) maybeAutoUnlock()
         }
     }
@@ -298,12 +315,105 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(log = (it.log + entry).takeLast(200)) }
     }
 
+    // ---------- WireGuard VPN ----------
+
+    fun updateVpnStatus() {
+        val ctx = app
+        val st = settings
+        val status = VpnStatus(
+            wireguardInstalled = Vpn.installed(ctx),
+            permitted = Vpn.permitted(ctx),
+            active = Vpn.active(ctx),
+            onHome = if (st.tiinyUrl.isBlank()) null else Vpn.onHomeNetwork(ctx, st.tiinyUrl),
+            switching = _state.value.vpn.switching,
+        )
+        _state.update { it.copy(vpn = status) }
+    }
+
+    /** The one-tap button: switches the tunnel and pauses automatic switching for 10 minutes. */
+    fun toggleVpn() {
+        val v = _state.value.vpn
+        vpnPausedUntil = System.currentTimeMillis() + 10 * 60_000
+        switchVpn(!v.active, reason = null)
+    }
+
+    /**
+     * Automatic VPN (only while the app is open): on when you're away from home (or, if the app can't tell, when the
+     * Tiiny can't be reached), off again at home if you chose that. At most one switch a minute.
+     */
+    private fun autoVpn(reachable: Boolean) {
+        val st = settings
+        val v = _state.value.vpn
+        val now = System.currentTimeMillis()
+        if (!st.autoVpn || !st.vpnConfigured || !v.permitted || v.switching) return
+        if (now < vpnPausedUntil || now - lastVpnSwitch < 60_000) return
+        when {
+            v.onHome == true && v.active && st.vpnOffAtHome -> switchVpn(false, "you're on your home network")
+            v.onHome == false && !v.active -> switchVpn(true, "you're away from your home network")
+            v.onHome == null && !v.active && !reachable -> switchVpn(true, "the Tiiny isn't reachable directly")
+        }
+    }
+
+    private fun switchVpn(up: Boolean, reason: String?) {
+        val st = settings
+        if (!st.vpnConfigured) {
+            toast("Enter your WireGuard tunnel's name in Settings first.")
+            return
+        }
+        if (!Vpn.installed(app)) {
+            toast("The WireGuard app isn't installed.")
+            return
+        }
+        if (!Vpn.permitted(app)) {
+            toast("Allow Tiiny Remote to control WireGuard first (Settings → VPN).")
+            return
+        }
+        lastVpnSwitch = System.currentTimeMillis()
+        viewModelScope.launch {
+            _state.update { it.copy(vpn = it.vpn.copy(switching = true)) }
+            val what = if (up) "on" else "off"
+            log("Switching the VPN $what" + (reason?.let { " because $it" } ?: "") + "…")
+            Vpn.setTunnel(app, st.wgTunnel, up)
+            var done = false
+            for (i in 0 until 12) {
+                delay(1_000)
+                if (Vpn.active(app) == up) {
+                    done = true
+                    break
+                }
+            }
+            _state.update { it.copy(vpn = it.vpn.copy(switching = false)) }
+            updateVpnStatus()
+            if (done) {
+                log("VPN is $what.")
+                if (reason == null) toast("VPN $what")
+                refresh()
+            } else {
+                log(
+                    "WireGuard didn't switch the VPN $what. Check that the tunnel name \"${st.wgTunnel}\" matches the " +
+                        "WireGuard app exactly, and that \"Allow remote control apps\" is on in WireGuard's settings."
+                )
+                toast("VPN didn't switch: see the Activity tab")
+            }
+        }
+    }
+
+    fun openWireGuard() {
+        Vpn.openApp(app)
+    }
+
+    fun permissionResult(granted: Boolean) {
+        updateVpnStatus()
+        toast(if (granted) "Tiiny Remote may now switch WireGuard tunnels" else "Permission not given: VPN control stays off")
+    }
+
     // ---------- settings ----------
 
     fun saveSettings(s: AppSettings) {
         store.save(s)
         _state.update { it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") }
         lastAutoUnlock = 0L
+        vpnPausedUntil = 0L
         toast("Saved")
         refreshNow()
     }

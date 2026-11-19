@@ -1,5 +1,7 @@
 package app.tiinyremote
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -139,7 +141,7 @@ fun AppRoot(vm: MainViewModel) {
                     selected = tab == 1,
                     onClick = { tab = 1 },
                     icon = { Icon(Icons.Filled.Lock, contentDescription = null) },
-                    label = { Text("Unlock") },
+                    label = { Text("Activity") },
                 )
                 NavigationBarItem(
                     selected = tab == 2,
@@ -205,6 +207,9 @@ private fun StatusCard(s: UiState, onUnlock: () -> Unit, onSettings: () -> Unit)
                 Text("NPU in use: ${pct(s.npuUsed)} · $loaded model${if (loaded == 1) "" else "s"} loaded")
             }
             if (s.deviceMessage.isNotBlank()) Text(s.deviceMessage, style = MaterialTheme.typography.bodyMedium)
+            if (s.device == DeviceState.UNREACHABLE && s.settings.vpnConfigured && !s.vpn.active && s.vpn.onHome != true) {
+                Text("The VPN is off: away from home, switch it on below.", style = MaterialTheme.typography.bodyMedium)
+            }
             when (s.device) {
                 DeviceState.LOCKED ->
                     if (s.unlocking) {
@@ -219,6 +224,46 @@ private fun StatusCard(s: UiState, onUnlock: () -> Unit, onSettings: () -> Unit)
                 DeviceState.NOT_CONFIGURED, DeviceState.UNAUTHORIZED ->
                     Button(onClick = onSettings) { Text("Open Settings") }
                 else -> {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun VpnCard(s: UiState, vm: MainViewModel, onSettings: () -> Unit) {
+    val v = s.vpn
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        vm.permissionResult(granted)
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (v.active) "VPN on" else "VPN off",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (v.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    )
+                    val where = when (v.onHome) {
+                        true -> "On your home network"
+                        false -> "Away from your home network"
+                        null -> "Network: can't tell"
+                    }
+                    val auto = if (s.settings.autoVpn) " · automatic" else ""
+                    Text("$where$auto", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                when {
+                    !v.wireguardInstalled -> TextButton(onClick = onSettings) { Text("Set up") }
+                    !v.permitted -> Button(onClick = { launcher.launch(Vpn.PERMISSION) }) { Text("Allow") }
+                    v.switching -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    v.active -> OutlinedButton(onClick = { vm.toggleVpn() }) { Text("Turn off") }
+                    else -> Button(onClick = { vm.toggleVpn() }) { Text("Turn on") }
+                }
+            }
+            if (!v.wireguardInstalled) {
+                Text("The WireGuard app isn't installed on this phone.", style = MaterialTheme.typography.bodySmall)
+            } else if (!v.permitted) {
+                Text("Allow Tiiny Remote to switch WireGuard tunnels (asked once).", style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -249,6 +294,9 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { StatusCard(s, onUnlock = { vm.unlock() }, onSettings = onOpenSettings) }
+        if (s.settings.vpnConfigured) {
+            item { VpnCard(s, vm, onSettings = onOpenSettings) }
+        }
         if (s.device == DeviceState.ONLINE) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -336,7 +384,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Unlock after a restart", style = MaterialTheme.typography.titleLarge)
+        Text("Unlock and activity", style = MaterialTheme.typography.titleLarge)
         Text(
             "After a restart the Tiiny stays locked until someone logs in. With the Tiiny's password saved in " +
                 "Settings, the app unlocks it directly, the way \"tiiny login\" does. Without it, or if that fails, " +
@@ -411,6 +459,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     var auto by remember(cur) { mutableStateOf(cur.autoUnlock) }
     var cmd by remember(cur) { mutableStateOf(cur.unlockCommand) }
     var tpw by remember(cur) { mutableStateOf(cur.tiinyPassword) }
+    var tunnel by remember(cur) { mutableStateOf(cur.wgTunnel) }
+    var autoVpn by remember(cur) { mutableStateOf(cur.autoVpn) }
+    var offHome by remember(cur) { mutableStateOf(cur.vpnOffAtHome) }
     var showDebug by remember { mutableStateOf(false) }
 
     fun current() = AppSettings(
@@ -423,6 +474,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         unlockCommand = cmd.ifBlank { DEFAULT_UNLOCK_COMMAND },
         autoUnlock = auto,
         tiinyPassword = tpw,
+        wgTunnel = tunnel.trim(),
+        autoVpn = autoVpn,
+        vpnOffAtHome = offHome,
     )
 
     Column(
@@ -458,6 +512,51 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             Text("Unlock automatically when the Tiiny is locked")
         }
         TextButton(onClick = { vm.forgetTiinyLogin() }) { Text("Forget saved Tiiny login key") }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("WireGuard VPN", style = MaterialTheme.typography.titleMedium)
+        val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            vm.permissionResult(granted)
+        }
+        OutlinedTextField(
+            value = tunnel,
+            onValueChange = { tunnel = it },
+            label = { Text("Tunnel name, exactly as in the WireGuard app") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "In the WireGuard app, turn on Settings → \"Allow remote control apps\" so this app can switch the " +
+                "tunnel. Then allow it here once.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when {
+                !s.vpn.wireguardInstalled -> Text("WireGuard app not found on this phone.", style = MaterialTheme.typography.bodyMedium)
+                s.vpn.permitted -> Text("Control of WireGuard: allowed", style = MaterialTheme.typography.bodyMedium)
+                else -> OutlinedButton(onClick = { permLauncher.launch(Vpn.PERMISSION) }) { Text("Allow controlling WireGuard") }
+            }
+            Spacer(Modifier.weight(1f))
+            if (s.vpn.wireguardInstalled) TextButton(onClick = { vm.openWireGuard() }) { Text("Open WireGuard") }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = autoVpn, onCheckedChange = { autoVpn = it })
+            Spacer(Modifier.width(10.dp))
+            Text("Switch the VPN on automatically when I'm away from home (or the Tiiny isn't reachable)")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = offHome, onCheckedChange = { offHome = it }, enabled = autoVpn)
+            Spacer(Modifier.width(10.dp))
+            Text("…and off again when I'm back on my home network")
+        }
+        Text(
+            "Home is recognised by your Wi-Fi having the Tiiny's address range (e.g. 192.168.3.x); no location " +
+                "access is needed. Automatic switching runs while this app is open and pauses for 10 minutes after " +
+                "you switch the VPN yourself.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("NAS, as a fallback for unlocking", style = MaterialTheme.typography.titleMedium)
