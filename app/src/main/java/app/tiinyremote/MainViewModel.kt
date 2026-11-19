@@ -373,14 +373,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(vpn = it.vpn.copy(switching = true)) }
             val what = if (up) "on" else "off"
             log("Switching the VPN $what" + (reason?.let { " because $it" } ?: "") + "…")
-            Vpn.setTunnel(app, st.wgTunnel, up)
+            // WireGuard asleep in the background may miss the first command: send it up to three times.
             var done = false
-            for (i in 0 until 12) {
-                delay(1_000)
-                if (Vpn.active(app) == up) {
-                    done = true
-                    break
-                }
+            for (attempt in 1..3) {
+                if (attempt > 1) log("  No reaction from WireGuard yet, asking again ($attempt/3)…")
+                Vpn.setTunnel(app, st.wgTunnel, up)
+                done = waitForVpn(up, seconds = 5)
+                if (done) break
+            }
+            // When you tapped the button yourself: wake WireGuard by opening it, then ask once more.
+            if (!done && reason == null) {
+                log("  Opening WireGuard to wake it up, then asking once more…")
+                Vpn.openApp(app)
+                delay(2_000)
+                Vpn.setTunnel(app, st.wgTunnel, up)
+                done = waitForVpn(up, seconds = 8)
             }
             _state.update { it.copy(vpn = it.vpn.copy(switching = false)) }
             updateVpnStatus()
@@ -391,11 +398,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 log(
                     "WireGuard didn't switch the VPN $what. Check that the tunnel name \"${st.wgTunnel}\" matches the " +
-                        "WireGuard app exactly, and that \"Allow remote control apps\" is on in WireGuard's settings."
+                        "WireGuard app exactly and that \"Allow remote control apps\" is on in WireGuard's settings. " +
+                        "If it works only sometimes, Android is putting WireGuard to sleep: in Android's settings, " +
+                        "set WireGuard's battery use to \"Unrestricted\" (and allow Autostart, if your phone has it)."
                 )
                 toast("VPN didn't switch: see the Activity tab")
             }
         }
+    }
+
+    private suspend fun waitForVpn(up: Boolean, seconds: Int): Boolean {
+        for (i in 0 until seconds * 2) {
+            delay(500)
+            if (Vpn.active(app) == up) return true
+        }
+        return false
     }
 
     fun openWireGuard() {

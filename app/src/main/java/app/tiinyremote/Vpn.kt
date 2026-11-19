@@ -32,7 +32,12 @@ object Vpn {
 
     fun setTunnel(ctx: Context, tunnel: String, up: Boolean) {
         val action = if (up) "com.wireguard.android.action.SET_TUNNEL_UP" else "com.wireguard.android.action.SET_TUNNEL_DOWN"
-        ctx.sendBroadcast(Intent(action).setPackage(PACKAGE).putExtra("tunnel", tunnel.trim()))
+        val intent = Intent(action)
+            .setPackage(PACKAGE)
+            .putExtra("tunnel", tunnel.trim())
+            // Deliver promptly even when Android has put WireGuard to sleep in the background.
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND or Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+        ctx.sendBroadcast(intent)
     }
 
     fun openApp(ctx: Context) {
