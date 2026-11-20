@@ -358,7 +358,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _chatList.update { l -> (listOf(ChatInfo(id, title, now)) + l.filter { it.id != id }).sortedByDescending { it.updated } }
     }
 
-    private fun upd(id: String, f: (List<ChatMsg>) -> List<ChatMsg>) = _all.update { all -> all + (id to f(all[id] ?: emptyList())) }
+    /** Changes a chat's messages; a chat deleted meanwhile (or never loaded) stays as it is, so a late answer can't bring it back. */
+    private fun upd(id: String, f: (List<ChatMsg>) -> List<ChatMsg>) = _all.update { all ->
+        val cur = all[id] ?: return@update all
+        all + (id to f(cur))
+    }
 
     fun selectChat(id: String) {
         loadMessages(id)
@@ -605,7 +609,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             ApiLog.add("web search via ${found.via}: ${hits.size} results" + if (found.skipped.isNotEmpty()) " (skipped: ${found.skipped.joinToString("; ")})" else "")
             if (hits.isEmpty()) return "No results for \"$q\". Try other words."
             upd(id) { list ->
-                list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
+                if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
             }
             return hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(400)}" }.joinToString("\n\n")
         }
@@ -616,7 +620,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             val found = WebSearch.news(cfg, topic, region)
             ApiLog.add("news via ${found.via}: ${found.hits.size} items" + if (found.skipped.isNotEmpty()) " (skipped: ${found.skipped.joinToString("; ")})" else "")
             upd(id) { list ->
-                list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + found.hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
+                if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> m.copy(sources = (m.sources + found.hits.map { Source(it.title, it.url) }).distinctBy { it.url }) }
             }
             return "News (via ${found.via}):\n\n" + found.hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(300)}" }.joinToString("\n\n")
         }
@@ -624,7 +628,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         setStatus(id, "Reading ${url.substringAfter("://").substringBefore('/')}")
         val text = WebSearch.read(url)
         upd(id) { list ->
-            list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(url.substringAfter("://").substringBefore('/'), url)) }
+            if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(url.substringAfter("://").substringBefore('/'), url)) }
         }
         return "Page $url:\n\n$text"
     }
@@ -746,7 +750,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         setStatus(id, "")
                         val done = c.streamChat(body, { content, reasoning ->
                             upd(id) { list ->
-                                val last = list.last()
+                                val last = list.lastOrNull() ?: return@upd list
                                 list.dropLast(1) + last.copy(text = last.text + content, reasoning = last.reasoning + reasoning)
                             }
                         }, { chatStop.get() })
@@ -778,20 +782,20 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             }
                             if (entry != null) {
                                 _results.value = store.all()
-                                upd(id) { list -> list.dropLast(1) + list.last().let { it.copy(results = it.results + entry) } }
+                                upd(id) { list -> if (list.isEmpty()) list else list.dropLast(1) + list.last().let { it.copy(results = it.results + entry) } }
                             }
                             convo.put(JSONObject().put("role", "tool").put("tool_call_id", call.id).put("content", answer))
                         }
                         // keep what was said before the tool call on screen while the reply goes on
                         upd(id) { list ->
-                            val last = list.last()
+                            val last = list.lastOrNull() ?: return@upd list
                             list.dropLast(1) + last.copy(text = if (last.text.isBlank()) last.text else last.text + "\n\n")
                         }
                     }
                 }
             } catch (e: Exception) {
                 upd(id) { list ->
-                    val last = list.last()
+                    val last = list.lastOrNull() ?: return@upd list
                     list.dropLast(1) + last.copy(text = last.text + (if (last.text.isEmpty()) "" else "\n\n") + "Error: ${e.message}")
                 }
             } finally {

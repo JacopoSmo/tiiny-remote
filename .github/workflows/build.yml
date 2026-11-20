@@ -32,18 +32,21 @@ jobs:
           echo "$KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/signing.keystore"
           echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
 
+      - name: Version number
+        run: echo "APP_VERSION=3.0.$(( ${{ github.run_number }} - 37 ))" >> "$GITHUB_ENV"
+
       - name: Build the APK
         env:
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
-          mv app/build/outputs/apk/release/app-release.apk TiinyRemote-2.0.${{ github.run_number }}.apk
+          mv app/build/outputs/apk/release/app-release.apk "TiinyRemote-$APP_VERSION.apk"
 
       - name: Publish it as a release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Tiiny Remote 2.0.${{ github.run_number }}
+          tag_name: v${{ env.APP_VERSION }}
+          name: Tiiny Remote ${{ env.APP_VERSION }}
           body: Download the .apk below on your phone and open it to install or update.
           files: TiinyRemote-*.apk

@@ -267,6 +267,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
+            try {
+                unlockSteps(st, automatic)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                log("Unlock stopped: ${e.message}")
+            } finally {
+                // Never leave the app stuck in "Unlocking…".
+                _state.update { it.copy(unlocking = false) }
+            }
+        }
+    }
+
+    private suspend fun unlockSteps(st: AppSettings, automatic: Boolean) {
+        run {
             _state.update { it.copy(unlocking = true) }
             if (automatic) log("Tiiny is locked: unlocking automatically…")
             var ok = false
@@ -300,8 +314,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
             if (!ok) {
                 _state.update { it.copy(unlocking = false) }
-                if (!automatic) toast("Unlock failed: see the Unlock tab")
-                return@launch
+                if (!automatic) toast("Unlock failed: see the Activity tab")
+                return
             }
             log("Login done. Waiting for the Tiiny's services (usually up to 2 minutes)…")
             val deadline = System.currentTimeMillis() + 4 * 60_000
@@ -336,7 +350,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             res.error?.let { log("Test failed: $it") }
             toast(
                 when {
-                    res.error != null -> "NAS test failed: see the Unlock tab"
+                    res.error != null -> "NAS test failed: see the Activity tab"
                     res.output.contains("NOT found") -> "SSH works, but the Tiiny CLI wasn't found"
                     else -> "NAS login works and the Tiiny CLI is there"
                 }

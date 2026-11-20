@@ -1,58 +1,45 @@
-# Tiiny Remote
+# Tiiny Remote 3.0
 
-A small Android app for a Tiiny AI Pocket Lab on your home network:
+An Android app to run a Tiiny AI Pocket Lab from your phone, at home or over WireGuard. It talks to the Tiiny
+the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 
-- **Models:** see which models are installed and loaded, and load or unload them. If the NPU is full,
-  the app tells you which model the Tiiny suggests unloading and swaps them on request.
-- **Unlock:** after a restart the Tiiny stays locked until someone logs in. With the Tiiny's password saved,
-  the app unlocks it directly, the way `tiiny login` does. As a fallback it connects to your
-  NAS over SSH and runs `tiiny login` there (the Tiiny CLI must be installed on the NAS). With
-  automatic unlock on, it does this by itself when it finds the Tiiny locked.
-
-- **VPN:** shows whether your WireGuard VPN is on and whether you're on your home network, switches the
-  tunnel with one tap, and can switch it automatically: on when you're away from home (or the Tiiny isn't
-  reachable), off again at home. It controls the official WireGuard app, which must allow this under
-  Settings → *Allow remote control apps*. Home is recognised by your Wi-Fi having the Tiiny's address range,
-  so no location access is needed.
-
-- **Create (2.0):** make images from a description or edit photos, read text in pictures or have them
-  described, speak text (built-in, described or cloned voices), transcribe recordings, make music loops and
-  full songs, render short videos and build 3D models (.glb) from a picture. Results are kept in the app and
-  can be saved to the phone's gallery or shared.
-- **Chat (2.0):** a simple chat with the loaded model, with pictures for models that see images.
-
-It talks to the Tiiny the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does,
-over plain HTTP, so use it on home wifi or over WireGuard only.
+- **Models:** installed models with filters (Chat, Makes things, Sees images, Thinks), types, sorting, favourites,
+  your own short names and "About this model". Load and unload, with a swap offer when the NPU is full.
+- **Store:** browse TiinyOS's Model Store, download models (progress, pause, cancel), update models with a newer
+  version, and delete models from the Tiiny.
+- **Live strip:** online/offline, models loaded, NPU and CPU load (colour-coded), NPU memory and RAM in GB, power
+  and temperature (when the Tiiny reports them); tap it for the full panel.
+- **Chat:** several chats side by side, saved on the phone, with Thinking, "Can make things" (pictures, voice,
+  music from the chat) and web search (your SearXNG, else Tavily, Bing, DuckDuckGo or Wikipedia from the phone).
+- **Create:** images (create, edit, read text), voice (built-in, described or cloned), transcription, loops and
+  songs, video, 3D models, text embedding, reranking and classification, laid out like Tiiny Studio. Results are
+  kept under Creations and can be saved to the phone or shared.
+- **Unlock:** after a restart the app unlocks the Tiiny with its password (or through the NAS over SSH).
+- **VPN:** one-tap and automatic WireGuard switching (on away from home, off at home).
+- **Activity:** one colour-coded log with filters and Share (secrets removed).
+- **Display:** a compact layout for square screens (e.g. Unihertz Titan 2), sizes, and Enter-to-send for
+  hardware keyboards.
 
 ## Install
 
-Every push to `main` builds the app on GitHub. On your phone, open this repository's **Releases**,
-download the newest `TiinyRemote-….apk` and open it. Android asks once to allow installs from your
-browser. Newer builds install over the old one and keep your settings.
+Every push to `main` builds the app on GitHub. Open this repository's **Releases** on the phone, download the
+newest `TiinyRemote-3.0.x.apk` and open it. Newer builds install over the old one and keep your settings.
+
+Upgrading from 2.0.35 or older: uninstall the old app first (the signing key changed in 2.0.36).
 
 ## Set up
 
-In **Settings**:
-
-| Field | Example |
-| --- | --- |
-| Tiiny address | `http://192.168.3.143` |
-| API key | TiinyOS → Settings → API Key |
-| NAS address | the NAS's IP |
-| SSH port | `22` |
-| NAS username / password | your local NAS admin account |
-
-Tap **Save and test NAS login**; the Unlock tab shows whether SSH works and the Tiiny CLI was found.
-SSH has to be switched on in UGOS (Control Panel → Terminal) for unlocking to work.
-
-The unlock command runs `. ~/.profile; tiiny login` on the NAS. Change it under Settings if your CLI
-lives elsewhere.
+In **Settings**: the Tiiny's address (e.g. `http://192.168.x.x`), its API key (TiinyOS → Settings → API Key),
+and the Tiiny's password for unlocking. Optional: the WireGuard tunnel name, your SearXNG address, a Tavily key,
+and the NAS login for the SSH unlock fallback.
 
 ## Security notes
 
-- The API key and NAS password are stored encrypted with a key in the Android Keystore.
+- Keys and passwords are stored encrypted with a key in the Android Keystore; app backups are off.
 - The NAS's SSH key is saved at the first connection; a different key later is refused.
-- `app/release.keystore` (password `tiinyremote`) only signs this personal app so updates install
-  over each other. It protects nothing else.
+- Builds are signed with a key kept only in this repository's Actions secrets (`SIGNING_KEYSTORE_B64`,
+  `SIGNING_PASSWORD`). Without them the build stops.
+- Pages the chat opens can only be on the public internet, never on your home network.
+- The shared log leaves out emails, keys, tokens, passwords and the device's serial number.
+- The Tiiny only speaks plain HTTP, so use the app on your home network or through WireGuard.
 - Unofficial: the Tiiny endpoints come from community notes and may change with firmware updates.
-  Settings → *Show last API answers* shows what the device returned.

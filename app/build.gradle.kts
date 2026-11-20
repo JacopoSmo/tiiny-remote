@@ -16,10 +16,10 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = buildNumber
-        versionName = "2.0.$buildNumber"
+        // 3.0.x: the workflow sets APP_VERSION (3.0.0 was build 37, each later build counts up).
+        versionName = System.getenv("APP_VERSION") ?: "3.0.$buildNumber-local"
     }
 
-    // A fixed key, kept in the repo, so each new build installs over the previous one.
     // It only identifies this personal app; it protects nothing else.
     // The signing key lives only in the repo's Actions secrets (SIGNING_KEYSTORE_B64 and SIGNING_PASSWORD);
     // nothing secret is kept in the code. Without them the build stops instead of signing with another key.
