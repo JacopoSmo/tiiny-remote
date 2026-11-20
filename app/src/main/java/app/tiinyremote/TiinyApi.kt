@@ -31,6 +31,10 @@ data class ModelInfo(
     val thinkingToggleable: Boolean = false,
     /** The name the Tiiny gives it; `name` may be your shorter one for this app. */
     val fullName: String = "",
+    /** The store has a newer version of this model. */
+    val needUpdate: Boolean = false,
+    val versionLabel: String = "",
+    val sizeBytes: Long = 0,
 ) {
     /** Can reason before answering ("Thinking"). */
     val thinks get() = isChat && (thinkingSupported || "Reasoning" in supported)
@@ -71,6 +75,28 @@ data class ModelInfo(
 }
 
 data class Catalog(val models: List<ModelInfo>, val npuUsed: Double)
+
+/** A model in TiinyOS's Model Store (GET /api/v1/models/online_models). */
+data class StoreModel(
+    val id: String,
+    val name: String,
+    val type: String,
+    val params: String,
+    val npuUsage: Double?,
+    val sizeBytes: Long,
+    val desc: String,
+    val input: String,
+    val output: String,
+    val supported: List<String>,
+    val thinks: Boolean,
+    val versionLabel: String,
+    val contextWindow: Int?,
+)
+
+/** A model the Tiiny is downloading (or has paused): status as the Tiiny says it, progress in %. */
+data class Download(val id: String, val name: String, val status: String, val progress: Double?) {
+    val paused get() = status.contains("pause", true)
+}
 
 /** Answer of /api/v1/models/{id}/unload_candidate: does the model fit, and what to unload if not. */
 data class Plan(
@@ -311,6 +337,9 @@ class TiinyApi(url: String, private val key: String) {
                     thinkingSupported = m.optJSONObject("thinking")?.optBoolean("supported", false) ?: false,
                     thinkingToggleable = m.optJSONObject("thinking")?.optBoolean("toggleable", false) ?: false,
                     fullName = display,
+                    needUpdate = m.optBoolean("need_update", false),
+                    versionLabel = m.optString("version_label").takeIf { it != "null" } ?: "",
+                    sizeBytes = m.optLong("total_size", m.optLong("size", 0)),
                 )
             )
         }
@@ -353,6 +382,74 @@ class TiinyApi(url: String, private val key: String) {
     }
 
     /** Starts loading; the device answers once the load is accepted and finishes in the background. */
+    // ---------- the Model Store and downloads (the Tiiny downloads over its own Wi-Fi) ----------
+
+    /** Answers 2xx or throws the usual readable error. */
+    private fun ok(res: Pair<Int, String>): String {
+        if (res.first !in 200..299) json(res)
+        return res.second
+    }
+
+    fun store(): List<StoreModel> {
+        val t = ok(call("GET", "/api/v1/models/online_models", timeoutSec = 30, routine = true)).trim()
+        val arr = if (t.startsWith("[")) JSONArray(t) else JSONObject(t).optJSONArray("data") ?: JSONArray()
+        return (0 until arr.length()).mapNotNull { i ->
+            val m = arr.optJSONObject(i) ?: return@mapNotNull null
+            val id = m.optString("model_id").ifBlank { m.optString("id") }
+            if (id.isBlank()) return@mapNotNull null
+            val tags = m.optJSONArray("tags")
+            val tagSize = (0 until (tags?.length() ?: 0)).maxOfOrNull { tags!!.optJSONObject(it)?.optLong("size", 0) ?: 0 } ?: 0
+            fun str(k: String) = m.optString(k).takeIf { it != "null" } ?: ""
+            StoreModel(
+                id = id,
+                name = str("display_name").ifBlank { str("name") }.ifBlank { id.substringAfterLast('/') },
+                type = str("type"),
+                params = str("params"),
+                npuUsage = m.optDouble("npu_usage").takeIf { !it.isNaN() },
+                sizeBytes = maxOf(tagSize, m.optLong("total_size", 0), m.optLong("size", 0)),
+                desc = str("desc"),
+                input = str("input"),
+                output = str("output"),
+                supported = m.optJSONArray("supported")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                thinks = m.optJSONObject("thinking")?.optBoolean("supported", false) ?: false,
+                versionLabel = str("version_label"),
+                contextWindow = m.optInt("context_window", 0).takeIf { it > 0 },
+            )
+        }
+    }
+
+    /** Models being downloaded or paused, from the full list (including_downloading=true). */
+    fun downloads(): List<Download> {
+        val o = json(call("GET", "/api/v1/models/?including_downloading=true", timeoutSec = 15, routine = true))
+        val data = o.optJSONArray("data") ?: JSONArray()
+        return (0 until data.length()).mapNotNull { i ->
+            val m = data.optJSONObject(i) ?: return@mapNotNull null
+            val st = m.optString("status")
+            if (st == "downloaded" || st.isBlank() || st == "null") return@mapNotNull null
+            val id = m.optString("id").ifBlank { m.optString("model_id") }
+            Download(
+                id,
+                m.optString("display_name").takeIf { it.isNotBlank() && it != "null" } ?: id.substringAfterLast('/'),
+                st,
+                m.optDouble("progress").takeIf { !it.isNaN() },
+            )
+        }
+    }
+
+    /** Starts (or resumes) downloading a model; for an installed one with an update, fetches the new version. */
+    fun download(id: String) {
+        ok(call("POST", "/api/v1/models/${quote(id)}/download", null, 60))
+    }
+
+    fun pauseDownload(id: String) {
+        ok(call("POST", "/api/v1/models/${quote(id)}/pause_download", null, 30))
+    }
+
+    /** Deletes a downloaded model (or a partly downloaded one) from the Tiiny. */
+    fun delete(id: String) {
+        ok(call("DELETE", "/api/v1/models/${quote(id)}", null, 60))
+    }
+
     fun launch(id: String) {
         modelCall("POST", id, "/launch", JSONObject().put("model_id", id), timeoutSec = 120)
     }

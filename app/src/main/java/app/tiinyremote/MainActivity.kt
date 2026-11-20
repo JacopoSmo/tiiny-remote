@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { vm.statsLoop() }
+                launch { vm.downloadLoop() }
                 vm.pollLoop()
             }
         }

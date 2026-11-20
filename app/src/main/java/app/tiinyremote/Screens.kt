@@ -2,6 +2,7 @@
 
 package app.tiinyremote
 
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Clear
@@ -474,6 +475,9 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
     var loadedFirst by remember { mutableStateOf(prefs.getBoolean("loaded_first", false)) }
     var info by remember { mutableStateOf<ModelInfo?>(null) }
     var renameM by remember { mutableStateOf<ModelInfo?>(null) }
+    var deleteM by remember { mutableStateOf<ModelInfo?>(null) }
+    var storeView by remember { mutableStateOf(false) }
+    val stats by vm.stats.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }
 
     val active = FILTERS.filter { it.first in filters }
@@ -502,6 +506,26 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
             item { VpnCard(s, vm, onSettings = onOpenSettings) }
         }
         if (s.device == DeviceState.ONLINE) {
+            item {
+                // Installed models, or the Model Store.
+                val updates = s.models.count { it.needUpdate }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !storeView,
+                        onClick = { storeView = false },
+                        label = { Text("Installed ${s.models.size}" + if (updates > 0) " · ⟳ $updates" else "") },
+                    )
+                    FilterChip(
+                        selected = storeView,
+                        onClick = { storeView = true; if (s.store == null) vm.loadStore() },
+                        label = { Text("Store" + (s.store?.let { " ${it.size}" } ?: "")) },
+                    )
+                }
+            }
+            if (s.downloads.isNotEmpty()) item { DownloadsCard(s, vm) }
+            if (storeView) {
+                item { StoreList(s, vm, stats?.diskFreeGb) }
+            } else {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -586,12 +610,29 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
                     },
                     onInfo = { info = m },
                     onRename = { renameM = m },
+                    onUpdate = { vm.updateModel(m) },
+                    onDelete = { deleteM = m },
                     onLoad = { vm.load(m) },
                     onRetry = { vm.retry(m) },
                     onUnload = { vm.unload(m) },
                 )
             }
+            }
         }
+    }
+    deleteM?.let { m ->
+        AlertDialog(
+            onDismissRequest = { deleteM = null },
+            title = { Text("Delete ${m.name}?") },
+            text = {
+                Text(
+                    "This removes the model from the Tiiny" + (if (m.sizeBytes > 0) " and frees ${gbSize(m.sizeBytes)}" else "") +
+                        ". You can download it again from the Store.",
+                )
+            },
+            confirmButton = { DangerButton("Delete", onClick = { vm.deleteModel(m); deleteM = null }) },
+            dismissButton = { TextButton(onClick = { deleteM = null }) { BtnLabel("Cancel", Icons.Filled.Close) } },
+        )
     }
     info?.let { m -> ModelInfoDialog(m) { info = null } }
     renameM?.let { m ->
@@ -632,6 +673,8 @@ private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
                 HorizontalDivider()
                 val rows = listOfNotNull(
                     "Full name" to m.fullName.ifBlank { m.name },
+                    m.versionLabel.takeIf { it.isNotBlank() }?.let { "Version" to it + if (m.needUpdate) " (update available)" else "" },
+                    m.sizeBytes.takeIf { it > 0 }?.let { "Size on the Tiiny" to gbSize(it) },
                     "ID" to m.id,
                     m.type.takeIf { it.isNotBlank() }?.let { "Type" to it },
                     m.input.takeIf { it.isNotBlank() }?.let { "Input" to it.replace(",", ", ") },
@@ -667,6 +710,8 @@ private fun ModelCard(
     onFavourite: () -> Unit,
     onInfo: () -> Unit,
     onRename: () -> Unit,
+    onUpdate: () -> Unit,
+    onDelete: () -> Unit,
     onLoad: () -> Unit,
     onRetry: () -> Unit,
     onUnload: () -> Unit,
@@ -682,11 +727,21 @@ private fun ModelCard(
                     IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.Edit, contentDescription = "Rename in this app", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
+                    if (m.status == "stopped") IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Delete from the Tiiny", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
+                    }
+                }
+                if (m.needUpdate) {
+                    TextButton(
+                        onClick = onUpdate,
+                        colors = ButtonDefaults.textButtonColors(containerColor = Color(0xFFE65100).copy(alpha = 0.15f), contentColor = Color(0xFFE65100)),
+                    ) { BtnLabel("Update available", symbol = "⟳") }
                 }
                 val meta = listOfNotNull(
                     m.type.takeIf { it.isNotBlank() },
                     m.npuUsage?.let { "${pct(it)} NPU" },
                     m.loadTimeSec?.let { "loads in ~${fmtSec(it)}" },
+                    m.sizeBytes.takeIf { it > 0 }?.let { gbSize(it) },
                 ).joinToString(" · ")
                 if (meta.isNotEmpty()) {
                     Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

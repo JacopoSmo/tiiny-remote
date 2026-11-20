@@ -35,6 +35,11 @@ data class UiState(
     val toast: String? = null,
     val updatedAt: Long = 0,
     val vpn: VpnStatus = VpnStatus(),
+    /** The Model Store (null until opened), downloads in progress, and what the store tab is busy with. */
+    val store: List<StoreModel>? = null,
+    val storeError: String? = null,
+    val storeLoading: Boolean = false,
+    val downloads: List<Download> = emptyList(),
 )
 
 data class VpnStatus(
@@ -478,6 +483,76 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- settings ----------
+
+    // ---------- Model Store, downloads, updates, deleting ----------
+
+    fun loadStore() {
+        if (_state.value.storeLoading) return
+        _state.update { it.copy(storeLoading = true, storeError = null) }
+        viewModelScope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { api().store() }
+                _state.update { it.copy(store = list.sortedBy { m -> m.name.lowercase() }) }
+                readDownloads()
+            } catch (e: Exception) {
+                _state.update { it.copy(storeError = e.message ?: "The Model Store didn't answer.") }
+            } finally {
+                _state.update { it.copy(storeLoading = false) }
+            }
+        }
+    }
+
+    @Volatile
+    private var watchDownloadsUntil = 0L
+
+    private suspend fun readDownloads() {
+        val before = _state.value.downloads.map { it.id }.toSet()
+        val now = try {
+            withContext(Dispatchers.IO) { api().downloads() }
+        } catch (e: Exception) {
+            return
+        }
+        _state.update { it.copy(downloads = now) }
+        val finished = before - now.map { it.id }.toSet()
+        if (finished.isNotEmpty()) {
+            refresh()
+            val names = finished.map { id -> _state.value.store?.firstOrNull { it.id == id }?.name ?: id.substringAfterLast('/') }
+            toast("Downloaded: ${names.joinToString(", ")}")
+            ApiLog.add("Download finished: ${finished.joinToString(", ")}", "Models")
+        }
+    }
+
+    private fun modelAction(what: String, id: String, done: String, block: TiinyApi.() -> Unit) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { api().block() }
+                ApiLog.add("$what $id: accepted", "Models")
+                toast(done)
+                watchDownloadsUntil = System.currentTimeMillis() + 60_000
+                readDownloads()
+                refresh()
+            } catch (e: Exception) {
+                ApiLog.add("$what $id failed: ${e.message}", "Models")
+                toast("$what failed: ${e.message}")
+            }
+        }
+    }
+
+    fun download(id: String, name: String) = modelAction("Download", id, "Downloading $name on the Tiiny…") { this.download(id) }
+    fun updateModel(m: ModelInfo) = modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.download(m.id) }
+    fun pauseDownload(d: Download) = modelAction("Pause download", d.id, "Paused ${d.name}") { this.pauseDownload(d.id) }
+    fun resumeDownload(d: Download) = modelAction("Resume download", d.id, "Resuming ${d.name}…") { this.download(d.id) }
+    fun cancelDownload(d: Download) = modelAction("Cancel download", d.id, "Cancelled ${d.name}") { this.delete(d.id) }
+    fun deleteModel(m: ModelInfo) = modelAction("Delete", m.id, "Deleted ${m.name} from the Tiiny") { this.delete(m.id) }
+
+    /** Runs beside the polling: follows downloads every 5 s while there are any (or just after one was started). */
+    suspend fun downloadLoop() {
+        while (true) {
+            val s = _state.value
+            if (s.device == DeviceState.ONLINE && (s.downloads.isNotEmpty() || System.currentTimeMillis() < watchDownloadsUntil)) readDownloads()
+            delay(5_000)
+        }
+    }
 
     // ---------- your own names for models (this app only) ----------
 
