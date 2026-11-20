@@ -2,6 +2,12 @@
 
 package app.tiinyremote
 
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable

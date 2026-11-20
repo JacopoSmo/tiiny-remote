@@ -5,6 +5,7 @@
 
 package app.tiinyremote
 
+import androidx.compose.material.icons.filled.Close
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke

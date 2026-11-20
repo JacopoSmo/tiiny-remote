@@ -2,6 +2,12 @@
 
 package app.tiinyremote
 
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.ui.input.key.type

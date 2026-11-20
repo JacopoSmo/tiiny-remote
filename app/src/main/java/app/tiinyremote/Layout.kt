@@ -1,5 +1,8 @@
 package app.tiinyremote
 
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.foundation.Image
