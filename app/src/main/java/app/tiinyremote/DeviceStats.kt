@@ -51,7 +51,7 @@ object Stats {
         var s = DeviceStats()
         val c = DeviceClient(settings.tiinyUrl, settings.apiKey)
         try {
-            val r = c.request("GET", "/api/v1/npu/status", null, 5)
+            val r = c.request("GET", "/api/v1/npu/status", null, 5, log = false)
             if (r.ok) {
                 val o = r.json()
                 if (!logged) {
@@ -79,7 +79,7 @@ object Stats {
         if (s.ramTotalGb != null) ramTotal = s.ramTotalGb
         if (ramTotal == null && s.gateway) {
             ramTotal = try {
-                c.request("GET", "/api/v1/sys/status", null, 5).json().let { o ->
+                c.request("GET", "/api/v1/sys/status", null, 5, log = false).json().let { o ->
                     (o.optJSONObject("memory") ?: o.optJSONObject("mem") ?: o.optJSONObject("ram"))?.gb("total")
                 }
             } catch (e: Exception) {
@@ -93,7 +93,7 @@ object Stats {
         val d = disk
         if (d == null || System.currentTimeMillis() - d.first > 60_000) {
             val v = try {
-                val r = c.request("GET", "/api/v1/sys/status", null, 5)
+                val r = c.request("GET", "/api/v1/sys/status", null, 5, log = false)
                 val dk = r.json().optJSONObject("disk")
                 val total = dk?.num("total_bytes")
                 val used = dk?.num("used_bytes")

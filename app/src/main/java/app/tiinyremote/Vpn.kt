@@ -93,4 +93,15 @@ object Vpn {
     }
 
     private fun toInt(a: Inet4Address): Int = a.address.fold(0) { acc, byte -> (acc shl 8) or (byte.toInt() and 0xFF) }
+
+    /** Brings Tiiny Remote back to the front after WireGuard was opened to wake it. */
+    fun backToApp(ctx: Context) {
+        try {
+            ctx.startActivity(
+                Intent(ctx, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+            )
+        } catch (e: Exception) {
+        }
+    }
 }

@@ -380,12 +380,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         if (!st.autoVpn || !st.vpnConfigured || !v.permitted || v.switching) return
         if (now < vpnPausedUntil || now - lastVpnSwitch < 60_000) return
+        // A new network (home, away, unknown) gives automatic switching a fresh try after it gave up.
+        val net = v.onHome.toString()
+        if (net != autoNet) {
+            autoNet = net
+            autoGaveUp = false
+        }
+        if (autoGaveUp) return
         when {
             v.onHome == true && v.active && st.vpnOffAtHome -> switchVpn(false, "you're on your home network")
             v.onHome == false && !v.active -> switchVpn(true, "you're away from your home network")
             v.onHome == null && !v.active && !reachable -> switchVpn(true, "the Tiiny isn't reachable directly")
         }
     }
+
+    /** The network automatic switching last saw, and whether it gave up on it (so it doesn't retry every minute). */
+    private var autoNet: String? = null
+    private var autoGaveUp = false
 
     private fun switchVpn(up: Boolean, reason: String?) {
         val st = settings
@@ -414,13 +425,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 done = waitForVpn(up, seconds = 5)
                 if (done) break
             }
-            // When you tapped the button yourself: wake WireGuard by opening it, then ask once more.
-            if (!done && reason == null) {
+            // WireGuard is asleep: wake it by opening it, ask once more, then come back here.
+            if (!done) {
                 log("  Opening WireGuard to wake it up, then asking once more…")
                 Vpn.openApp(app)
                 delay(2_000)
                 Vpn.setTunnel(app, st.wgTunnel, up)
                 done = waitForVpn(up, seconds = 8)
+                if (reason != null) Vpn.backToApp(app)
             }
             _state.update { it.copy(vpn = it.vpn.copy(switching = false)) }
             updateVpnStatus()
@@ -435,6 +447,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         "If it works only sometimes, Android is putting WireGuard to sleep: in Android's settings, " +
                         "set WireGuard's battery use to \"Unrestricted\" (and allow Autostart, if your phone has it)."
                 )
+                if (reason != null) {
+                    // Don't keep trying every minute: wait until the network changes, or a tap on the VPN button.
+                    autoGaveUp = true
+                    log("Automatic VPN switching is paused until your network changes. Tap the VPN button to switch it yourself.")
+                }
                 toast("VPN didn't switch: see the Activity tab")
             }
         }

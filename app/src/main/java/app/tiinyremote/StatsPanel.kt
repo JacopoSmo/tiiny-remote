@@ -68,7 +68,9 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
             } else {
                 val mu = st?.npuMemUsedMb
                 val mt = st?.npuMemTotalMb
-                Meter("NPU", st?.npuUtil, Modifier.weight(1f), "Mem " + if (mu != null && mt != null) "${gbText(mu / 1024)} / ${gbText(mt / 1024)} GB" else "—")
+                // TiinyOS 0.1.39 doesn't report the NPU's own memory: then show the share the loaded models take.
+                val budget = s.models.filter { it.running }.sumOf { it.npuUsage ?: 0.0 }
+                Meter("NPU", st?.npuUtil, Modifier.weight(1f), "Mem " + if (mu != null && mt != null) "${gbText(mu / 1024)} / ${gbText(mt / 1024)} GB" else "${fmt(budget, "%")} used by models")
                 val ru = st?.ramUsedGb
                 val rt = st?.ramTotalGb
                 Meter("CPU", st?.cpuPct, Modifier.weight(1f), "RAM " + if (ru != null && rt != null) "${gbText(ru)} / ${gbText(rt)} GB" else "—")

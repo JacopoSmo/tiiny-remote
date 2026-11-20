@@ -54,18 +54,19 @@ class DeviceClient(url: String, private val key: String) {
         return conn
     }
 
-    private fun finish(conn: HttpURLConnection, method: String, path: String): Reply {
+    private fun finish(conn: HttpURLConnection, method: String, path: String, log: Boolean = true): Reply {
         val code = conn.responseCode
         val stream = if (code >= 400) conn.errorStream else conn.inputStream
         val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
         val shown = if (bytes.size > 2000 || !looksLikeText(bytes)) "(${bytes.size} bytes)" else String(bytes, Charsets.UTF_8).take(400)
-        ApiLog.add("$method $path -> HTTP $code: $shown")
+        if (log || code >= 400) ApiLog.add("$method $path -> HTTP $code: $shown")
         return Reply(code, bytes)
     }
 
     private fun looksLikeText(b: ByteArray) = b.take(64).all { it >= 9 || it < 0 }
 
-    fun request(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 60): Reply {
+    /** log = false for frequent polls (device stats), so they don't push the useful entries out of the log. */
+    fun request(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 60, log: Boolean = true): Reply {
         val conn = open(method, path, timeoutSec)
         try {
             if (body != null) {
@@ -75,11 +76,11 @@ class DeviceClient(url: String, private val key: String) {
                 conn.setFixedLengthStreamingMode(bytes.size)
                 conn.outputStream.use { it.write(bytes) }
             }
-            return finish(conn, method, path)
+            return finish(conn, method, path, log)
         } catch (e: MediaException) {
             throw e
         } catch (e: Exception) {
-            ApiLog.add("$method $path -> ${e.javaClass.simpleName}: ${e.message}")
+            if (log) ApiLog.add("$method $path -> ${e.javaClass.simpleName}: ${e.message}")
             throw MediaException("Lost the connection to the Tiiny (${e.message ?: e.javaClass.simpleName}).")
         } finally {
             conn.disconnect()
