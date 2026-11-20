@@ -30,6 +30,24 @@ class PickedImage(val bytes: ByteArray, val mime: String, val preview: Bitmap) {
 class PickedAudio(val bytes: ByteArray, val mime: String, val name: String, val seconds: Double? = null)
 
 object Inputs {
+    /** Larger files would run the phone out of memory (they're sent to the Tiiny in one piece). */
+    const val MAX_AUDIO = 300L * 1024 * 1024
+
+    /** Reads a stream, refusing more than `max` bytes instead of crashing on a huge file. */
+    fun readCapped(input: java.io.InputStream, max: Long, what: String): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > max) throw MediaException("$what is too big (over ${max / (1024 * 1024)} MB).")
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+
     /** Loads a picture, turned upright and at most maxSide pixels on its long side. PNG if it has transparency, else JPEG. */
     fun image(ctx: Context, uri: Uri, maxSide: Int = 1536): PickedImage {
         val bmp: Bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -58,7 +76,7 @@ object Inputs {
     }
 
     fun audio(ctx: Context, uri: Uri): PickedAudio {
-        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        val bytes = ctx.contentResolver.openInputStream(uri)?.use { readCapped(it, MAX_AUDIO, "That file") }
             ?: throw MediaException("Couldn't read that audio file.")
         var name = "audio"
         ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->

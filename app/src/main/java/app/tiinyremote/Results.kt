@@ -11,8 +11,6 @@ import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 /** One finished piece of work: an image, a sound, a video, a 3D model or a text. */
@@ -49,7 +47,7 @@ data class ResultEntry(
 class ResultStore(private val ctx: Context) {
     val dir = File(ctx.filesDir, "results").apply { mkdirs() }
     private val index = File(dir, "index.json")
-    private val stamp = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.ROOT)
+    private val stamp = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss", Locale.ROOT)
 
     @Synchronized
     fun all(): List<ResultEntry> = try {
@@ -68,7 +66,9 @@ class ResultStore(private val ctx: Context) {
         tmp.renameTo(index)
     }
 
-    fun newId(): String = stamp.format(Date())
+    /** Date and time (so file managers sort them) plus a random tail, so two results in the same second can't collide. */
+    fun newId(): String =
+        stamp.format(java.time.LocalDateTime.now()) + "-" + java.util.UUID.randomUUID().toString().take(4)
 
     /** Saves bytes as a result file; the name starts with the date so file managers sort them. */
     fun saveFile(id: String, suffix: String, bytes: ByteArray): String {
@@ -77,7 +77,12 @@ class ResultStore(private val ctx: Context) {
         return name
     }
 
-    fun file(name: String) = File(dir, name)
+    /** A result file by name; a name that would lead out of the results folder is refused. */
+    fun file(name: String): File {
+        val f = File(dir, name)
+        require(f.canonicalPath.startsWith(dir.canonicalPath + File.separator)) { "Not a result file: $name" }
+        return f
+    }
 
     @Synchronized
     fun add(e: ResultEntry) {
@@ -86,7 +91,7 @@ class ResultStore(private val ctx: Context) {
 
     @Synchronized
     fun delete(e: ResultEntry) {
-        e.files.forEach { File(dir, it).delete() }
+        e.files.forEach { runCatching { file(it).delete() } }
         write(all().filter { it.id != e.id })
     }
 

@@ -56,7 +56,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState(store.load(), unavailable = store.unavailable()))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
-    private val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
+    private val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
     private var lastAutoUnlock = 0L
     private var lastVpnSwitch = 0L
     /** After you switch the VPN yourself, automatic switching pauses for 10 minutes. */
@@ -350,7 +350,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun log(line: String) {
-        val entry = "${time.format(Date())}  $line"
+        val entry = "${time.format(java.time.LocalTime.now())}  $line"
         _state.update { it.copy(log = (it.log + entry).takeLast(200)) }
         // Into the unified log too, as VPN or Unlock.
         ApiLog.add(line.trim(), if (Regex("VPN|WireGuard|tunnel", RegexOption.IGNORE_CASE).containsMatchIn(line)) "VPN" else "Unlock")

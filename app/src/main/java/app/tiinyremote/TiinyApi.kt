@@ -110,9 +110,7 @@ data class Plan(
 
 /** The last few requests and answers, shown under Settings to help debug a firmware that answers differently. */
 /** One line of the unified log: when, which kind (see ApiLog.TYPES), the text, and whether it reports a problem. */
-data class LogEntry(val ms: Long, val type: String, val text: String, val error: Boolean) {
-    val time: String get() = SimpleDateFormat("HH:mm:ss", Locale.ROOT).format(Date(ms))
-}
+data class LogEntry(val ms: Long, val type: String, val text: String, val error: Boolean, val time: String)
 
 /** The app's one log: device API calls, models, unlocking, VPN, chat, web search and the creation tools. */
 object ApiLog {
@@ -123,12 +121,17 @@ object ApiLog {
     val entries: kotlinx.coroutines.flow.StateFlow<List<LogEntry>> = _entries
 
     private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
-    private val secretFields = Regex("(\"(?:auth_key|attestation)\"\\s*:\\s*\")[^\"]*\"")
+    /** Fields whose values never reach the log: login keys, tokens, passwords, and the device's serial number. */
+    private val secretFields = Regex(
+        "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number)\"\\s*:\\s*\")[^\"]*\"",
+    )
+    private val bearer = Regex("(Bearer\\s+)[A-Za-z0-9._~+/=-]{8,}")
+    private val clock = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
     private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error", RegexOption.IGNORE_CASE)
 
     /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
     fun redact(text: String): String =
-        secretFields.replace(email.replace(text, "***@***"), "$1***\"")
+        bearer.replace(secretFields.replace(email.replace(text, "***@***"), "$1***\""), "$1***")
 
     /** Which kind an entry is, from what it says (when the caller doesn't name it). */
     private fun classify(line: String): String = when {
@@ -143,7 +146,7 @@ object ApiLog {
 
     fun add(line: String, type: String? = null) {
         val text = redact(line)
-        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, problem.containsMatchIn(text))
+        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, problem.containsMatchIn(text), clock.format(java.time.LocalTime.now()))
         synchronized(this) { _entries.value = (listOf(e) + _entries.value).take(400) }
     }
 

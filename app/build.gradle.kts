@@ -21,12 +21,22 @@ android {
 
     // A fixed key, kept in the repo, so each new build installs over the previous one.
     // It only identifies this personal app; it protects nothing else.
+    // The signing key comes from the repo's Actions secrets when they're set (SIGNING_KEYSTORE_B64 and
+    // SIGNING_PASSWORD); without them, the older key kept in the repo is used so updates keep installing.
     signingConfigs {
         create("release") {
-            storeFile = file("release.keystore")
-            storePassword = "tiinyremote"
-            keyAlias = "tiinyremote"
-            keyPassword = "tiinyremote"
+            val secretStore = System.getenv("SIGNING_STORE_FILE")
+            if (!secretStore.isNullOrBlank()) {
+                storeFile = file(secretStore)
+                storePassword = System.getenv("SIGNING_PASSWORD")
+                keyAlias = System.getenv("SIGNING_ALIAS") ?: "tiinyremote"
+                keyPassword = System.getenv("SIGNING_PASSWORD")
+            } else {
+                storeFile = file("release.keystore")
+                storePassword = "tiinyremote"
+                keyAlias = "tiinyremote"
+                keyPassword = "tiinyremote"
+            }
         }
     }
 

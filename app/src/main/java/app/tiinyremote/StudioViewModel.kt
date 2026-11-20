@@ -164,10 +164,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString("pick_$tool", id).apply()
     }
 
-    fun clearJob() {
-        if (_job.value?.running != true) _job.value = null
-    }
-
     /** Runs a tool in the background; its result lands in the library. */
     fun run(tool: String, block: (DeviceClient, ResultStore, Progress, RemoteJob) -> ResultEntry) {
         if (_job.value?.running == true) {
@@ -188,9 +184,12 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val entry = withContext(Dispatchers.IO) { block(client(), store, progress, rj).also { store.add(it) } }
                 _results.value = store.all()
                 _job.value = JobUi(tool, false, "Done", 100, null, entry)
-            } catch (e: Exception) {
-                ApiLog.add("$tool failed: ${e.message}")
-                _job.value = JobUi(tool, false, error = e.message ?: e.toString())
+            } catch (e: Throwable) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // Out of memory (a huge picture or file) ends this job, not the app.
+                val msg = if (e is OutOfMemoryError) "Not enough memory on the phone for this. Try a smaller file or size." else e.message ?: e.toString()
+                ApiLog.add("$tool failed: $msg", "Create")
+                _job.value = JobUi(tool, false, error = msg)
             }
         }
     }
@@ -374,8 +373,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _all.update { it + (id to emptyList()) }
         selectChat(id)
     }
-
-    fun clearChat() = newChat()
 
     fun renameChat(id: String, title: String) {
         val f = chatFile(id)

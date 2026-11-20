@@ -14,11 +14,12 @@ object WebSearch {
 
     private fun get(
         url: String, timeoutSec: Int, max: Int, post: String? = null, postType: String = "application/x-www-form-urlencoded",
-        headers: Map<String, String> = emptyMap(), connectSec: Int = 10,
+        headers: Map<String, String> = emptyMap(), connectSec: Int = 10, publicOnly: Boolean = false,
     ): Pair<Int, Pair<String, ByteArray>> {
         var u = URL(url)
         var body = post
         repeat(5) {
+            if (publicOnly) checkPublic(u)
             val c = u.openConnection() as HttpURLConnection
             c.connectTimeout = connectSec * 1000
             c.readTimeout = timeoutSec * 1000
@@ -297,10 +298,36 @@ object WebSearch {
         return out
     }
 
+    /**
+     * The chat model chooses which pages to open, and a web page could talk it into trying addresses on your home
+     * network (the router, the NAS, the Tiiny). So open_page only goes to the public internet: names that resolve to
+     * private, local or loopback addresses are refused, at every redirect too.
+     */
+    private fun checkPublic(u: URL) {
+        if (u.protocol != "http" && u.protocol != "https") throw MediaException("Only web addresses (http/https) can be opened.")
+        val host = u.host.trim('[', ']')
+        if (host.isBlank() || host.endsWith(".local", true) || host.equals("localhost", true) || !host.contains('.') && !host.contains(':')) {
+            throw MediaException("Pages on your own network can't be opened from the chat.")
+        }
+        val addrs = try {
+            java.net.InetAddress.getAllByName(host)
+        } catch (e: Exception) {
+            throw MediaException("Couldn't find $host.")
+        }
+        for (a in addrs) {
+            val b = a.address
+            val ula = b.size == 16 && (b[0].toInt() and 0xFE) == 0xFC // IPv6 fc00::/7
+            val cgnat = b.size == 4 && (b[0].toInt() and 0xFF) == 100 && (b[1].toInt() and 0xC0) == 64 // 100.64/10
+            if (a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress || a.isAnyLocalAddress || a.isMulticastAddress || ula || cgnat) {
+                throw MediaException("Pages on your own network can't be opened from the chat.")
+            }
+        }
+    }
+
     /** A web page as plain text, cut to `max` characters. */
     fun read(url: String, max: Int = 8000): String {
         if (!url.startsWith("http://") && !url.startsWith("https://")) throw MediaException("Only web addresses (http/https) can be opened.")
-        val (code, res) = get(url, 25, 3_000_000)
+        val (code, res) = get(url, 25, 3_000_000, publicOnly = true)
         if (code != 200) throw MediaException("The page answered HTTP $code.")
         val (type, bytes) = res
         val charset = Regex("charset=([\\w-]+)", RegexOption.IGNORE_CASE).find(type)?.groupValues?.get(1) ?: "UTF-8"

@@ -21,7 +21,18 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Signing key from the secrets (if set)
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/signing.keystore"
+            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
+          fi
+
       - name: Build the APK
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace

@@ -46,7 +46,7 @@ object DocText {
             mime.startsWith("image/") || ext in setOf("png", "jpg", "jpeg", "webp", "heic", "heif", "gif", "bmp") ->
                 TextSource.Picture(name, Inputs.image(ctx, uri))
             else -> {
-                val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                val bytes = ctx.contentResolver.openInputStream(uri)?.use { Inputs.readCapped(it, 60L * 1024 * 1024, "That document") }
                     ?: throw MediaException("Couldn't read that file.")
                 val text = when {
                     ext in ZIP_EXT -> zipText(bytes, ext)
@@ -99,7 +99,10 @@ object DocText {
                     "epub" -> Regex(".*\\.x?html?", RegexOption.IGNORE_CASE).matches(n)
                     else -> n == "content.xml"
                 }
-                if (wanted) parts[n] = String(z.readBytes())
+                if (wanted) {
+                    parts[n] = String(Inputs.readCapped(z, 30L * 1024 * 1024, "A part of that document"))
+                    if (parts.values.sumOf { it.length } > 40_000_000) throw MediaException("That document is too big to read here.")
+                }
             }
         }
         if (parts.isEmpty()) throw MediaException("Couldn't find the text in that document.")
