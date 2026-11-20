@@ -1,5 +1,10 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.FilterChip
 import androidx.compose.ui.graphics.Color
@@ -450,6 +455,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
     var sort by remember { mutableStateOf(prefs.getString("sort", "name") ?: "name") }
     var descending by remember { mutableStateOf(prefs.getBoolean("desc", false)) }
     var favs by remember { mutableStateOf(prefs.getStringSet("favs", emptySet())!!.toSet()) }
+    var loadedFirst by remember { mutableStateOf(prefs.getBoolean("loaded_first", false)) }
     var info by remember { mutableStateOf<ModelInfo?>(null) }
     var sortOpen by remember { mutableStateOf(false) }
 
@@ -463,6 +469,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         .filter { m -> active.all { it.third(m) } }
         .sortedWith(
             compareBy<ModelInfo>(
+                { if (loadedFirst && it.status != "stopped") 0 else 1 }, // loaded models first, when that's on
                 { if (it.id in favs) 0 else 1 }, // favourites on top
                 { if (it.id in s.unavailable && it.status == "stopped") 1 else 0 },
             ).then(if (descending) byKey.reversed() else byKey)
@@ -480,21 +487,50 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         if (s.device == DeviceState.ONLINE) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        for ((key, label, _) in FILTERS) {
-                            FilterChip(
-                                selected = key in filters,
-                                onClick = {
-                                    filters = if (key in filters) filters - key else filters + key
-                                    prefs.edit().putStringSet("filters", filters).apply()
-                                },
-                                label = { Text(label) },
-                            )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            for ((key, label, _) in FILTERS) {
+                                FilterChip(
+                                    selected = key in filters,
+                                    onClick = {
+                                        filters = if (key in filters) filters - key else filters + key
+                                        prefs.edit().putStringSet("filters", filters).apply()
+                                    },
+                                    label = { Text(label) },
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        // Round button in the "Loaded" colour: loaded models to the top.
+                        val loadedColor = Color(0xFFE65100)
+                        Surface(
+                            onClick = {
+                                loadedFirst = !loadedFirst
+                                prefs.edit().putBoolean("loaded_first", loadedFirst).apply()
+                            },
+                            shape = CircleShape,
+                            color = if (loadedFirst) loadedColor else Color.Transparent,
+                            border = BorderStroke(2.dp, loadedColor),
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.PlayArrow,
+                                    contentDescription = if (loadedFirst) "Loaded models first: on" else "Loaded models first: off",
+                                    tint = if (loadedFirst) Color.White else loadedColor,
+                                )
+                            }
                         }
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "${list.size} of ${s.models.size} models" + if (favs.isNotEmpty()) " · ★ first" else "",
+                            "${list.size} of ${s.models.size} models" + listOfNotNull(
+                                if (loadedFirst) "loaded first" else null,
+                                if (favs.isNotEmpty()) "★ first" else null,
+                            ).joinToString("") { " · $it" },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f),
@@ -593,22 +629,14 @@ private fun ModelCard(
     onUnload: () -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(m.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
-                IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Row(Modifier.height(IntrinsicSize.Min).padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(m.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                    IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
                 }
-                Spacer(Modifier.weight(1f))
-                IconButton(onClick = onFavourite) {
-                    Text(
-                        if (favourite) "★" else "☆",
-                        style = MaterialTheme.typography.titleLarge,
-                        color = if (favourite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Column(Modifier.padding(end = 8.dp)) {
                 val meta = listOfNotNull(
                     m.type.takeIf { it.isNotBlank() },
                     m.npuUsage?.let { "${pct(it)} NPU" },
@@ -618,11 +646,7 @@ private fun ModelCard(
                     Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (m.abilities.isNotEmpty()) {
-                    Text(
-                        m.abilities.joinToString("  ·  "),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+                    Text(m.abilities.joinToString("  ·  "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 if (unavailable) {
                     Text(
@@ -631,26 +655,38 @@ private fun ModelCard(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+                Spacer(Modifier.weight(1f))
                 Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val label = when {
+                Text(
+                    when {
                         m.status == "running" -> if (m.busy) "Loaded · working" else "Loaded"
                         m.status == "loading" -> "Loading…"
                         unavailable -> "Not available on the Tiiny"
                         else -> "Not loaded"
-                    }
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (m.status == "running") Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            // The same fixed-width column on every card: the star always sits centred above the button.
+            Column(
+                Modifier.width(112.dp).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                IconButton(onClick = onFavourite) {
                     Text(
-                        label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (m.status == "running") Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        if (favourite) "★" else "☆",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (favourite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.weight(1f))
+                }
+                Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
                     when {
-                        working || m.status == "loading" ->
-                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                        m.status == "running" -> OutlinedButton(onClick = onUnload) { Text("Unload") }
-                        unavailable -> TextButton(onClick = onRetry) { Text("Try again") }
-                        else -> Button(onClick = onLoad) { Text("Load") }
+                        working || m.status == "loading" -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        m.status == "running" -> OutlinedButton(onClick = onUnload, modifier = Modifier.fillMaxWidth()) { Text("Unload", maxLines = 1) }
+                        unavailable -> TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again", maxLines = 1) }
+                        else -> Button(onClick = onLoad, modifier = Modifier.fillMaxWidth()) { Text("Load", maxLines = 1) }
                     }
                 }
             }
