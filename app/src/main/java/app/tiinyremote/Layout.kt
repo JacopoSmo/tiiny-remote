@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -104,7 +105,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 8.dp))
-                    TextButton(onClick = { st.share(e) }) { Text("Share") }
+                    TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                     TextButton(onClick = onClose) { Text("Close") }
                 }
                 when (e.kind) {
@@ -120,7 +121,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                             } else {
                                 Text("Pinch to zoom · double-tap", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (name != null) TextButton(onClick = { onClose(); st.editThis(name) }) { Text("✎ Edit this") }
+                            if (name != null) TextButton(onClick = { onClose(); st.editThis(name) }) { BtnLabel("Edit this", androidx.compose.material.icons.Icons.Filled.Edit) }
                         }
                     }
                     "video" -> e.mainFile?.let { n ->
@@ -151,4 +152,34 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
             }
         }
     }
+}
+
+/** A button's content: a sign (icon or symbol) before the word, so the standard buttons look the same everywhere. */
+@Composable
+fun BtnLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, symbol: String? = null) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(18.dp))
+        else if (symbol != null) Text(symbol, modifier = Modifier.padding(end = 6.dp))
+        Text(text, maxLines = 1)
+    }
+}
+
+/** Delete, Clear and Forget: a slightly red button with the bin (or another) sign. */
+@Composable
+fun DangerButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = androidx.compose.material.icons.Icons.Filled.Delete,
+) {
+    androidx.compose.material3.TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+            contentColor = MaterialTheme.colorScheme.error,
+        ),
+    ) { BtnLabel(text, icon) }
 }

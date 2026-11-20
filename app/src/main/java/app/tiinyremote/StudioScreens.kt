@@ -176,6 +176,19 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
         val saved = st.setting("create.order", "").split('|').filter { it in defaultOrder }
         mutableStateOf(saved + defaultOrder.filter { it !in saved })
     }
+    // The Creations groups, also in your order.
+    var arrangingC by rememberSaveable { mutableStateOf(false) }
+    val defaultGroups = listOf("Chats") + CREATION_GROUPS.map { it.first }
+    var groupOrder by remember {
+        val saved = st.setting("creations.order", "").split('|').filter { it in defaultGroups }
+        mutableStateOf(saved + defaultGroups.filter { it !in saved })
+    }
+    fun moveGroup(i: Int, by: Int) {
+        val j = i + by
+        if (j !in groupOrder.indices) return
+        groupOrder = groupOrder.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t }
+        st.setSetting("creations.order", groupOrder.joinToString("|"))
+    }
     fun move(i: Int, by: Int) {
         val j = i + by
         if (j !in order.indices) return
@@ -209,7 +222,7 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
             createOpen = !createOpen
             st.setSetting("hub.create", if (createOpen) "1" else "0")
         }) {
-            if (createOpen) TextButton(onClick = { arranging = !arranging }) { Text(if (arranging) "Done" else "Arrange") }
+            if (createOpen) TextButton(onClick = { arranging = !arranging }) { BtnLabel(if (arranging) "Done" else "Arrange", symbol = if (arranging) "✓" else "⇅") }
         }
         if (createOpen) {
             if (arranging) Text("Move the kinds with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
@@ -267,17 +280,25 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
         Bar("Creations", "${chats.size} chats · ${results.size} results", creationsOpen, {
             creationsOpen = !creationsOpen
             st.setSetting("hub.creations", if (creationsOpen) "1" else "0")
-        })
+        }) {
+            if (creationsOpen) TextButton(onClick = { arrangingC = !arrangingC }) {
+                BtnLabel(if (arrangingC) "Done" else "Arrange", symbol = if (arrangingC) "✓" else "⇅")
+            }
+        }
         if (creationsOpen) {
-            val groups = listOf("Chats" to chats.size) + CREATION_GROUPS.map { (name, kinds) -> name to results.count { it.kind in kinds } }
-            for ((name, count) in groups) {
-                val expanded = openGroup == name
-                Card(onClick = { openGroup = if (expanded) null else name }, modifier = Modifier.fillMaxWidth(), enabled = count > 0) {
+            if (arrangingC) Text("Move the groups with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
+            for ((i, name) in groupOrder.withIndex()) {
+                val count = if (name == "Chats") chats.size else CREATION_GROUPS.first { it.first == name }.second.let { k -> results.count { it.kind in k } }
+                val expanded = openGroup == name && !arrangingC
+                Card(onClick = { if (!arrangingC) openGroup = if (expanded) null else name }, modifier = Modifier.fillMaxWidth(), enabled = count > 0 || arrangingC) {
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         Text("$count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.width(8.dp))
-                        Text(if (expanded) "▴" else "▾")
+                        if (arrangingC) {
+                            TextButton(onClick = { moveGroup(i, -1) }, enabled = i > 0) { Text("↑") }
+                            TextButton(onClick = { moveGroup(i, 1) }, enabled = i < groupOrder.size - 1) { Text("↓") }
+                        } else Text(if (expanded) "▴" else "▾")
                     }
                 }
                 if (expanded) {
@@ -365,7 +386,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                 else -> Button(
                     onClick = { vm.load(model) },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 2.dp),
-                ) { Text("Load") }
+                ) { BtnLabel("Load", androidx.compose.material.icons.Icons.Filled.PlayArrow) }
             }
         }
         return model
@@ -414,7 +435,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                 when {
                     model.running -> {}
                     working -> CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                    else -> Button(onClick = { vm.load(model) }) { Text("Load") }
+                    else -> Button(onClick = { vm.load(model) }) { BtnLabel("Load", androidx.compose.material.icons.Icons.Filled.PlayArrow) }
                 }
             }
         }
@@ -466,7 +487,7 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(onClick = { st.cancel() }) { Text("Cancel") }
+                OutlinedButton(onClick = { st.cancel() }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) }
             }
         }
     } else {
@@ -517,7 +538,7 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
             }) { Text(if (images.isEmpty()) label else "Choose again") }
             if (images.isNotEmpty()) {
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = { onPicked(emptyList()) }) { Text("Remove") }
+                TextButton(onClick = { onPicked(emptyList()) }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
             }
         }
         if (images.isNotEmpty()) {
@@ -593,7 +614,7 @@ internal fun AudioInput(audio: PickedAudio?, mimes: Array<String> = arrayOf("aud
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(onClick = { onAudio(null) }) { Text("Remove") }
+                TextButton(onClick = { onAudio(null) }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
             }
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -1064,7 +1085,7 @@ private fun ClassifyTool(model: ModelInfo?, notReady: String?, st: StudioViewMod
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Question ${i + 1}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    if (questions.size > 1) TextButton(onClick = { questions.removeAt(i) }) { Text("Remove") }
+                    if (questions.size > 1) TextButton(onClick = { questions.removeAt(i) }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
                 }
                 Chips(listOf("noul" to "Yes / no", "choice" to "Pick one", "score" to "Score"), q.type) { q.type = it }
                 Field(q.instructions, { q.instructions = it }, "The question", lines = 2,
@@ -1131,12 +1152,12 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                         val f = st.store.file(name)
                         val bmp = remember(f.path) { Inputs.thumbnail(f) }
                         bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
-                        if (e.files.size > 1) TextButton(onClick = { st.editThis(name) }) { Text("Edit this one") }
+                        if (e.files.size > 1) TextButton(onClick = { st.editThis(name) }) { BtnLabel("Edit this one", androidx.compose.material.icons.Icons.Filled.Edit) }
                     }
                     e.text.lines().drop(1).joinToString(" ").takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (e.files.size == 1) OutlinedButton(onClick = { st.editThis(e.files[0]) }) { Text("✎ Edit this") }
+                    if (e.files.size == 1) OutlinedButton(onClick = { st.editThis(e.files[0]) }) { BtnLabel("Edit this", androidx.compose.material.icons.Icons.Filled.Edit) }
                 }
                 "speech", "loop", "song" -> file?.let { f ->
                     if (e.kind != "speech" && e.text.isNotBlank()) {
@@ -1146,7 +1167,7 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                     Button(onClick = {
                         Player.toggle(f) { playing = false }
                         playing = Player.playing == f.name
-                    }) { Text(if (playing) "Stop" else "Play") }
+                    }) { BtnLabel(if (playing) "Stop" else "Play", symbol = if (playing) "■" else "▶") }
                     if (e.kind == "song" && st.canContinue(e)) {
                         OutlinedButton(onClick = { st.continueSong(e) }) { Text("Continue to full song") }
                         Text("Takes about 15 minutes; the Tiiny keeps the preview's session only for a while.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1169,7 +1190,7 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                 }
                 "mesh" -> file?.let { f ->
                     if (e.text.isNotBlank()) Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { st.open(f.name) }) { Text("Open in a 3D viewer") }
+                    Button(onClick = { st.open(f.name) }) { BtnLabel("Open in a 3D viewer", androidx.compose.material.icons.Icons.AutoMirrored.Filled.ExitToApp) }
                 }
             }
             if (e.kind in TEXT_KINDS && e.text.isNotBlank()) {
@@ -1178,13 +1199,13 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                 }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (e.files.isNotEmpty()) TextButton(onClick = { st.saveToPhone(e) }) { Text("Save to phone") }
+                if (e.files.isNotEmpty()) TextButton(onClick = { st.saveToPhone(e) }) { BtnLabel("Save to phone", symbol = "⤓") }
                 if (e.text.isNotBlank() && e.kind in TEXT_KINDS) {
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(e.text)) }) { Text("Copy") }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(e.text)) }) { BtnLabel("Copy", symbol = "⧉") }
                 }
-                TextButton(onClick = { st.share(e) }) { Text("Share") }
-                if (confirmDelete) TextButton(onClick = { st.delete(e) }) { Text("Really delete", color = MaterialTheme.colorScheme.error) }
-                else TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
+                TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
+                if (confirmDelete) DangerButton("Really delete", onClick = { st.delete(e) })
+                else DangerButton("Delete", onClick = { confirmDelete = true })
             }
         }
     }
@@ -1317,9 +1338,9 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             )
             Spacer(Modifier.width(8.dp))
             if (busy) {
-                OutlinedButton(onClick = { st.stopChat() }) { Text("Stop") }
+                OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
             } else {
-                Button(onClick = { doSend() }, enabled = canSend) { Text("Send") }
+                Button(onClick = { doSend() }, enabled = canSend) { BtnLabel("Send", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
             }
         }
     }

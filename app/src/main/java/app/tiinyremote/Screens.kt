@@ -262,8 +262,8 @@ fun AppRoot(vm: MainViewModel) {
                                     modifier = Modifier.padding(horizontal = 8.dp),
                                 )
                                 DropdownMenu(expanded = chatMenu?.id == c.id, onDismissRequest = { chatMenu = null }) {
-                                    DropdownMenuItem(text = { Text("Rename") }, onClick = { renaming = c; chatMenu = null })
-                                    DropdownMenuItem(text = { Text("Delete") }, onClick = { st.deleteChat(c.id); chatMenu = null })
+                                    DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Edit, null) }, onClick = { renaming = c; chatMenu = null })
+                                    DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { st.deleteChat(c.id); chatMenu = null })
                                 }
                             }
                         }
@@ -333,7 +333,7 @@ fun AppRoot(vm: MainViewModel) {
             title = { Text("Rename chat") },
             text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true) },
             confirmButton = { TextButton(onClick = { st.renameChat(c.id, name); renaming = null }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { renaming = null }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) } },
         )
     }
 
@@ -350,7 +350,7 @@ fun AppRoot(vm: MainViewModel) {
                 )
             },
             confirmButton = { TextButton(onClick = { vm.confirmSwap() }) { Text("Unload & load") } },
-            dismissButton = { TextButton(onClick = { vm.cancelSwap() }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { vm.cancelSwap() }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) } },
         )
     }
 }
@@ -396,10 +396,10 @@ private fun StatusCard(s: UiState, onUnlock: () -> Unit, onSettings: () -> Unit)
                             Text("Unlocking through the NAS…")
                         }
                     } else {
-                        Button(onClick = onUnlock) { Text("Unlock now") }
+                        Button(onClick = onUnlock) { BtnLabel("Unlock now", androidx.compose.material.icons.Icons.Filled.Lock) }
                     }
                 DeviceState.NOT_CONFIGURED, DeviceState.UNAUTHORIZED ->
-                    Button(onClick = onSettings) { Text("Open Settings") }
+                    Button(onClick = onSettings) { BtnLabel("Open Settings", androidx.compose.material.icons.Icons.Filled.Settings) }
                 else -> {}
             }
         }
@@ -693,9 +693,9 @@ private fun ModelCard(
                 Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
                     when {
                         working || m.status == "loading" -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                        m.status == "running" -> OutlinedButton(onClick = onUnload, modifier = Modifier.fillMaxWidth()) { Text("Unload", maxLines = 1) }
-                        unavailable -> TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { Text("Try again", maxLines = 1) }
-                        else -> Button(onClick = onLoad, modifier = Modifier.fillMaxWidth()) { Text("Load", maxLines = 1) }
+                        m.status == "running" -> OutlinedButton(onClick = onUnload, modifier = Modifier.fillMaxWidth()) { BtnLabel("Unload", symbol = "■") }
+                        unavailable -> TextButton(onClick = onRetry, modifier = Modifier.fillMaxWidth()) { BtnLabel("Try again", androidx.compose.material.icons.Icons.Filled.Refresh) }
+                        else -> Button(onClick = onLoad, modifier = Modifier.fillMaxWidth()) { BtnLabel("Load", androidx.compose.material.icons.Icons.Filled.PlayArrow) }
                     }
                 }
             }
@@ -735,7 +735,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Log", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { vm.unlock() }, enabled = !s.unlocking) {
-                Text(if (s.unlocking) "Unlocking…" else "Unlock Tiiny")
+                BtnLabel(if (s.unlocking) "Unlocking…" else "Unlock Tiiny", androidx.compose.material.icons.Icons.Filled.Lock)
             }
         }
         if (s.unlocking) LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -774,8 +774,8 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { shareLog(ctx, s, shown.takeIf { it.isNotEmpty() }, problems) }) { Text("Share") }
-            TextButton(onClick = { vm.clearLog() }) { Text("Clear") }
+            TextButton(onClick = { shareLog(ctx, s, shown.takeIf { it.isNotEmpty() }, problems) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
+            DangerButton("Clear", onClick = { vm.clearLog() }, icon = androidx.compose.material.icons.Icons.Filled.Clear)
         }
         Text(
             "Share sends what's shown, without keys, passwords or email addresses.",
@@ -998,7 +998,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             Spacer(Modifier.width(10.dp))
             Text("Unlock automatically when the Tiiny is locked")
         }
-        TextButton(onClick = { vm.forgetTiinyLogin() }) { Text("Forget saved Tiiny login key") }
+        DangerButton("Forget saved Tiiny login key", onClick = { vm.forgetTiinyLogin() })
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("WireGuard VPN", style = MaterialTheme.typography.titleMedium)
@@ -1025,7 +1025,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
                 else -> OutlinedButton(onClick = { permLauncher.launch(Vpn.PERMISSION) }) { Text("Allow controlling WireGuard") }
             }
             Spacer(Modifier.weight(1f))
-            if (s.vpn.wireguardInstalled) TextButton(onClick = { vm.openWireGuard() }) { Text("Open WireGuard") }
+            if (s.vpn.wireguardInstalled) TextButton(onClick = { vm.openWireGuard() }) { BtnLabel("Open WireGuard", androidx.compose.material.icons.Icons.AutoMirrored.Filled.ExitToApp) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = autoVpn, onCheckedChange = { autoVpn = it })
@@ -1089,7 +1089,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Save and test NAS login") }
-        TextButton(onClick = { vm.forgetHostKey() }) { Text("Forget saved NAS key") }
+        DangerButton("Forget saved NAS key", onClick = { vm.forgetHostKey() })
 
         Text(
             "The log (with Share) is in the Activity tab.",

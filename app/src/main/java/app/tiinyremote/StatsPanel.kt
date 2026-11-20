@@ -144,7 +144,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(m.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
                                 Text(fmt(m.npuUsage, "%", 1), style = MaterialTheme.typography.labelMedium)
-                                TextButton(onClick = { vm.unload(m) }, enabled = m.id !in s.working) { Text("Unload") }
+                                TextButton(onClick = { vm.unload(m) }, enabled = m.id !in s.working) { BtnLabel("Unload", symbol = "■") }
                             }
                         }
                     }

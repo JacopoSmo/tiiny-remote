@@ -232,10 +232,10 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
                     OutlinedButton(onClick = {
                         Player.toggle(f) { playing = false }
                         playing = Player.playing == f.name
-                    }) { Text(if (playing) "Stop" else "Play clip") }
+                    }) { BtnLabel(if (playing) "Stop" else "Play clip", symbol = if (playing) "■" else "▶") }
                     Spacer(Modifier.width(8.dp))
-                    if (confirmDelete) TextButton(onClick = { st.deleteVoice(saved.id); choose("") }) { Text("Really delete", color = MaterialTheme.colorScheme.error) }
-                    else TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
+                    if (confirmDelete) DangerButton("Really delete", onClick = { st.deleteVoice(saved.id); choose("") })
+                    else DangerButton("Delete", onClick = { confirmDelete = true })
                 }
             }
         }

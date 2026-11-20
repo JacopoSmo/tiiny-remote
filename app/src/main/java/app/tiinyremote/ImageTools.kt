@@ -436,15 +436,15 @@ internal fun TextTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
     when (val s = source) {
         is TextSource.Picture -> {
             Image(s.image.preview.asImageBitmap(), s.name, Modifier.fillMaxWidth().heightIn(max = 260.dp), contentScale = ContentScale.Fit)
-            TextButton(onClick = { source = null }) { Text("Remove") }
+            TextButton(onClick = { source = null }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
         }
         is TextSource.Pages -> {
             Text("${s.name} · ${s.pages.size} page${if (s.pages.size == 1) "" else "s"}" + (if (s.total > s.pages.size) " of ${s.total} (the first ${DocText.MAX_PAGES} are read)" else ""))
-            TextButton(onClick = { source = null }) { Text("Remove") }
+            TextButton(onClick = { source = null }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
         }
         is TextSource.Document -> {
             Text("${s.name} · ${s.text.length} characters, read without the model")
-            TextButton(onClick = { source = null }) { Text("Remove") }
+            TextButton(onClick = { source = null }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
         }
         null -> {}
     }
