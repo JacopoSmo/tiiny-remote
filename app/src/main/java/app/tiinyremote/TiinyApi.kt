@@ -441,11 +441,11 @@ class TiinyApi(url: String, private val key: String) {
 
     /** Starts (or resumes) downloading a model; for an installed one with an update, fetches the new version. */
     fun download(id: String) {
-        ok(call("POST", "/api/v1/models/${quote(id)}/download", null, 60))
+        ok(call("POST", "/api/v1/models/${quote(id)}/download", JSONObject(), 60)) // the device expects an empty JSON body
     }
 
     fun pauseDownload(id: String) {
-        ok(call("POST", "/api/v1/models/${quote(id)}/pause_download", null, 30))
+        ok(call("POST", "/api/v1/models/${quote(id)}/pause_download", JSONObject(), 30))
     }
 
     /** Deletes a downloaded model (or a partly downloaded one) from the Tiiny. */
