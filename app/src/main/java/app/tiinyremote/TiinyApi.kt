@@ -29,6 +29,8 @@ data class ModelInfo(
     /** From the model's "thinking" object: does it reason at all, and can that be switched off? */
     val thinkingSupported: Boolean = false,
     val thinkingToggleable: Boolean = false,
+    /** The name the Tiiny gives it; `name` may be your shorter one for this app. */
+    val fullName: String = "",
 ) {
     /** Can reason before answering ("Thinking"). */
     val thinks get() = isChat && (thinkingSupported || "Reasoning" in supported)
@@ -308,6 +310,7 @@ class TiinyApi(url: String, private val key: String) {
                     desc = m.optString("desc").takeIf { it != "null" } ?: "",
                     thinkingSupported = m.optJSONObject("thinking")?.optBoolean("supported", false) ?: false,
                     thinkingToggleable = m.optJSONObject("thinking")?.optBoolean("toggleable", false) ?: false,
+                    fullName = display,
                 )
             )
         }

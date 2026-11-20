@@ -130,7 +130,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     device = DeviceState.ONLINE,
                     deviceMessage = "",
-                    models = cat.models,
+                    models = withAliases(cat.models),
                     npuUsed = cat.npuUsed,
                     updatedAt = System.currentTimeMillis(),
                 )
@@ -478,6 +478,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- settings ----------
+
+    // ---------- your own names for models (this app only) ----------
+
+    private val aliasPrefs = app.getSharedPreferences("model_names", android.content.Context.MODE_PRIVATE)
+
+    private fun withAliases(list: List<ModelInfo>): List<ModelInfo> = list.map { m ->
+        val full = m.fullName.ifBlank { m.name }
+        aliasPrefs.getString(m.id, null)?.takeIf { it.isNotBlank() }?.let { m.copy(name = it, fullName = full) } ?: m.copy(fullName = full)
+    }
+
+    /** Gives a model a shorter name in this app; blank goes back to the Tiiny's name. */
+    fun renameModel(id: String, name: String) {
+        aliasPrefs.edit().apply { if (name.isBlank()) remove(id) else putString(id, name.trim().take(60)) }.apply()
+        _state.update { st ->
+            st.copy(models = withAliases(st.models.map { it.copy(name = it.fullName.ifBlank { it.name }) }))
+        }
+    }
 
     /** Display settings apply at once, without re-checking the Tiiny. */
     fun setDisplay(s: AppSettings) {

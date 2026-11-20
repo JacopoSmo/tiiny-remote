@@ -2,6 +2,8 @@
 
 package app.tiinyremote
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -333,6 +335,50 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
 
 // ---------------- shared pieces ----------------
 
+/**
+ * The list of models to pick from: one line per name (cut with … if long, never broken), the abilities below it,
+ * ● for loaded models, the chosen one highlighted; it scrolls and stays on screen.
+ */
+@Composable
+private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String, onDismiss: () -> Unit, onPick: (ModelInfo) -> Unit) {
+    DropdownMenu(
+        expanded = open,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.widthIn(min = 220.dp, max = 330.dp).heightIn(max = 460.dp),
+    ) {
+        for (m in choices) {
+            val chosen = m.id == selected
+            DropdownMenuItem(
+                modifier = if (chosen) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)) else Modifier,
+                text = {
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (m.running) Text("● ", color = Color(0xFFE65100), style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                m.name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (m.abilities.isNotEmpty()) {
+                            Text(
+                                m.abilities.joinToString(" · "),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                },
+                onClick = { onPick(m) },
+            )
+        }
+    }
+}
+
 /** Picks the model for a tool and offers to load it. Returns the chosen model, or null if none fits. */
 @Composable
 internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState, vm: MainViewModel, st: StudioViewModel): ModelInfo? {
@@ -365,24 +411,10 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                         color = if (model.running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                    for (m in choices) {
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(m.name + if (m.running) "  (loaded)" else "")
-                                    if (m.abilities.isNotEmpty()) {
-                                        Text(m.abilities.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            },
-                            onClick = {
-                                picked = m.id
-                                st.setPick(tool, m.id)
-                                open = false
-                            },
-                        )
-                    }
+                ModelMenu(open, choices, model.id, { open = false }) { m ->
+                    picked = m.id
+                    st.setPick(tool, m.id)
+                    open = false
                 }
             }
             Spacer(Modifier.width(6.dp))
@@ -403,24 +435,10 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                 OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(model.name, maxLines = 1)
                 }
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                    for (m in choices) {
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(m.name + if (m.running) "  (loaded)" else "")
-                                    if (m.abilities.isNotEmpty()) {
-                                        Text(m.abilities.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            },
-                            onClick = {
-                                picked = m.id
-                                st.setPick(tool, m.id)
-                                open = false
-                            },
-                        )
-                    }
+                ModelMenu(open, choices, model.id, { open = false }) { m ->
+                    picked = m.id
+                    st.setPick(tool, m.id)
+                    open = false
                 }
             }
             if (model.abilities.isNotEmpty()) {

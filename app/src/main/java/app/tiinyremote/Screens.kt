@@ -2,6 +2,7 @@
 
 package app.tiinyremote
 
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
@@ -472,6 +473,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
     var favs by remember { mutableStateOf(prefs.getStringSet("favs", emptySet())!!.toSet()) }
     var loadedFirst by remember { mutableStateOf(prefs.getBoolean("loaded_first", false)) }
     var info by remember { mutableStateOf<ModelInfo?>(null) }
+    var renameM by remember { mutableStateOf<ModelInfo?>(null) }
     var sortOpen by remember { mutableStateOf(false) }
 
     val active = FILTERS.filter { it.first in filters }
@@ -583,6 +585,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
                         prefs.edit().putStringSet("favs", favs).apply()
                     },
                     onInfo = { info = m },
+                    onRename = { renameM = m },
                     onLoad = { vm.load(m) },
                     onRetry = { vm.retry(m) },
                     onUnload = { vm.unload(m) },
@@ -591,6 +594,26 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         }
     }
     info?.let { m -> ModelInfoDialog(m) { info = null } }
+    renameM?.let { m ->
+        var name by remember(m.id) { mutableStateOf(m.name) }
+        AlertDialog(
+            onDismissRequest = { renameM = null },
+            title = { Text("Rename model") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Only in this app. The Tiiny's name: ${m.fullName.ifBlank { m.name }}", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name in this app") })
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.renameModel(m.id, name); renameM = null }) { BtnLabel("Save", Icons.Filled.Check) } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { vm.renameModel(m.id, ""); renameM = null }) { Text("Use original") }
+                    TextButton(onClick = { renameM = null }) { BtnLabel("Cancel", Icons.Filled.Close) }
+                }
+            },
+        )
+    }
 }
 
 /** "About this model", as in Tiiny Studio: the model's own description plus what the Tiiny says about it. */
@@ -598,13 +621,17 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
 private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(m.name) },
+        title = { Text(m.fullName.ifBlank { m.name }) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (m.fullName.isNotBlank() && m.fullName != m.name) {
+                    Text("Shown in this app as “${m.name}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
                 Text("About this model", style = MaterialTheme.typography.titleSmall)
                 Text(m.desc.replace("**", "").ifBlank { "The Tiiny has no description for this model." }, style = MaterialTheme.typography.bodyMedium)
                 HorizontalDivider()
                 val rows = listOfNotNull(
+                    "Full name" to m.fullName.ifBlank { m.name },
                     "ID" to m.id,
                     m.type.takeIf { it.isNotBlank() }?.let { "Type" to it },
                     m.input.takeIf { it.isNotBlank() }?.let { "Input" to it.replace(",", ", ") },
@@ -639,6 +666,7 @@ private fun ModelCard(
     favourite: Boolean,
     onFavourite: () -> Unit,
     onInfo: () -> Unit,
+    onRename: () -> Unit,
     onLoad: () -> Unit,
     onRetry: () -> Unit,
     onUnload: () -> Unit,
@@ -650,6 +678,9 @@ private fun ModelCard(
                     Text(m.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
                     IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
+                    IconButton(onClick = onRename, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Rename in this app", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                 }
                 val meta = listOfNotNull(
