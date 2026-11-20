@@ -81,25 +81,50 @@ data class Plan(
 )
 
 /** The last few requests and answers, shown under Settings to help debug a firmware that answers differently. */
+/** One line of the unified log: when, which kind (see ApiLog.TYPES), the text, and whether it reports a problem. */
+data class LogEntry(val ms: Long, val type: String, val text: String, val error: Boolean) {
+    val time: String get() = SimpleDateFormat("HH:mm:ss", Locale.ROOT).format(Date(ms))
+}
+
+/** The app's one log: device API calls, models, unlocking, VPN, chat, web search and the creation tools. */
 object ApiLog {
-    private val entries = ArrayDeque<String>()
-    private val time = SimpleDateFormat("HH:mm:ss", Locale.ROOT)
+    /** The kinds of entries, in the order the Activity tab shows its filter buttons. */
+    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create")
+
+    private val _entries = kotlinx.coroutines.flow.MutableStateFlow<List<LogEntry>>(emptyList())
+    val entries: kotlinx.coroutines.flow.StateFlow<List<LogEntry>> = _entries
 
     private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
     private val secretFields = Regex("(\"(?:auth_key|attestation)\"\\s*:\\s*\")[^\"]*\"")
+    private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error", RegexOption.IGNORE_CASE)
 
     /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
     fun redact(text: String): String =
         secretFields.replace(email.replace(text, "***@***"), "$1***\"")
 
-    @Synchronized
-    fun add(line: String) {
-        entries.addFirst("${time.format(Date())}  ${redact(line)}")
-        while (entries.size > 100) entries.removeLast()
+    /** Which kind an entry is, from what it says (when the caller doesn't name it). */
+    private fun classify(line: String): String = when {
+        line.contains("chat/completions") -> "Chat"
+        line.startsWith("web search") || line.startsWith("news via") -> "Search"
+        line.contains("auth.api.tiiny") || line.startsWith("Logged in") || line.contains("unlock", true) -> "Unlock"
+        line.contains("/api/v1/models") || line.startsWith("Loading ") || line.startsWith("Unloading ") ||
+            line.startsWith("Model list") || line.startsWith("unload_candidate") -> "Models"
+        Regex("^(GET|POST|DELETE|PUT) /v1/").containsMatchIn(line) || line.contains(" failed: ") -> "Create"
+        else -> "Device"
     }
 
-    @Synchronized
-    fun all(): List<String> = entries.toList()
+    fun add(line: String, type: String? = null) {
+        val text = redact(line)
+        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, problem.containsMatchIn(text))
+        synchronized(this) { _entries.value = (listOf(e) + _entries.value).take(400) }
+    }
+
+    fun clear() {
+        _entries.value = emptyList()
+    }
+
+    /** Newest first, as text: "08:55:07  [VPN] …". */
+    fun all(): List<String> = _entries.value.map { "${it.time}  [${it.type}] ${it.text}" }
 }
 
 /**

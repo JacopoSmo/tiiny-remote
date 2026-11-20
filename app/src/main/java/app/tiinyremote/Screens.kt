@@ -1,5 +1,12 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package app.tiinyremote
 
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.List
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.BorderStroke
@@ -116,7 +123,7 @@ private fun fmtSec(s: Int): String =
     if (s >= 60) "${s / 60} min" + (if (s % 60 > 0) " ${s % 60} s" else "") else "$s s"
 
 /** Everything useful for debugging in one text: status, the API log and the unlock log. No keys or passwords. */
-private fun buildReport(ctx: Context, s: UiState): String {
+private fun buildReport(ctx: Context, s: UiState, types: Set<String>? = null, errorsOnly: Boolean = false): String {
     val version = try {
         ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
     } catch (e: Exception) {
@@ -125,19 +132,21 @@ private fun buildReport(ctx: Context, s: UiState): String {
     return buildString {
         append("Tiiny Remote ").append(version).append('\n')
         append("Status: ").append(s.device).append(' ').append(s.deviceMessage).append("\n\n")
-        append("== API calls (newest first) ==\n")
-        val api = ApiLog.all()
-        append(if (api.isEmpty()) "(none)" else api.joinToString("\n\n"))
-        append("\n\n== Unlock log ==\n")
-        append(if (s.log.isEmpty()) "(none)" else s.log.joinToString("\n"))
+        val shown = ApiLog.entries.value.filter { types == null || it.type in types || (errorsOnly && it.error) }
+            .filter { !errorsOnly || it.error }
+        append("== Log (newest first)")
+        if (types != null) append(": ").append(types.joinToString(", "))
+        if (errorsOnly) append(", problems only")
+        append(" ==\n")
+        append(if (shown.isEmpty()) "(none)" else shown.joinToString("\n\n") { "${it.time}  [${it.type}] ${it.text}" })
     }
 }
 
-private fun shareLog(ctx: Context, s: UiState) {
+private fun shareLog(ctx: Context, s: UiState, types: Set<String>? = null, errorsOnly: Boolean = false) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_SUBJECT, "Tiiny Remote log")
-        putExtra(Intent.EXTRA_TEXT, buildReport(ctx, s))
+        putExtra(Intent.EXTRA_TEXT, buildReport(ctx, s, types, errorsOnly))
     }
     ctx.startActivity(Intent.createChooser(send, "Share log"))
 }
@@ -199,9 +208,9 @@ fun AppRoot(vm: MainViewModel) {
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     val sections = listOf(
         Triple("Models", Icons.Filled.Home, 0),
-        Triple("Create", Icons.Filled.Create, 1),
         Triple("Chat", Icons.Filled.Send, 2),
-        Triple("Activity", Icons.Filled.Lock, 3),
+        Triple("Create", Icons.Filled.Create, 1),
+        Triple("Activity", Icons.Filled.List, 3),
         Triple("Settings", Icons.Filled.Settings, 4),
     )
     fun go(i: Int) {
@@ -270,7 +279,7 @@ fun AppRoot(vm: MainViewModel) {
                             IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Filled.Menu, contentDescription = "Menu") }
                         },
                         title = {
-                            val t = if (tab == 2) chats.firstOrNull { it.id == current }?.title ?: "New chat" else sections[tab].first
+                            val t = if (tab == 2) chats.firstOrNull { it.id == current }?.title ?: "New chat" else sections.first { it.third == tab }.first
                             Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
                         },
                         actions = {
@@ -694,55 +703,121 @@ private fun ModelCard(
     }
 }
 
+/** Colours of the log's kinds. */
+private fun logColor(type: String): Color = when (type) {
+    "Device" -> Color(0xFF1E88E5)
+    "Models" -> Color(0xFF3949AB)
+    "Unlock" -> Color(0xFF8E24AA)
+    "VPN" -> Color(0xFF00897B)
+    "Chat" -> Color(0xFFF4511E)
+    "Search" -> Color(0xFF43A047)
+    "Create" -> Color(0xFFFFB300)
+    else -> Color.Gray
+}
+
 @Composable
 private fun UnlockScreen(s: UiState, vm: MainViewModel) {
+    val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("log_ui", android.content.Context.MODE_PRIVATE) }
+    val entries by ApiLog.entries.collectAsState()
+    // Which kinds to show (empty = all), and "problems only"; remembered.
+    var shown by remember { mutableStateOf(prefs.getStringSet("types", emptySet())!!.toSet()) }
+    var problems by remember { mutableStateOf(prefs.getBoolean("problems", false)) }
+    val list = entries.filter { (shown.isEmpty() || it.type in shown) && (!problems || it.error) }
+    val compact = LocalUi.current.compact
+
     Column(
         Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(if (compact) 10.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Unlock and activity", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "After a restart the Tiiny stays locked until someone logs in. With the Tiiny's password saved in " +
-                "Settings, the app unlocks it directly, the way \"tiiny login\" does. Without it, or if that fails, " +
-                "it runs \"tiiny login\" on your NAS over SSH (switch SSH on in UGOS first).",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (s.settings.autoUnlock) {
-            Text(
-                "Automatic unlock is on: when the app finds the Tiiny locked, it does this by itself " +
-                    "(at most once every 5 minutes).",
-                style = MaterialTheme.typography.bodySmall,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Log", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { vm.unlock() }, enabled = !s.unlocking) {
+                Text(if (s.unlocking) "Unlocking…" else "Unlock Tiiny")
+            }
+        }
+        if (s.unlocking) LinearProgressIndicator(Modifier.fillMaxWidth())
+        // Filter buttons, each in its kind's colour.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(
+                selected = shown.isEmpty(),
+                onClick = { shown = emptySet(); prefs.edit().putStringSet("types", shown).apply() },
+                label = { Text("All") },
+            )
+            for (t in ApiLog.TYPES) {
+                val c = logColor(t)
+                val n = entries.count { it.type == t }
+                FilterChip(
+                    selected = t in shown,
+                    onClick = {
+                        shown = if (t in shown) shown - t else shown + t
+                        prefs.edit().putStringSet("types", shown).apply()
+                    },
+                    label = { Text(if (n > 0) "$t $n" else t) },
+                    leadingIcon = { Box(Modifier.size(10.dp).background(c, CircleShape)) },
+                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = c.copy(alpha = 0.25f)),
+                )
+            }
+            FilterChip(
+                selected = problems,
+                onClick = { problems = !problems; prefs.edit().putBoolean("problems", problems).apply() },
+                label = { Text("⚠ Problems only") },
+                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.errorContainer),
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { vm.unlock() }, enabled = !s.unlocking) {
-                Text(if (s.unlocking) "Unlocking…" else "Unlock Tiiny now")
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = { vm.clearLog() }) { Text("Clear log") }
-            Spacer(Modifier.width(10.dp))
-            val ctx = LocalContext.current
-            OutlinedButton(onClick = { shareLog(ctx, s) }) { Text("Share log") }
-        }
-        if (s.unlocking) LinearProgressIndicator(Modifier.fillMaxWidth())
-        Card(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            val scroll = rememberScrollState()
-            LaunchedEffect(s.log.size) { scroll.animateScrollTo(scroll.maxValue) }
             Text(
-                if (s.log.isEmpty()) "No activity yet." else s.log.joinToString("\n"),
+                "${list.size} entr${if (list.size == 1) "y" else "ies"}" + if (shown.isNotEmpty() || problems) " shown" else "",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { shareLog(ctx, s, shown.takeIf { it.isNotEmpty() }, problems) }) { Text("Share") }
+            TextButton(onClick = { vm.clearLog() }) { Text("Clear") }
+        }
+        Text(
+            "Share sends what's shown, without keys, passwords or email addresses.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (list.isEmpty()) item { Text("Nothing here yet.", style = MaterialTheme.typography.bodyMedium) }
+            items(list, key = { "${it.ms}-${it.text.hashCode()}-${it.type}" }) { e -> LogRow(e) }
+        }
+    }
+}
+
+/** One log line: a bar in its kind's colour, time and kind, and the text (tap to see all of a long one). */
+@Composable
+private fun LogRow(e: LogEntry) {
+    var open by remember { mutableStateOf(false) }
+    val c = logColor(e.type)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .background(if (e.error) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable { open = !open },
+    ) {
+        Box(Modifier.width(4.dp).fillMaxHeight().background(c))
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(e.time, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(6.dp))
+                Text(e.type, style = MaterialTheme.typography.labelSmall, color = c)
+                if (e.error) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("⚠", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Text(
+                e.text,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scroll)
-                    .padding(12.dp),
+                fontSize = 11.sp,
+                maxLines = if (open) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -800,7 +875,6 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     var searchMode by remember(formKey) { mutableStateOf(cur.searchMode) }
     var tavily by remember(formKey) { mutableStateOf(cur.tavilyKey) }
     val scope = rememberCoroutineScope()
-    var showDebug by remember { mutableStateOf(false) }
 
     fun current() = AppSettings(
         tiinyUrl = url.trim(),
@@ -1017,22 +1091,11 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         ) { Text("Save and test NAS login") }
         TextButton(onClick = { vm.forgetHostKey() }) { Text("Forget saved NAS key") }
 
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        val shareCtx = LocalContext.current
-        OutlinedButton(onClick = { shareLog(shareCtx, s) }, modifier = Modifier.fillMaxWidth()) {
-            Text("Share log (no keys or passwords)")
-        }
-        TextButton(onClick = { showDebug = !showDebug }) {
-            Text(if (showDebug) "Hide last API answers" else "Show last API answers")
-        }
-        if (showDebug) {
-            val lines = remember(s.updatedAt, s.device) { ApiLog.all() }
-            Text(
-                if (lines.isEmpty()) "Nothing yet." else lines.joinToString("\n\n"),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-            )
-        }
+        Text(
+            "The log (with Share) is in the Activity tab.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         val ctx = LocalContext.current
         val version = remember {
             try {

@@ -341,11 +341,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearLog() {
         _state.update { it.copy(log = emptyList()) }
+        ApiLog.clear()
     }
 
     private fun log(line: String) {
         val entry = "${time.format(Date())}  $line"
         _state.update { it.copy(log = (it.log + entry).takeLast(200)) }
+        // Into the unified log too, as VPN or Unlock.
+        ApiLog.add(line.trim(), if (Regex("VPN|WireGuard|tunnel", RegexOption.IGNORE_CASE).containsMatchIn(line)) "VPN" else "Unlock")
     }
 
     // ---------- WireGuard VPN ----------

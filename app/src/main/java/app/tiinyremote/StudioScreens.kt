@@ -2,6 +2,8 @@
 
 package app.tiinyremote
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
@@ -118,7 +120,7 @@ fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: (
     }
     val tool = TOOLS.firstOrNull { it.id == toolId }
     if (tool == null) {
-        ToolHub(s, st) { id ->
+        ToolHub(s, st, openChat) { id ->
             if (id == "chat") openChat()
             if (id != "chat") toolId = id
         }
@@ -127,16 +129,66 @@ fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: (
     }
 }
 
+/** Where results land in "Creations". */
+private val CREATION_GROUPS = listOf(
+    "Images" to setOf("image"),
+    "Videos" to setOf("video"),
+    "3D models" to setOf("mesh"),
+    "Voice" to setOf("speech"),
+    "Music" to setOf("loop", "song"),
+    "Transcripts" to setOf("transcript"),
+    "Texts" to setOf("ocr", "description", "classification", "embedding", "rerank"),
+)
+
+/** A bar that opens and closes what's under it. */
 @Composable
-private fun ToolHub(s: UiState, st: StudioViewModel, open: (String) -> Unit) {
+private fun Bar(title: String, detail: String, open: Boolean, onToggle: () -> Unit, action: @Composable () -> Unit = {}) {
+    Card(
+        onClick = onToggle,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(detail, style = MaterialTheme.typography.bodySmall)
+            }
+            action()
+            Text(if (open) "▴" else "▾", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
+@Composable
+private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open: (String) -> Unit) {
     val results by st.results.collectAsState()
+    val chats by st.chatList.collectAsState()
     val job by st.job.collectAsState()
+    val compact = LocalUi.current.compact
+    var createOpen by rememberSaveable { mutableStateOf(st.setting("hub.create", "1") == "1") }
+    var creationsOpen by rememberSaveable { mutableStateOf(st.setting("hub.creations", "0") == "1") }
+    var arranging by rememberSaveable { mutableStateOf(false) }
+    var openType by rememberSaveable { mutableStateOf<String?>(null) }
+    var openGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    // The kinds of creation, in the order you arranged them (new kinds go at the end).
+    val defaultOrder = TOOLS.map { it.type }.distinct()
+    var order by remember {
+        val saved = st.setting("create.order", "").split('|').filter { it in defaultOrder }
+        mutableStateOf(saved + defaultOrder.filter { it !in saved })
+    }
+    fun move(i: Int, by: Int) {
+        val j = i + by
+        if (j !in order.indices) return
+        order = order.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t }
+        st.setSetting("create.order", order.joinToString("|"))
+    }
+
     Column(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(if (compact) 10.dp else 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (s.device != DeviceState.ONLINE) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
@@ -144,42 +196,111 @@ private fun ToolHub(s: UiState, st: StudioViewModel, open: (String) -> Unit) {
             }
         }
         job?.takeIf { it.running }?.let { j ->
-            Card(Modifier.fillMaxWidth()) {
+            Card(onClick = { open(j.tool) }, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
                     Text("Working: ${TOOLS.firstOrNull { it.id == j.tool }?.title ?: j.tool}", style = MaterialTheme.typography.titleSmall)
-                    Text(j.message, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { open(j.tool) }) { Text("Open") }
+                    Text(j.message + "  · tap to open", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        var lastType = ""
-        for (t in TOOLS) {
-            if (t.type != lastType) {
-                lastType = t.type
-                Text(t.type, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
-            }
-            val installed = s.models.count(t.fits)
-            val loaded = s.models.count { t.fits(it) && it.running }
-            Card(onClick = { open(t.id) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text(t.title, style = MaterialTheme.typography.titleMedium)
-                    Text(t.what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        when {
-                            installed == 0 -> "No model for this on your Tiiny"
-                            loaded > 0 -> "$loaded model${if (loaded == 1) "" else "s"} loaded"
-                            else -> "$installed model${if (installed == 1) "" else "s"} installed, none loaded"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (loaded > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+
+        // ---- Create: the kinds of creation; tap one for its tools ----
+        Bar("Create", "${order.size} kinds · tap one to see its tools", createOpen, {
+            createOpen = !createOpen
+            st.setSetting("hub.create", if (createOpen) "1" else "0")
+        }) {
+            if (createOpen) TextButton(onClick = { arranging = !arranging }) { Text(if (arranging) "Done" else "Arrange") }
+        }
+        if (createOpen) {
+            if (arranging) Text("Move the kinds with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
+            for ((i, type) in order.withIndex()) {
+                val tools = TOOLS.filter { it.type == type }
+                val installed = s.models.count { m -> tools.any { it.fits(m) } }
+                val loaded = s.models.count { m -> m.running && tools.any { it.fits(m) } }
+                val expanded = openType == type && !arranging
+                Card(
+                    onClick = { if (!arranging) openType = if (expanded) null else type },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(type, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    when {
+                                        installed == 0 -> "No model for this on your Tiiny"
+                                        loaded > 0 -> "$loaded loaded · ${tools.joinToString(", ") { it.title }}"
+                                        else -> tools.joinToString(", ") { it.title }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (loaded > 0) Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                            if (arranging) {
+                                TextButton(onClick = { move(i, -1) }, enabled = i > 0) { Text("↑") }
+                                TextButton(onClick = { move(i, 1) }, enabled = i < order.size - 1) { Text("↓") }
+                            } else {
+                                Text(if (expanded) "▴" else "▾")
+                            }
+                        }
+                        if (expanded) {
+                            for (t in tools) {
+                                Spacer(Modifier.height(6.dp))
+                                OutlinedCard(onClick = { open(t.id) }, modifier = Modifier.fillMaxWidth()) {
+                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(t.title, style = MaterialTheme.typography.titleSmall)
+                                            Text(t.what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
-        Text("Your results", style = MaterialTheme.typography.titleMedium)
-        if (results.isEmpty()) Text("Nothing yet. What you make is kept here.", style = MaterialTheme.typography.bodyMedium)
-        for (e in results.take(60)) ResultCard(e, st)
+
+        // ---- Creations: everything made, by kind, chats included ----
+        Bar("Creations", "${chats.size} chats · ${results.size} results", creationsOpen, {
+            creationsOpen = !creationsOpen
+            st.setSetting("hub.creations", if (creationsOpen) "1" else "0")
+        })
+        if (creationsOpen) {
+            val groups = listOf("Chats" to chats.size) + CREATION_GROUPS.map { (name, kinds) -> name to results.count { it.kind in kinds } }
+            for ((name, count) in groups) {
+                val expanded = openGroup == name
+                Card(onClick = { openGroup = if (expanded) null else name }, modifier = Modifier.fillMaxWidth(), enabled = count > 0) {
+                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                        Text("$count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (expanded) "▴" else "▾")
+                    }
+                }
+                if (expanded) {
+                    if (name == "Chats") {
+                        for (c in chats) {
+                            OutlinedCard(onClick = { st.selectChat(c.id); openChat() }, modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                    Text(
+                                        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(c.updated)),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        val kinds = CREATION_GROUPS.first { it.first == name }.second
+                        for (e in results.filter { it.kind in kinds }.take(40)) ResultCard(e, st)
+                    }
+                }
+            }
+        }
     }
 }
 
