@@ -933,7 +933,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         val times = "${Math.round(parS)} s instead of ${Math.round(seqS)} s one after the other"
                         return when {
                             p >= 10 -> "$times (${Math.round(p)}% sooner): worth it"
-                            p > -5 -> "$times: no gain, the Tiiny takes them in turn"
+                            p >= 3 -> "$times (${Math.round(p)}% sooner): a little faster"
+                            p > -3 -> "$times: no gain, the Tiiny takes them in turn"
+                            p > -5 -> "$times: about the same"
                             else -> "$times (${Math.round(-p)}% slower): better one after the other"
                         }
                     }
