@@ -176,7 +176,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (!deviceBusy.compareAndSet(false, true)) {
-            note("A chat is making something on the Tiiny right now. Wait for it to finish.")
+            note("A chat or a helper is using the Tiiny's models right now. Wait for it to finish.")
             return
         }
         cancelled.set(false)

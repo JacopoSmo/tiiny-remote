@@ -55,6 +55,10 @@ object Stats {
     @Volatile
     private var dashboardMissingAt = 0L
 
+    /** The dashboard answered at least once: then it's asked every time, and a busy moment doesn't hide it for a minute. */
+    @Volatile
+    private var dashboardSeen = false
+
     fun read(settings: AppSettings): DeviceStats {
         var s = DeviceStats()
         val c = DeviceClient(settings.tiinyUrl, settings.apiKey)
@@ -63,6 +67,7 @@ object Stats {
             ramTotal = null
             disk = null
             dashboardMissingAt = 0L
+            dashboardSeen = false
         }
         // /api/v1/sys/status is read at most once per round, for the RAM total and the storage.
         var sys: JSONObject? = null
@@ -131,7 +136,7 @@ object Stats {
             ""
         }
         val now = System.currentTimeMillis()
-        if (host.isNotEmpty() && now - dashboardMissingAt > 60_000) try {
+        if (host.isNotEmpty() && (dashboardSeen || now - dashboardMissingAt > 60_000)) try {
             val conn = URL("http://$host:9109/api/stats").openConnection() as HttpURLConnection
             conn.connectTimeout = 1500
             conn.readTimeout = 2000
@@ -141,6 +146,7 @@ object Stats {
                     val npu = o.optJSONObject("npu") ?: JSONObject()
                     val t = npu.optJSONObject("temps")
                     val temps = t?.keys()?.asSequence()?.mapNotNull { k -> t.num(k)?.let { k to it } }?.sortedByDescending { it.second }?.toList().orEmpty()
+                    dashboardSeen = true
                     s = s.copy(
                         dashboard = true,
                         npuPowerW = npu.num("board_power_w") ?: s.npuPowerW,

@@ -507,6 +507,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var watchDownloadsUntil = 0L
 
+    /** Downloads you cancelled: when they leave the list, that's not "downloaded" (an update cancelled keeps its old copy). */
+    private val cancelledDownloads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     private suspend fun readDownloads() {
         val before = _state.value.downloads.map { it.id }.toSet()
         val now = try {
@@ -520,7 +523,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             refresh()
             // Gone from the list means finished only if it's now installed: a cancelled download is gone too.
             val installed = _state.value.models.map { it.id }.toSet()
-            val finished = gone.filter { it in installed }
+            val finished = gone.filter { id -> val cancelled = cancelledDownloads.remove(id); id in installed && !cancelled }
             if (finished.isEmpty()) return
             val names = finished.map { id -> _state.value.store?.firstOrNull { it.id == id }?.name ?: id.substringAfterLast('/') }
             toast("Downloaded: ${names.joinToString(", ")}")
@@ -544,11 +547,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun download(id: String, name: String) = modelAction("Download", id, "Downloading $name on the Tiiny…") { this.download(id) }
-    fun updateModel(m: ModelInfo) = modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.download(m.id) }
+    fun download(id: String, name: String) {
+        cancelledDownloads.remove(id)
+        modelAction("Download", id, "Downloading $name on the Tiiny…") { this.download(id) }
+    }
+
+    fun updateModel(m: ModelInfo) {
+        cancelledDownloads.remove(m.id)
+        modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.download(m.id) }
+    }
     fun pauseDownload(d: Download) = modelAction("Pause download", d.id, "Paused ${d.name}") { this.pauseDownload(d.id) }
-    fun resumeDownload(d: Download) = modelAction("Resume download", d.id, "Resuming ${d.name}…") { this.download(d.id) }
-    fun cancelDownload(d: Download) = modelAction("Cancel download", d.id, "Cancelled ${d.name}") { this.delete(d.id) }
+    fun resumeDownload(d: Download) {
+        cancelledDownloads.remove(d.id)
+        modelAction("Resume download", d.id, "Resuming ${d.name}…") { this.download(d.id) }
+    }
+
+    fun cancelDownload(d: Download) {
+        cancelledDownloads.add(d.id)
+        modelAction("Cancel download", d.id, "Cancelled ${d.name}") { this.delete(d.id) }
+    }
     fun deleteModel(m: ModelInfo) = modelAction("Delete", m.id, "Deleted ${m.name} from the Tiiny") { this.delete(m.id) }
 
     /** Runs beside the polling: follows downloads every 5 s while there are any (or just after one was started). */
