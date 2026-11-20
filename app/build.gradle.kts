@@ -6,13 +6,17 @@ plugins {
 
 // GitHub Actions sets GITHUB_RUN_NUMBER, so every build gets a higher version and installs as an update.
 val buildNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+// The experimental channel (branch "experimental") installs as its own app beside the normal one:
+// another id, its own name, its own settings. Normal builds are unchanged.
+val experimental = System.getenv("APP_CHANNEL") == "experimental"
 
 android {
     namespace = "app.tiinyremote"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "app.tiinyremote"
+        applicationId = if (experimental) "app.tiinyremote.exp" else "app.tiinyremote"
+        manifestPlaceholders["appLabel"] = if (experimental) "Tiiny Remote Exp" else "Tiiny Remote"
         minSdk = 26
         targetSdk = 35
         versionCode = buildNumber

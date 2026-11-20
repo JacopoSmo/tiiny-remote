@@ -1,0 +1,62 @@
+name: Build experimental APK
+
+# The experimental channel: builds from the "experimental" branch as a separate app ("Tiiny Remote Exp",
+# app.tiinyremote.exp) that installs beside the normal one. Published as a pre-release that is never marked
+# "Latest", so whoever downloads the latest release still gets the normal app.
+on:
+  push:
+    branches: [experimental]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Signing key from the secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::The signing key isn't set up: add SIGNING_KEYSTORE_B64 and SIGNING_PASSWORD under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/signing.keystore"
+          echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
+
+      - name: Version number
+        run: |
+          echo "APP_VERSION=3.1.0-exp.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "APP_CHANNEL=experimental" >> "$GITHUB_ENV"
+
+      - name: Build the APK
+        env:
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          mv app/build/outputs/apk/release/app-release.apk "TiinyRemoteExp-$APP_VERSION.apk"
+
+      - name: Publish it as a pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: exp-${{ env.APP_VERSION }}
+          name: Tiiny Remote Experimental ${{ env.APP_VERSION }}
+          prerelease: true
+          make_latest: "false"
+          body: |
+            Experimental: installs as a separate app, "Tiiny Remote Exp", beside the normal Tiiny Remote, with its own settings.
+            New here: a fast helper model (Settings → Fast helper model) that summarises web pages for the chat model (several at once),
+            names chats, condenses long chats and runs the helpers; plus a speed test for running two models at the same time.
+          files: TiinyRemoteExp-*.apk

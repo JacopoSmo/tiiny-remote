@@ -5,6 +5,11 @@ import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -61,6 +66,21 @@ private fun webPrompt() = " You can search the web with web_search, get current 
     java.text.SimpleDateFormat("EEEE d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date()) + ". For anything " +
     "current, recent or that you're unsure of, search first instead of answering from memory; open the most promising " +
     "pages when the snippets aren't enough. Base your answer on what you found and cite the sources as Markdown links."
+
+/** For the fast helper model: boil a page down to what the chat model needs. */
+private const val PAGE_SYSTEM = "You condense a web page for another assistant who is answering the user's question. " +
+    "From the page, keep only what helps answer it: facts, figures, dates, names, and short quotes with who said them, " +
+    "in the page's own words for key facts. Note the page's date if it gives one. If nothing helps, reply exactly: " +
+    "NOTHING RELEVANT. Under 250 words, no preamble."
+
+private const val TITLE_SYSTEM = "Give this conversation a short title of 3 to 6 words in the user's language. " +
+    "Reply with the title only: no quotes, no final period."
+
+private const val CONDENSE_SYSTEM = "Summarise this earlier part of a conversation so the assistant can continue it: " +
+    "what the user wants, facts and decisions so far, names, numbers and open questions. Keep it under 300 words, " +
+    "as plain notes. Reply with the summary only."
+
+private val WEB_TOOLS = setOf("web_search", "open_page", "news")
 
 /** The web tools: search through the user's SearXNG, and read a page. */
 private fun webSpecs(): JSONArray {
@@ -127,6 +147,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val _chatList = MutableStateFlow<List<ChatInfo>>(emptyList())
     /** Titles you gave chats yourself (a save keeps them instead of using the first message). */
     private val customTitles = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** Titles the fast helper model wrote (yours win over them). */
+    private val autoTitles = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** A long chat's older part, condensed by the helper: (how many messages it covers, the summary). */
+    private val condensed = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
     /** Saved chats, newest first. */
     val chatList: StateFlow<List<ChatInfo>> = _chatList.asStateFlow()
     private val _currentChat = MutableStateFlow(
@@ -322,6 +346,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val o = JSONObject(f.readText())
                 val title = o.optString("title", "Chat")
                 if (o.optBoolean("custom")) customTitles[f.nameWithoutExtension] = title
+                o.optString("auto_title").takeIf { it.isNotBlank() }?.let { autoTitles[f.nameWithoutExtension] = it }
                 ChatInfo(f.nameWithoutExtension, title, o.optLong("updated", f.lastModified()))
             } catch (e: Exception) {
                 null
@@ -370,7 +395,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val custom = customTitles[id]
-        val title = custom ?: msgs.firstOrNull { it.role == "user" && it.text.isNotBlank() }?.text?.lines()?.first()?.take(48)
+        val auto = autoTitles[id]
+        val title = custom ?: auto ?: msgs.firstOrNull { it.role == "user" && it.text.isNotBlank() }?.text?.lines()?.first()?.take(48)
             ?: if (msgs.any { it.image != null }) "Picture" else "Chat"
         val a = JSONArray()
         for (m in msgs) {
@@ -384,7 +410,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         // Written beside it first, then swapped in: an app killed mid-write can't leave a broken chat behind.
         val tmp = java.io.File(chatsDir, "$id.json.tmp")
-        tmp.writeText(JSONObject().put("title", title).put("custom", custom != null).put("updated", now).put("messages", a).toString())
+        val doc = JSONObject().put("title", title).put("custom", custom != null).put("updated", now).put("messages", a)
+        if (auto != null) doc.put("auto_title", auto)
+        tmp.writeText(doc.toString())
         if (!tmp.renameTo(f)) {
             f.delete()
             tmp.renameTo(f)
@@ -431,6 +459,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         stops[id]?.set(true)
         _all.update { it - id }
         customTitles.remove(id)
+        autoTitles.remove(id)
+        condensed.remove(id)
         chatDisk.execute { chatFile(id).delete() }
         lastImages.remove(id)
         _chatList.update { l -> l.filter { it.id != id } }
@@ -502,7 +532,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private fun helperRun(label: String, tool: String, models: List<ModelInfo>, fits: (ModelInfo) -> Boolean, block: (DeviceClient, String) -> String, onDone: (String) -> Unit) {
         if (_helper.value != null) return
         val ok = models.filter(fits)
-        val model = ok.firstOrNull { it.running && it.id == pick(tool) } ?: ok.firstOrNull { it.running }
+        // Writing helpers use the fast helper model when it's loaded.
+        val fast = if (tool == "chat") settingsStore.load().helperModel.ifBlank { null } else null
+        val model = ok.firstOrNull { it.running && it.id == fast } ?: ok.firstOrNull { it.running && it.id == pick(tool) } ?: ok.firstOrNull { it.running }
             ?: ok.firstOrNull { it.id == pick(tool) } ?: ok.firstOrNull()
         if (model == null) {
             note(if (tool == "chat") "This helper needs a chat model on the Tiiny." else "Auto-transcribe needs a speech-to-text (ASR) model on the Tiiny.")
@@ -672,7 +704,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Runs web_search or open_page and notes the sources on the reply. */
-    private fun webTool(id: String, name: String, args: JSONObject, cfg: AppSettings): String {
+    /**
+     * Runs web_search, news or open_page and notes the sources on the reply. With a fast helper model loaded, an
+     * opened page reaches the chat model boiled down to what answers `question` instead of as 8,000 raw characters.
+     */
+    private fun webTool(id: String, name: String, args: JSONObject, cfg: AppSettings, c: DeviceClient, helper: String?, question: String): String {
         if (name == "web_search") {
             val q = args.optString("query").trim().ifBlank { return "Give a query to search for." }
             setStatus(id, "Searching the web: $q")
@@ -704,10 +740,22 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             return "That address can't be opened: only pages from this chat's search or news results, or addresses " +
                 "the user wrote, can be read. Search for it first if you need it."
         }
-        setStatus(id, "Reading ${url.substringAfter("://").substringBefore('/')}")
+        val host = url.substringAfter("://").substringBefore('/')
+        setStatus(id, "Reading $host")
         val text = WebSearch.read(url)
         upd(id) { list ->
-            if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(url.substringAfter("://").substringBefore('/'), url)) }
+            if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(host, url)) }
+        }
+        if (helper != null && text.length > 1500) {
+            setStatus(id, "Summarising $host with ${helper.substringAfterLast('/')}")
+            val started = System.currentTimeMillis()
+            try {
+                val summary = Tools.chatOnce(c, helper, PAGE_SYSTEM, "Question: ${question.take(1000)}\n\nPage ($url):\n$text", 450)
+                ApiLog.add("Page summarised by the helper: ${text.length} → ${summary.length} characters in ${(System.currentTimeMillis() - started) / 1000} s", "Chat")
+                return "Page $url (condensed by a helper model to what answers the question):\n\n$summary"
+            } catch (e: Exception) {
+                ApiLog.add("The helper couldn't summarise $host (${e.message}); the chat model gets the page itself", "Chat")
+            }
         }
         return "Page $url:\n\n$text"
     }
@@ -808,9 +856,135 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         return result to "Done: the $what is shown to the user and saved in the app's results (made with ${model.substringAfterLast('/')})."
     }
 
+    // ---------- speed test: one model at a time, or two at once ----------
+
+    private val _speed = MutableStateFlow<String?>(null)
+    /** The speed test's progress, then its result. */
+    val speed: StateFlow<String?> = _speed.asStateFlow()
+
+    /**
+     * Measures how fast the chat model and the helper write alone, then at the same time, and the helper twice at
+     * once (how pages are condensed). Both must be loaded; nothing is swapped. Tells whether parallel work pays off.
+     */
+    fun speedTest(big: ModelInfo, small: ModelInfo) {
+        if (_speed.value?.startsWith("Testing") == true) return
+        if (!deviceBusy.compareAndSet(false, true)) {
+            note("The Tiiny is busy with a job: run the test when it's done.")
+            return
+        }
+        _speed.value = "Testing…"
+        viewModelScope.launch {
+            try {
+                val out = withContext(Dispatchers.IO) {
+                    val c = client()
+                    /** (tokens written, seconds taken) for one ~300-token answer, thinking off where possible. */
+                    fun one(model: String): Pair<Int, Double> {
+                        val body = JSONObject().put("model", model).put("stream", false).put("max_tokens", 300).put("temperature", 0.7)
+                            .put("messages", JSONArray().put(JSONObject().put("role", "user")
+                                .put("content", "Write a story of about 250 words about a lighthouse keeper and a storm.")))
+                        when (Tools.thinkingMode(c, model)) {
+                            "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
+                            "always" -> body.put("reasoning_effort", "low")
+                        }
+                        val t0 = System.nanoTime()
+                        val r = c.request("POST", "/v1/chat/completions", body, 600)
+                        val secs = (System.nanoTime() - t0) / 1e9
+                        if (!r.ok) throw MediaException("${model.substringAfterLast('/')}: ${r.error()}")
+                        val o = r.json()
+                        val msg = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                        val written = (msg?.optString("content").orEmpty() + msg?.optString("reasoning_content").orEmpty()).length
+                        val tokens = o.optJSONObject("usage")?.optInt("completion_tokens", 0)?.takeIf { it > 0 } ?: maxOf(1, written / 4)
+                        return tokens to secs
+                    }
+                    fun rate(r: Pair<Int, Double>) = r.first / r.second
+                    _speed.value = "Testing ${big.name} alone…"
+                    val a = one(big.id)
+                    _speed.value = "Testing ${small.name} alone…"
+                    val b = one(small.id)
+                    _speed.value = "Testing both at the same time…"
+                    val (a2, b2) = coroutineScope {
+                        val x = async { one(big.id) }
+                        val y = async { one(small.id) }
+                        x.await() to y.await()
+                    }
+                    _speed.value = "Testing ${small.name} twice at the same time…"
+                    val (h1, h2) = coroutineScope {
+                        val x = async { one(small.id) }
+                        val y = async { one(small.id) }
+                        x.await() to y.await()
+                    }
+                    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
+                    // The same work (what each wrote alone), one after the other vs. at the same time.
+                    val seq = a.first / rate(a) + b.first / rate(b)
+                    val par = maxOf(a.first / rate(a2), b.first / rate(b2))
+                    val saved = (1 - par / seq) * 100
+                    val helperSeq = 2 * b.first / rate(b)
+                    val helperPar = maxOf(b.first / rate(h1), b.first / rate(h2))
+                    val helperSaved = (1 - helperPar / helperSeq) * 100
+                    fun verdict(p: Double) = when {
+                        p >= 15 -> "saves ${Math.round(p)}% of the time: worth it"
+                        p > -5 -> "about the same (${Math.round(p)}%): the Tiiny shares its speed between them"
+                        else -> "${Math.round(-p)}% slower: better one after the other"
+                    }
+                    "Alone: ${big.name} ${f(rate(a))} tok/s, ${small.name} ${f(rate(b))} tok/s.\n" +
+                        "At the same time: ${f(rate(a2))} + ${f(rate(b2))} = ${f(rate(a2) + rate(b2))} tok/s together.\n" +
+                        "Both models at once ${verdict(saved)}.\n" +
+                        "${small.name} twice at once (how pages are condensed): ${f(rate(h1) + rate(h2))} tok/s together, ${verdict(helperSaved)}."
+                }
+                _speed.value = out
+                ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
+            } catch (e: Exception) {
+                _speed.value = "Speed test failed: ${e.message}"
+                ApiLog.add("Speed test failed: ${e.message}", "Chat")
+            } finally {
+                deviceBusy.set(false)
+            }
+        }
+    }
+
+    /** The fast helper model chosen in Settings, when it's loaded and isn't the chat model itself (never swapped in for this). */
+    private fun fastHelper(cfg: AppSettings, models: List<ModelInfo>, chatModel: String): String? =
+        cfg.helperModel.takeIf { it.isNotBlank() && it != chatModel }
+            ?.let { h -> models.firstOrNull { it.id == h && it.running && it.isChat }?.id }
+
+    /** A message as the chat model receives it (with its picture, if any). */
+    private fun asMessage(m: ChatMsg): JSONObject =
+        if (m.image != null) {
+            val content = JSONArray()
+                .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", m.image)))
+            if (m.text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", m.text))
+            JSONObject().put("role", m.role).put("content", content)
+        } else {
+            JSONObject().put("role", m.role).put("content", m.text)
+        }
+
+    /**
+     * A long chat (over ~20,000 characters) keeps its last 6 messages as they are; the helper condenses everything before
+     * into notes, so the chat model reads much less each turn. Done again only when 6 more messages have piled up.
+     */
+    private fun condenseIfLong(id: String, c: DeviceClient, helper: String, history: List<ChatMsg>): Pair<Int, String>? {
+        val size = history.sumOf { it.text.length }
+        if (size < 20_000 || history.size <= 8) return null
+        val cut = history.size - 6
+        condensed[id]?.let { (n, text) -> if (cut - n < 6) return n to text }
+        setStatus(id, "Condensing the earlier chat with ${helper.substringAfterLast('/')}")
+        val transcript = history.take(cut).joinToString("\n\n") { m ->
+            (if (m.role == "user") "User: " else "Assistant: ") + m.text.take(3000) + (if (m.image != null) " [picture]" else "")
+        }.takeLast(60_000)
+        return try {
+            val notes = Tools.chatOnce(c, helper, CONDENSE_SYSTEM, transcript, 700)
+            ApiLog.add("Long chat condensed by the helper: $cut messages → ${notes.length} characters", "Chat")
+            (cut to notes).also { condensed[id] = it }
+        } catch (e: Exception) {
+            ApiLog.add("The helper couldn't condense the chat (${e.message}); sending it in full", "Chat")
+            null
+        }
+    }
+
     /**
      * Sends a message. With canMake on, the model may call tools (images, edits, speech, loops, songs); a tool's model
-     * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards.
+     * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards. With a fast helper
+     * model loaded beside it, the helper condenses pages (several at once) and long chats, and names the chat.
      */
     fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, web: Boolean, models: List<ModelInfo>) {
         val id = _currentChat.value
@@ -822,30 +996,33 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _busyChats.update { it + id }
         val chatStop = AtomicBoolean(false)
         stops[id] = chatStop
-        val convo = JSONArray()
-        convo.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "")))
-        for (m in history) {
-            if (m.role == "assistant" && m.text.isBlank()) continue
-            if (m.image != null) {
-                val content = JSONArray()
-                    .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", m.image)))
-                if (m.text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", m.text))
-                convo.put(JSONObject().put("role", m.role).put("content", content))
-            } else {
-                convo.put(JSONObject().put("role", m.role).put("content", m.text))
-            }
-        }
+        val question = text.trim()
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val c = client()
+                    val cfg = settingsStore.load()
+                    val helper = fastHelper(cfg, models, model)
+                    val shown = history.filter { !(it.role == "assistant" && it.text.isBlank()) }
+                    val convo = JSONArray()
+                    var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "")
+                    val notes = helper?.let { condenseIfLong(id, c, it, shown) }
+                    if (notes != null) {
+                        system += "\n\nNotes on the earlier part of this conversation (condensed):\n" + notes.second
+                        convo.put(JSONObject().put("role", "system").put("content", system))
+                        for (m in shown.drop(notes.first)) convo.put(asMessage(m))
+                    } else {
+                        convo.put(JSONObject().put("role", "system").put("content", system))
+                        for (m in shown) convo.put(asMessage(m))
+                    }
                     val mode = Tools.thinkingMode(c, model)
                     val tools = JSONArray()
                     if (canMake) toolSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
                     if (web) webSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
-                    val searchCfg = settingsStore.load()
                     val maxRounds = if (web) 8 else 4
                     val p = Progress({ m, _ -> setStatus(id, m) }, { chatStop.get() })
+                    // Pages are read (and condensed) up to 3 at a time; the media tools one after the other.
+                    val pages = Semaphore(3)
                     for (round in 0..maxRounds) {
                         val body = JSONObject().put("model", model).put("messages", convo).put("stream", true).put("max_tokens", 4096)
                         when (mode) {
@@ -873,19 +1050,30 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 JSONObject().put("name", call.name).put("arguments", call.args.toString().ifBlank { "{}" })))
                         }
                         convo.put(JSONObject().put("role", "assistant").put("content", done.content).put("tool_calls", calls))
-                        for (call in done.calls) {
+                        fun doCall(call: DeviceClient.ToolCall): Pair<ResultEntry?, String> {
                             val args = try {
                                 JSONObject(call.args.toString().ifBlank { "{}" })
                             } catch (e: Exception) {
                                 JSONObject()
                             }
-                            val (entry, answer) = try {
-                                if (call.name in setOf("web_search", "open_page", "news")) null to webTool(id, call.name, args, searchCfg)
+                            return try {
+                                if (call.name in WEB_TOOLS) null to webTool(id, call.name, args, cfg, c, helper, question)
                                 else runTool(id, c, call.name, args, models, p)
                             } catch (e: Exception) {
                                 if (chatStop.get()) throw e
                                 null to "That didn't work: ${e.message}"
                             }
+                        }
+                        val answers = arrayOfNulls<Pair<ResultEntry?, String>>(done.calls.size)
+                        coroutineScope {
+                            val pageJobs = done.calls.withIndex().filter { it.value.name in WEB_TOOLS }.map { (i, call) ->
+                                async(Dispatchers.IO) { i to pages.withPermit { doCall(call) } }
+                            }
+                            for ((i, call) in done.calls.withIndex()) if (call.name !in WEB_TOOLS) answers[i] = doCall(call)
+                            for ((i, r) in pageJobs.awaitAll()) answers[i] = r
+                        }
+                        for ((i, call) in done.calls.withIndex()) {
+                            val (entry, answer) = answers[i] ?: (null to "No answer.")
                             if (entry != null) {
                                 _results.value = store.all()
                                 upd(id) { list -> if (list.isEmpty()) list else list.dropLast(1) + list.last().let { it.copy(results = it.results + entry) } }
@@ -896,6 +1084,20 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         upd(id) { list ->
                             val last = list.lastOrNull() ?: return@upd list
                             list.dropLast(1) + last.copy(text = if (last.text.isBlank()) last.text else last.text + "\n\n")
+                        }
+                    }
+                    // A new chat gets a real title from the helper after its first answer (yours always wins).
+                    val answer = _all.value[id]?.lastOrNull()?.text.orEmpty()
+                    if (helper != null && !chatStop.get() && answer.isNotBlank() && shown.count { it.role == "user" } == 1 &&
+                        customTitles[id] == null && autoTitles[id] == null
+                    ) {
+                        try {
+                            setStatus(id, "Naming the chat")
+                            val t = Tools.chatOnce(c, helper, TITLE_SYSTEM, "User: ${question.take(1500)}\n\nAssistant: ${answer.take(1500)}", 30)
+                                .lines().first().trim().trim('"', '“', '”', '*', '#', ' ').trimEnd('.').take(48)
+                            if (t.isNotBlank()) autoTitles[id] = t
+                        } catch (e: Exception) {
+                            ApiLog.add("The helper couldn't name the chat (${e.message})", "Chat")
                         }
                     }
                 }

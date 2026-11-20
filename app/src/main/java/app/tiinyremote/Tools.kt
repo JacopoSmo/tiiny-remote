@@ -99,7 +99,11 @@ object Tools {
      * How a chat model thinks, from its /v1/models entry: "switch" (enable_thinking on or off), "always"
      * (reasons whatever it's sent, like gpt-oss: only the effort can change) or "none".
      */
+    /** What thinkingMode found per model, so helpers called several times at once don't each ask again. */
+    private val thinkingModes = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     fun thinkingMode(c: DeviceClient, model: String): String {
+        thinkingModes[c.base + " " + model]?.let { return it }
         val data = try {
             c.request("GET", "/v1/models", null, 15).json().optJSONArray("data")
         } catch (e: Exception) {
@@ -110,12 +114,14 @@ object Tools {
             val item = data.optJSONObject(i) ?: continue
             if (item.optString("id") == model) t = item.optJSONObject("thinking")
         }
-        return when {
+        val mode = when {
             t == null -> if (model.contains("gpt-oss")) "always" else "switch"
             !t.optBoolean("supported", false) -> "none"
             t.optBoolean("toggleable", false) -> "switch"
             else -> "always"
         }
+        if (t != null) thinkingModes[c.base + " " + model] = mode // only what the Tiiny actually said is kept
+        return mode
     }
 
     // ---------------- images ----------------

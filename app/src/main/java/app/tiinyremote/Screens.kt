@@ -362,7 +362,7 @@ fun AppRoot(vm: MainViewModel) {
                         1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openChat = { goTab(2) })
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
-                        else -> SettingsScreen(s, vm)
+                        else -> SettingsScreen(s, vm, st)
                     } }
                 }
             }
@@ -1018,7 +1018,7 @@ private fun SettingDropdown(label: String, options: List<Pair<String, String>>, 
 }
 
 @Composable
-private fun SettingsScreen(s: UiState, vm: MainViewModel) {
+private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
     val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true)
@@ -1038,6 +1038,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
     var searxTest by remember { mutableStateOf<String?>(null) }
     var searchMode by remember(formKey) { mutableStateOf(cur.searchMode) }
     var tavily by remember(formKey) { mutableStateOf(cur.tavilyKey) }
+    var helper by remember(formKey) { mutableStateOf(cur.helperModel) }
     val scope = rememberCoroutineScope()
 
     fun current() = AppSettings(
@@ -1060,6 +1061,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
         uiScale = cur.uiScale,
         textScale = cur.textScale,
         enterSends = cur.enterSends,
+        helperModel = helper,
     )
 
     Column(
@@ -1148,6 +1150,41 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel) {
             }) { Text("Test search") }
         }
         searxTest?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("Fast helper model", style = MaterialTheme.typography.titleMedium)
+        val chatModels = s.models.filter { it.isChat }
+        SettingDropdown(
+            "Helper",
+            listOf("" to "None (the chat model does everything)") + chatModels.map { it.id to it.name },
+            helper,
+        ) { helper = it }
+        Text(
+            "A small, quick chat model kept loaded beside your main one. While it's loaded it condenses web pages for the " +
+                "chat (several at once), condenses long chats, names new chats, and runs Improve prompt, lyrics and tags. " +
+                "It's never swapped in: when it isn't loaded, the chat model does everything as before. Save to use it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val speed by st.speed.collectAsState()
+        val small = chatModels.firstOrNull { it.id == helper && it.running }
+        val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
+            ?: chatModels.firstOrNull { it.running && it.id != helper }
+        OutlinedButton(
+            onClick = { if (big != null && small != null) st.speedTest(big, small) },
+            enabled = big != null && small != null && speed?.startsWith("Testing") != true,
+        ) { Text("Speed test: one at a time or both at once?") }
+        Text(
+            when {
+                helper.isBlank() -> "Choose a helper first."
+                small == null -> "Load the helper and your chat model to run the speed test."
+                big == null -> "Load your chat model too to run the speed test."
+                else -> "Tests ${big.name} and ${small.name}, alone and at the same time (a few minutes)."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        speed?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Unlocking after a restart", style = MaterialTheme.typography.titleMedium)

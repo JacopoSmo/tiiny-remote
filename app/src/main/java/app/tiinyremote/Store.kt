@@ -40,6 +40,8 @@ data class AppSettings(
     val uiScale: String = "1.0",
     val textScale: String = "1.0",
     val enterSends: Boolean = true,
+    /** A small, fast chat model kept loaded beside the main one: summarises pages, names and condenses chats, runs the helpers. */
+    val helperModel: String = "",
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -72,6 +74,7 @@ class Store(context: Context) {
         uiScale = prefs.getString("ui_scale", "1.0") ?: "1.0",
         textScale = prefs.getString("text_scale", "1.0") ?: "1.0",
         enterSends = prefs.getBoolean("enter_sends", true),
+        helperModel = prefs.getString("helper_model", "") ?: "",
     )
 
     fun save(s: AppSettings) {
@@ -95,6 +98,7 @@ class Store(context: Context) {
             .putString("ui_scale", s.uiScale)
             .putString("text_scale", s.textScale)
             .putBoolean("enter_sends", s.enterSends)
+            .putString("helper_model", s.helperModel)
             .apply()
     }
 

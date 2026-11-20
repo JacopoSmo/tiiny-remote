@@ -1318,9 +1318,13 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             !thinks -> "This model doesn't think before answering."
             else -> null
         }
+        // The fast helper (Settings) at work beside the chat model, when it's loaded.
+        val helperName = s.models.firstOrNull { it.id == s.settings.helperModel && it.running && it.id != model?.id }?.name
+        val helperNote = helperName?.let { "Helper $it condenses pages and long chats and names the chat." }
+        val shownHint = listOfNotNull(hint, helperNote).joinToString(" ").ifBlank { null }
         // On compact screens the hint shows only before the chat starts, to leave room for the conversation.
-        if (hint != null && (!ui.compact || msgs.isEmpty())) {
-            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (shownHint != null && (!ui.compact || msgs.isEmpty())) {
+            Text(shownHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(
             Modifier
