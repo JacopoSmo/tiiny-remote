@@ -63,10 +63,17 @@ fun isSquare(widthDp: Int, heightDp: Int): Boolean {
     return a > 0 && a / b < 1.25f
 }
 
+/** Decodes a result picture off the main thread, so lists don't stutter; null until it's ready (or unreadable). */
+@Composable
+fun rememberThumbnail(file: java.io.File, maxSide: Int = 1024): android.graphics.Bitmap? =
+    androidx.compose.runtime.produceState<android.graphics.Bitmap?>(null, file.path, maxSide) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.thumbnail(file, maxSide) }
+    }.value
+
 /** A picture you can pinch to zoom, drag, and double-tap to reset. */
 @Composable
 fun ZoomImage(file: java.io.File, modifier: Modifier = Modifier) {
-    val bmp = remember(file.path) { Inputs.thumbnail(file, 2048) }
+    val bmp = rememberThumbnail(file, 2048)
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     Box(

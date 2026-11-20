@@ -952,7 +952,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (e in recent) {
                 val f = st.store.file(e.mainFile!!)
-                val thumb = remember(f.path) { Inputs.thumbnail(f, 256) }
+                val thumb = rememberThumbnail(f, 256)
                 if (thumb != null) {
                     Card(onClick = {
                         scope.launch {
@@ -1182,7 +1182,7 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                 "image" -> {
                     for (name in e.files) {
                         val f = st.store.file(name)
-                        val bmp = remember(f.path) { Inputs.thumbnail(f) }
+                        val bmp = rememberThumbnail(f)
                         bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
                         if (e.files.size > 1) TextButton(onClick = { st.editThis(name) }) { BtnLabel("Edit this one", androidx.compose.material.icons.Icons.Filled.Edit) }
                     }

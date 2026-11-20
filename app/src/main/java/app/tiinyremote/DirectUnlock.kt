@@ -61,8 +61,7 @@ class DirectUnlock(tiinyUrl: String, private val store: Store, private val passw
         val key = data.optString("auth_key")
         if (code in 200..299 && key.isNotEmpty()) {
             store.setAuthKey(key)
-            val user = data.optJSONObject("user_info")?.optString("user_name").orEmpty()
-            ApiLog.add("Logged in to the Tiiny" + (if (user.isNotEmpty()) " as $user" else "") + "; login key saved (encrypted).")
+            ApiLog.add("Logged in to the Tiiny; login key saved (encrypted).")
             return key
         }
         if (data.optString("status").contains("activ", ignoreCase = true)) {

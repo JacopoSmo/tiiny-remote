@@ -11,9 +11,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 enum class DeviceState { NOT_CONFIGURED, CHECKING, ONLINE, LOCKED, UNAUTHORIZED, UNREACHABLE, ERROR }
 
@@ -31,9 +28,7 @@ data class UiState(
     /** Models the Tiiny lists but refuses to load ("not found"), remembered across app starts. */
     val unavailable: Set<String> = emptySet(),
     val unlocking: Boolean = false,
-    val log: List<String> = emptyList(),
     val toast: String? = null,
-    val updatedAt: Long = 0,
     val vpn: VpnStatus = VpnStatus(),
     /** The Model Store (null until opened), downloads in progress, and what the store tab is busy with. */
     val store: List<StoreModel>? = null,
@@ -56,7 +51,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState(store.load(), unavailable = store.unavailable()))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
-    private val time = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
     private var lastAutoUnlock = 0L
     private var lastVpnSwitch = 0L
     /** After you switch the VPN yourself, automatic switching pauses for 10 minutes. */
@@ -137,7 +131,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     deviceMessage = "",
                     models = withAliases(cat.models),
                     npuUsed = cat.npuUsed,
-                    updatedAt = System.currentTimeMillis(),
                 )
             }
             autoVpn(reachable = true)
@@ -251,7 +244,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(working = if (on) it.working + id else it.working - id) }
     }
 
-    // ---------- unlock over SSH ----------
+    // ---------- unlocking: directly with the Tiiny's password, or through the NAS over SSH ----------
 
     private fun canUnlock(st: AppSettings) = st.directConfigured || st.nasConfigured
 
@@ -280,58 +273,56 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun unlockSteps(st: AppSettings, automatic: Boolean) {
-        run {
-            _state.update { it.copy(unlocking = true) }
-            if (automatic) log("Tiiny is locked: unlocking automatically…")
-            var ok = false
+        _state.update { it.copy(unlocking = true) }
+        if (automatic) log("Tiiny is locked: unlocking automatically…")
+        var ok = false
 
-            if (st.directConfigured) {
-                log("Unlocking directly with the Tiiny's password…")
-                val r = withContext(Dispatchers.IO) {
-                    runCatching { DirectUnlock(st.tiinyUrl, store, st.tiinyPassword).unlock { line -> log("  $line") } }
-                }
-                r.onSuccess { ok = true }
-                r.onFailure { e ->
-                    log("Direct unlock failed: ${e.message}")
-                    if (st.nasConfigured) log("Trying through the NAS instead…")
-                }
+        if (st.directConfigured) {
+            log("Unlocking directly with the Tiiny's password…")
+            val r = withContext(Dispatchers.IO) {
+                runCatching { DirectUnlock(st.tiinyUrl, store, st.tiinyPassword).unlock { line -> log("  $line") } }
             }
-
-            if (!ok && st.nasConfigured) {
-                log("Connecting to the NAS…")
-                val res = withContext(Dispatchers.IO) { SshRunner.run(st, store, st.unlockCommand) }
-                if (res.output.isNotBlank()) res.output.lines().filter { it.isNotBlank() }.forEach { log("  $it") }
-                when {
-                    res.output.contains("Password:", ignoreCase = true) && res.error != null ->
-                        log(
-                            "Unlock through the NAS failed: \"tiiny login\" asked for the Tiiny's password, which it " +
-                                "can't be given over this connection. Enter the Tiiny's password in Settings to unlock directly."
-                        )
-                    res.error != null -> log("Unlock through the NAS failed: ${res.error}")
-                    else -> ok = true
-                }
+            r.onSuccess { ok = true }
+            r.onFailure { e ->
+                log("Direct unlock failed: ${e.message}")
+                if (st.nasConfigured) log("Trying through the NAS instead…")
             }
-
-            if (!ok) {
-                _state.update { it.copy(unlocking = false) }
-                if (!automatic) toast("Unlock failed: see the Activity tab")
-                return
-            }
-            log("Login done. Waiting for the Tiiny's services (usually up to 2 minutes)…")
-            val deadline = System.currentTimeMillis() + 4 * 60_000
-            var back = false
-            while (System.currentTimeMillis() < deadline) {
-                delay(5_000)
-                refresh()
-                if (_state.value.device == DeviceState.ONLINE) {
-                    back = true
-                    break
-                }
-            }
-            log(if (back) "Tiiny is unlocked. Load a model to start chatting." else "The Tiiny still doesn't answer after 4 minutes. Try again, or open TiinyOS on a computer.")
-            _state.update { it.copy(unlocking = false) }
-            toast(if (back) "Tiiny unlocked" else "Tiiny still locked")
         }
+
+        if (!ok && st.nasConfigured) {
+            log("Connecting to the NAS…")
+            val res = withContext(Dispatchers.IO) { SshRunner.run(st, store, st.unlockCommand) }
+            if (res.output.isNotBlank()) res.output.lines().filter { it.isNotBlank() }.forEach { log("  $it") }
+            when {
+                res.output.contains("Password:", ignoreCase = true) && res.error != null ->
+                    log(
+                        "Unlock through the NAS failed: \"tiiny login\" asked for the Tiiny's password, which it " +
+                            "can't be given over this connection. Enter the Tiiny's password in Settings to unlock directly."
+                    )
+                res.error != null -> log("Unlock through the NAS failed: ${res.error}")
+                else -> ok = true
+            }
+        }
+
+        if (!ok) {
+            _state.update { it.copy(unlocking = false) }
+            if (!automatic) toast("Unlock failed: see the Activity tab")
+            return
+        }
+        log("Login done. Waiting for the Tiiny's services (usually up to 2 minutes)…")
+        val deadline = System.currentTimeMillis() + 4 * 60_000
+        var back = false
+        while (System.currentTimeMillis() < deadline) {
+            delay(5_000)
+            refresh()
+            if (_state.value.device == DeviceState.ONLINE) {
+                back = true
+                break
+            }
+        }
+        log(if (back) "Tiiny is unlocked. Load a model to start chatting." else "The Tiiny still doesn't answer after 4 minutes. Try again, or open TiinyOS on a computer.")
+        _state.update { it.copy(unlocking = false) }
+        toast(if (back) "Tiiny unlocked" else "Tiiny still locked")
     }
 
     /** Logs in to the NAS and checks that the Tiiny CLI is there, without unlocking anything. */
@@ -359,15 +350,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearLog() {
-        _state.update { it.copy(log = emptyList()) }
         ApiLog.clear()
     }
 
+    private val vpnWords = Regex("VPN|WireGuard|tunnel", RegexOption.IGNORE_CASE)
+
+    /** Unlock and VPN steps go into the app's one log, under VPN or Unlock. */
     private fun log(line: String) {
-        val entry = "${time.format(java.time.LocalTime.now())}  $line"
-        _state.update { it.copy(log = (it.log + entry).takeLast(200)) }
-        // Into the unified log too, as VPN or Unlock.
-        ApiLog.add(line.trim(), if (Regex("VPN|WireGuard|tunnel", RegexOption.IGNORE_CASE).containsMatchIn(line)) "VPN" else "Unlock")
+        ApiLog.add(line.trim(), if (vpnWords.containsMatchIn(line)) "VPN" else "Unlock")
     }
 
     // ---------- WireGuard VPN ----------
@@ -496,8 +486,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         toast(if (granted) "Tiiny Remote may now switch WireGuard tunnels" else "Permission not given: VPN control stays off")
     }
 
-    // ---------- settings ----------
-
     // ---------- Model Store, downloads, updates, deleting ----------
 
     fun loadStore() {
@@ -527,9 +515,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _state.update { it.copy(downloads = now) }
-        val finished = before - now.map { it.id }.toSet()
-        if (finished.isNotEmpty()) {
+        val gone = before - now.map { it.id }.toSet()
+        if (gone.isNotEmpty()) {
             refresh()
+            // Gone from the list means finished only if it's now installed: a cancelled download is gone too.
+            val installed = _state.value.models.map { it.id }.toSet()
+            val finished = gone.filter { it in installed }
+            if (finished.isEmpty()) return
             val names = finished.map { id -> _state.value.store?.firstOrNull { it.id == id }?.name ?: id.substringAfterLast('/') }
             toast("Downloaded: ${names.joinToString(", ")}")
             ApiLog.add("Download finished: ${finished.joinToString(", ")}", "Models")

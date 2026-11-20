@@ -47,9 +47,37 @@ object Stats {
     @Volatile
     private var disk: Pair<Long, Pair<Double, Double>?>? = null
 
+    /** The Tiiny the cached values above belong to: another address starts afresh. */
+    @Volatile
+    private var cachedFor = ""
+
+    /** When the on-device dashboard last didn't answer: it's an optional add-on, so it's only retried once a minute. */
+    @Volatile
+    private var dashboardMissingAt = 0L
+
     fun read(settings: AppSettings): DeviceStats {
         var s = DeviceStats()
         val c = DeviceClient(settings.tiinyUrl, settings.apiKey)
+        if (c.base != cachedFor) {
+            cachedFor = c.base
+            ramTotal = null
+            disk = null
+            dashboardMissingAt = 0L
+        }
+        // /api/v1/sys/status is read at most once per round, for the RAM total and the storage.
+        var sys: JSONObject? = null
+        var sysRead = false
+        fun sysStatus(): JSONObject? {
+            if (!sysRead) {
+                sysRead = true
+                sys = try {
+                    c.request("GET", "/api/v1/sys/status", null, 5, log = false).takeIf { it.ok }?.json()
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            return sys
+        }
         try {
             val r = c.request("GET", "/api/v1/npu/status", null, 5, log = false)
             if (r.ok) {
@@ -78,12 +106,8 @@ object Stats {
         // RAM: the sizes if the status has them; the total otherwise from /api/v1/sys/status, else the Tiiny's 80 GB.
         if (s.ramTotalGb != null) ramTotal = s.ramTotalGb
         if (ramTotal == null && s.gateway) {
-            ramTotal = try {
-                c.request("GET", "/api/v1/sys/status", null, 5, log = false).json().let { o ->
-                    (o.optJSONObject("memory") ?: o.optJSONObject("mem") ?: o.optJSONObject("ram"))?.gb("total")
-                }
-            } catch (e: Exception) {
-                null
+            ramTotal = sysStatus()?.let { o ->
+                (o.optJSONObject("memory") ?: o.optJSONObject("mem") ?: o.optJSONObject("ram"))?.gb("total")
             } ?: 80.0
         }
         val total = s.ramTotalGb ?: ramTotal
@@ -92,15 +116,10 @@ object Stats {
         // Storage changes slowly: read it once a minute.
         val d = disk
         if (d == null || System.currentTimeMillis() - d.first > 60_000) {
-            val v = try {
-                val r = c.request("GET", "/api/v1/sys/status", null, 5, log = false)
-                val dk = r.json().optJSONObject("disk")
-                val total = dk?.num("total_bytes")
-                val used = dk?.num("used_bytes")
-                if (r.ok && total != null && used != null && total > 0) (total - used).coerceAtLeast(0.0) / 1e9 to total / 1e9 else null
-            } catch (e: Exception) {
-                null
-            }
+            val dk = sysStatus()?.optJSONObject("disk")
+            val dTotal = dk?.num("total_bytes")
+            val dUsed = dk?.num("used_bytes")
+            val v = if (dTotal != null && dUsed != null && dTotal > 0) (dTotal - dUsed).coerceAtLeast(0.0) / 1e9 to dTotal / 1e9 else null
             disk = System.currentTimeMillis() to v
         }
         disk?.second?.let { (f, t) -> s = s.copy(diskFreeGb = f, diskTotalGb = t) }
@@ -111,7 +130,8 @@ object Stats {
         } catch (e: Exception) {
             ""
         }
-        if (host.isNotEmpty()) try {
+        val now = System.currentTimeMillis()
+        if (host.isNotEmpty() && now - dashboardMissingAt > 60_000) try {
             val conn = URL("http://$host:9109/api/stats").openConnection() as HttpURLConnection
             conn.connectTimeout = 1500
             conn.readTimeout = 2000
@@ -128,11 +148,14 @@ object Stats {
                         npuTempC = temps.firstOrNull()?.second ?: s.npuTempC,
                         temps = temps,
                     )
+                } else {
+                    dashboardMissingAt = now
                 }
             } finally {
                 conn.disconnect()
             }
         } catch (e: Exception) {
+            dashboardMissingAt = now
         }
         return s
     }

@@ -40,8 +40,9 @@ object Tools {
 
     // ---------------- loading models for a job (Tiiny Studio's make_room / put_back) ----------------
 
-    fun runningIds(c: DeviceClient): Set<String> {
-        val run = c.request("GET", "/api/v1/models/running", null, 15).json()
+    /** log = false for the checks repeated every few seconds while a model loads (failures are still logged). */
+    fun runningIds(c: DeviceClient, log: Boolean = true): Set<String> {
+        val run = c.request("GET", "/api/v1/models/running", null, 15, log = log).json()
         val list = run.optJSONObject("instances")?.optJSONArray("running") ?: return emptySet()
         return (0 until list.length()).mapNotNull { list.optJSONObject(it)?.optString("model_id")?.takeIf { s -> s.isNotBlank() } }.toSet()
     }
@@ -50,7 +51,7 @@ object Tools {
         val until = System.currentTimeMillis() + 420_000 // the biggest models take about 2 minutes
         while (System.currentTimeMillis() < until) {
             check(p)
-            if (model in runningIds(c)) return
+            if (model in runningIds(c, log = false)) return
             Thread.sleep(3_000)
         }
         throw MediaException("${short(model)} didn't finish loading.")
@@ -439,7 +440,7 @@ object Tools {
                 try {
                     Thread.sleep(3_000)
                     if (done.get()) break
-                    val r = c.request("GET", "/v1/music/sessions?model=$q", null, 5)
+                    val r = c.request("GET", "/v1/music/sessions?model=$q", null, 5, log = false)
                     val list = r.json().optJSONArray("sessions") ?: continue
                     var best = 0.0
                     for (i in 0 until list.length()) {
@@ -777,7 +778,7 @@ object Tools {
             Thread.sleep(3_000)
             check(p)
             val r = try {
-                c.request("GET", path, null, 30)
+                c.request("GET", path, null, 30, log = false) // every 3 s for up to an hour: only failures are logged
             } catch (e: MediaException) {
                 null
             }
@@ -1027,7 +1028,7 @@ object Tools {
                 Thread.sleep(2_000)
                 check(p)
                 val st = try {
-                    c.request("GET", "$tq$q", null, 30)
+                    c.request("GET", "$tq$q", null, 30, log = false) // every 2 s: only failures are logged
                 } catch (e: MediaException) {
                     null
                 }

@@ -183,7 +183,7 @@ internal fun RecentImages(st: StudioViewModel, onPick: (PickedImage) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (e in recent) {
             val f = st.store.file(e.mainFile!!)
-            val thumb = remember(f.path) { Inputs.thumbnail(f, 256) }
+            val thumb = rememberThumbnail(f, 256)
             if (thumb != null) {
                 Card(onClick = { scope.launch { withContext(Dispatchers.IO) { Inputs.fromFile(f) }?.let(onPick) } }) {
                     Image(thumb.asImageBitmap(), e.title, Modifier.size(76.dp), contentScale = ContentScale.Crop)

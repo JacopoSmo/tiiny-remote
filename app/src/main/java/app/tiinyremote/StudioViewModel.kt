@@ -73,8 +73,8 @@ private fun webSpecs(): JSONArray {
         .put(fn("news", "Current news headlines from the last day, with sources and times. Leave topic empty for the top stories.",
             JSONObject().put("topic", JSONObject().put("type", "string").put("description", "What the news should be about; empty for top stories."))
                 .put("region", JSONObject().put("type", "string").put("description", "Country code for local news (ch, de, at, us, uk, fr, it) or \"world\" (default).")), "topic"))
-        .put(fn("open_page", "Read the text of a web page (e.g. one from the search results).",
-            JSONObject().put("url", JSONObject().put("type", "string").put("description", "The page's full http(s) address.")), "url"))
+        .put(fn("open_page", "Read the text of a web page from the search or news results, or one the user gave. Other addresses are refused.",
+            JSONObject().put("url", JSONObject().put("type", "string").put("description", "The page's full http(s) address, exactly as listed in the results.")), "url"))
 }
 
 /** The tools the chat model may call, as in Tiiny Studio's "Can make things". */
@@ -141,6 +141,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     val note: StateFlow<String?> = _note.asStateFlow()
 
     private val cancelled = AtomicBoolean(false)
+    /**
+     * Held while something may load or unload models on the Tiiny: a tool job, a chat's tool call, or a helper that
+     * has to swap models. Only one at a time, so a chat can't unload the model a video is rendering with.
+     */
+    private val deviceBusy = AtomicBoolean(false)
     @Volatile
     private var remote = RemoteJob()
 
@@ -170,6 +175,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             note("Something is already running on the Tiiny. Wait for it, or cancel it.")
             return
         }
+        if (!deviceBusy.compareAndSet(false, true)) {
+            note("A chat is making something on the Tiiny right now. Wait for it to finish.")
+            return
+        }
         cancelled.set(false)
         val rj = RemoteJob()
         remote = rj
@@ -190,6 +199,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val msg = if (e is OutOfMemoryError) "Not enough memory on the phone for this. Try a smaller file or size." else e.message ?: e.toString()
                 ApiLog.add("$tool failed: $msg", "Create")
                 _job.value = JobUi(tool, false, error = msg)
+            } finally {
+                deviceBusy.set(false)
             }
         }
     }
@@ -468,7 +479,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             note(if (tool == "chat") "This helper needs a chat model on the Tiiny." else "Auto-transcribe needs a speech-to-text (ASR) model on the Tiiny.")
             return
         }
-        if (_job.value?.running == true && !model.running) {
+        // A helper whose model is already loaded swaps nothing; one that must load its model waits for the device.
+        val swaps = !model.running
+        if (swaps && !deviceBusy.compareAndSet(false, true)) {
             note("Wait for the running job: the helper would have to swap models.")
             return
         }
@@ -493,6 +506,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 note(e.message ?: e.toString())
             } finally {
                 _helper.value = null
+                if (swaps) deviceBusy.set(false)
             }
         }
     }
@@ -561,12 +575,18 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             note("Something is already running on the Tiiny. Wait for it, or cancel it.")
             return
         }
-        prefs.edit().remove("resume_${e.id}").apply()
         note("Continuing to the full song: this takes about 15 minutes.")
         run("song") { c, store, p, _ ->
             val model = o.getString("model")
-            Tools.makeRoom(c, model, p)
-            Tools.song(c, store, model, o.getJSONObject("config"), 0, false, o.getString("session"), p).entry
+            val unloaded = Tools.makeRoom(c, model, p)
+            val entry = try {
+                Tools.song(c, store, model, o.getJSONObject("config"), 0, false, o.getString("session"), p).entry
+            } finally {
+                Tools.putBack(c, model, unloaded, p)
+            }
+            // Forgotten only once the full song is made, so a failed attempt can be tried again.
+            prefs.edit().remove("resume_${e.id}").apply()
+            entry
         }
     }
 
@@ -587,6 +607,29 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val f = java.io.File(getApplication<Application>().filesDir, "voice.wav")
         val t = prefs.getString("voice_text", null)
         return if (f.exists() && !t.isNullOrBlank()) f.readBytes() to t else null
+    }
+
+    /**
+     * The newest picture in a chat, for edit_image: the one remembered since the app started, else (in a chat opened
+     * again after a restart) the newest one attached or made in its messages.
+     */
+    private fun lastImage(id: String): String? {
+        lastImages[id]?.let { return it }
+        for (m in (_all.value[id] ?: emptyList()).asReversed()) {
+            m.results.lastOrNull { it.kind == "image" && it.mainFile != null }?.let { e ->
+                val f = try {
+                    store.file(e.mainFile!!)
+                } catch (x: Exception) {
+                    null
+                }
+                if (f != null && f.exists()) {
+                    return ("data:image/png;base64," + android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP))
+                        .also { lastImages[id] = it }
+                }
+            }
+            m.image?.let { return it.also { img -> lastImages[id] = img } }
+        }
+        return null
     }
 
     /** Which installed model a tool uses: the one picked in that tool, else a loaded one, else the first. */
@@ -625,12 +668,40 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             return "News (via ${found.via}):\n\n" + found.hits.mapIndexed { i, h -> "${i + 1}. ${h.title}\n${h.url}\n${h.snippet.take(300)}" }.joinToString("\n\n")
         }
         val url = args.optString("url").trim()
+        // A page could tell the model to "open" an address carrying parts of this chat to someone's server. So only
+        // addresses that came from this chat's search or news results, or that you wrote yourself, can be opened.
+        if (!pageAllowed(id, url)) {
+            ApiLog.add("open_page refused an address that wasn't in the results or your messages", "Search")
+            return "That address can't be opened: only pages from this chat's search or news results, or addresses " +
+                "the user wrote, can be read. Search for it first if you need it."
+        }
         setStatus(id, "Reading ${url.substringAfter("://").substringBefore('/')}")
         val text = WebSearch.read(url)
         upd(id) { list ->
             if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(url.substringAfter("://").substringBefore('/'), url)) }
         }
         return "Page $url:\n\n$text"
+    }
+
+    /** The same address, written slightly differently (no #part, no trailing /, any case in the host). */
+    private fun sameUrl(u: String): String {
+        val noFrag = u.trim().substringBefore('#').trimEnd('/')
+        val scheme = noFrag.substringBefore("://", "")
+        if (scheme.isEmpty()) return noFrag
+        val rest = noFrag.substringAfter("://")
+        val host = rest.substringBefore('/')
+        return scheme.lowercase() + "://" + host.lowercase() + rest.removePrefix(host)
+    }
+
+    /** open_page only reads addresses this chat's results listed, or that the user wrote in a message. */
+    private fun pageAllowed(id: String, url: String): Boolean {
+        val want = sameUrl(url)
+        val msgs = _all.value[id] ?: return false
+        if (msgs.any { m -> m.sources.any { sameUrl(it.url) == want } }) return true
+        val linkInText = Regex("""https?://[^\s<>()\[\]"']+""")
+        return msgs.filter { it.role == "user" }.any { m ->
+            linkInText.findAll(m.text).any { sameUrl(it.value.trimEnd('.', ',', ';', ':', '!', '?')) == want }
+        }
     }
 
     /** Runs one tool call for the chat model; returns (result or null, text for the model). */
@@ -644,12 +715,16 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             else -> return null to "Unknown tool $name"
         }
         val model = modelFor(tool, models, fits) ?: return null to "No model for ${name.replace('_', ' ')} is installed on the device."
-        if (name == "edit_image" && lastImages[id] == null) {
+        if (name == "edit_image" && lastImage(id) == null) {
             return null to "There's no image in the conversation to edit. Ask the user to attach one."
         }
-        val unloaded = Tools.makeRoom(c, model, p)
+        if (!deviceBusy.compareAndSet(false, true)) {
+            return null to "The Tiiny is busy with another job right now (a tool in the app or another chat). " +
+                "Tell the user to try again when it's done."
+        }
         val result = try {
-            when (name) {
+            val unloaded = Tools.makeRoom(c, model, p)
+            try { when (name) {
                 "create_image" -> {
                     val size = when (args.optString("shape")) {
                         "portrait" -> "768x1024"
@@ -659,7 +734,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     Tools.image(c, store, model, args.optString("prompt"), "", size, null, null, emptyList(), p)
                 }
-                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImages[id]!!), p)
+                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImage(id)!!), p)
                 "speak" -> {
                     val caps = Tools.voiceCaps(c, model)
                     val savedSpeaker = prefs.getString("voice_speaker", null)
@@ -687,9 +762,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     if (lyrics.isNotEmpty()) cfg.put("lyrics", lyrics)
                     Tools.song(c, store, model, cfg, 30, false, null, p).entry
                 }
+            } } finally {
+                Tools.putBack(c, model, unloaded, p)
             }
         } finally {
-            Tools.putBack(c, model, unloaded, p)
+            deviceBusy.set(false)
         }
         if (result == null) {
             return null to "No saved voice to speak with. Tell the user to clone a voice (or pick a built-in one) once in the Voice tool first."

@@ -96,8 +96,10 @@ class DeviceClient(url: String, private val key: String) {
             out.write("--$boundary\r\nContent-Disposition: form-data; name=\"$k\"\r\n\r\n$v\r\n".toByteArray())
         }
         for (f in files) {
+            // A quote or line break in a file's name would break the form: replace them.
+            val fname = f.filename.replace(Regex("[\"\\\\\\r\\n]"), "_")
             out.write(
-                ("--$boundary\r\nContent-Disposition: form-data; name=\"${f.field}\"; filename=\"${f.filename}\"\r\n" +
+                ("--$boundary\r\nContent-Disposition: form-data; name=\"${f.field}\"; filename=\"$fname\"\r\n" +
                     "Content-Type: ${f.mime}\r\n\r\n").toByteArray()
             )
             out.write(f.data)

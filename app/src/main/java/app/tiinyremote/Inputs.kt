@@ -67,7 +67,22 @@ object Inputs {
             val b = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
                 ?: throw MediaException("Couldn't read that picture.")
             val scale = minOf(1.0, maxSide.toDouble() / maxOf(b.width, b.height))
-            if (scale < 1.0) Bitmap.createScaledBitmap(b, (b.width * scale).toInt(), (b.height * scale).toInt(), true) else b
+            val scaled = if (scale < 1.0) Bitmap.createScaledBitmap(b, (b.width * scale).toInt(), (b.height * scale).toInt(), true) else b
+            // Android 8 doesn't turn photos upright by itself (ImageDecoder above does): apply the camera's orientation.
+            val degrees = try {
+                ctx.contentResolver.openInputStream(uri)?.use {
+                    when (android.media.ExifInterface(it).getAttributeInt(android.media.ExifInterface.TAG_ORIENTATION, 1)) {
+                        android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                        android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                        android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                        else -> 0f
+                    }
+                } ?: 0f
+            } catch (e: Exception) {
+                0f
+            }
+            if (degrees == 0f) scaled
+            else Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height, android.graphics.Matrix().apply { postRotate(degrees) }, true)
         }
         val out = ByteArrayOutputStream()
         val png = bmp.hasAlpha()

@@ -4,8 +4,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 class TiinyException(val kind: Kind, message: String) : Exception(message) {
@@ -108,7 +106,6 @@ data class Plan(
     val candidateNpu: Double?,
 )
 
-/** The last few requests and answers, shown under Settings to help debug a firmware that answers differently. */
 /** One line of the unified log: when, which kind (see ApiLog.TYPES), the text, and whether it reports a problem. */
 data class LogEntry(val ms: Long, val type: String, val text: String, val error: Boolean, val time: String)
 
@@ -121,9 +118,13 @@ object ApiLog {
     val entries: kotlinx.coroutines.flow.StateFlow<List<LogEntry>> = _entries
 
     private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
-    /** Fields whose values never reach the log: login keys, tokens, passwords, and the device's serial number. */
+    /**
+     * Fields whose values never reach the log: login keys, tokens, passwords, the account's name and the device's
+     * serial number. The closing quote is optional: callers cut long answers before logging them, and a value cut
+     * in the middle must still be hidden.
+     */
     private val secretFields = Regex(
-        "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number)\"\\s*:\\s*\")[^\"]*\"",
+        "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number|user_name|username)\"\\s*:\\s*\")[^\"]*\"?",
     )
     private val bearer = Regex("(Bearer\\s+)[A-Za-z0-9._~+/=-]{8,}")
     /** File paths from a computer (C:\\Users\\…, /C$/Users/…, /home/…, /Users/…): they name people and folders. */
@@ -153,7 +154,7 @@ object ApiLog {
     }
 
     fun clear() {
-        _entries.value = emptyList()
+        synchronized(this) { _entries.value = emptyList() }
     }
 
     /** Newest first, as text: "08:55:07  [VPN] …". */
@@ -386,7 +387,6 @@ class TiinyApi(url: String, private val key: String) {
         )
     }
 
-    /** Starts loading; the device answers once the load is accepted and finishes in the background. */
     // ---------- the Model Store and downloads (the Tiiny downloads over its own Wi-Fi) ----------
 
     /** Answers 2xx or throws the usual readable error. */
@@ -455,6 +455,7 @@ class TiinyApi(url: String, private val key: String) {
         ok(call("DELETE", "/api/v1/models/${quote(id)}", null, 60))
     }
 
+    /** Starts loading; the device answers once the load is accepted and finishes in the background. */
     fun launch(id: String) {
         modelCall("POST", id, "/launch", JSONObject().put("model_id", id), timeoutSec = 120)
     }

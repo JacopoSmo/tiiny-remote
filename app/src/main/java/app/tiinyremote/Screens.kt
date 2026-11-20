@@ -144,8 +144,8 @@ private fun buildReport(ctx: Context, s: UiState, types: Set<String>? = null, er
     return buildString {
         append("Tiiny Remote ").append(version).append('\n')
         append("Status: ").append(s.device).append(' ').append(s.deviceMessage).append("\n\n")
-        val shown = ApiLog.entries.value.filter { types == null || it.type in types || (errorsOnly && it.error) }
-            .filter { !errorsOnly || it.error }
+        // The same choice as the Activity screen, so Share sends exactly what's shown.
+        val shown = ApiLog.entries.value.filter { (types == null || it.type in types) && (!errorsOnly || it.error) }
         append("== Log (newest first)")
         if (types != null) append(": ").append(types.joinToString(", "))
         if (errorsOnly) append(", problems only")
