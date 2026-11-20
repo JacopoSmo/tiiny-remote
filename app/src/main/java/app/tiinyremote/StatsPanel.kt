@@ -92,23 +92,23 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
                 val ru = st?.ramUsedGb
                 val rt = st?.ramTotalGb
                 Meter("CPU", st?.cpuPct, Modifier.weight(1f), "RAM " + if (ru != null && rt != null) "${gbText(ru)} / ${gbText(rt)} GB" else "—")
-                Text(
-                    "⚡ " + fmt(st?.npuPowerW, " W", 1),
+                // Power and temperature only when the Tiiny reports them (TiinyOS 0.1.39 doesn't).
+                if (st?.npuPowerW != null) Text(
+                    "⚡ " + fmt(st.npuPowerW, " W", 1),
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (st?.npuPowerW == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(
-                    "🌡 " + fmt(st?.npuTempC, "°C"),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = st?.npuTempC.let { t ->
-                        when {
-                            t == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                st?.npuTempC?.let { t ->
+                    Text(
+                        "🌡 " + fmt(t, "°C"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = when {
                             t >= 85 -> Color(0xFFE53935)
                             t >= 70 -> Color(0xFFFB8C00)
                             else -> MaterialTheme.colorScheme.onSurface
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
             Text(if (open) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
         }
@@ -230,7 +230,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
                             when {
                                 st == null -> "Reading…"
                                 st.dashboard -> "Live from the on-device dashboard (port 9109) · every 3 s"
-                                else -> "Power and temperature need the on-device dashboard (port 9109), a community add-on that isn't part of TiinyOS. NPU activity shows while a model is loaded."
+                                else -> "This TiinyOS (0.1.39) doesn't report power or temperature, so they're hidden. NPU memory shows while a model is loaded."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,

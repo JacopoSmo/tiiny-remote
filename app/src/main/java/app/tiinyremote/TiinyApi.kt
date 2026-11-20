@@ -126,12 +126,14 @@ object ApiLog {
         "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number)\"\\s*:\\s*\")[^\"]*\"",
     )
     private val bearer = Regex("(Bearer\\s+)[A-Za-z0-9._~+/=-]{8,}")
+    /** File paths from a computer (C:\\Users\\…, /C$/Users/…, /home/…, /Users/…): they name people and folders. */
+    private val localPath = Regex("(?i)(?:[A-Z]:|/[A-Z]\\$)?[\\\\/](?:Users|home)[\\\\/][^\"\\s,}]*")
     private val clock = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
     private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error", RegexOption.IGNORE_CASE)
 
     /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
     fun redact(text: String): String =
-        bearer.replace(secretFields.replace(email.replace(text, "***@***"), "$1***\""), "$1***")
+        localPath.replace(bearer.replace(secretFields.replace(email.replace(text, "***@***"), "$1***\""), "$1***"), "[local file path]")
 
     /** Which kind an entry is, from what it says (when the caller doesn't name it). */
     private fun classify(line: String): String = when {

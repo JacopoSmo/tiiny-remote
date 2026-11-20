@@ -36,9 +36,6 @@ object Stats {
     @Volatile
     private var logged = false
 
-    @Volatile
-    private var sysLogged = false
-
     /** A size in GB from whichever field the device uses (…_bytes, …_mb, …_gb, or bytes with no suffix). */
     private fun JSONObject.gb(name: String): Double? =
         num("${name}_bytes")?.let { it / 1e9 } ?: num("${name}_mb")?.let { it / 1024 } ?: num("${name}_gb")
@@ -91,19 +88,6 @@ object Stats {
         }
         val total = s.ramTotalGb ?: ramTotal
         if (total != null) s = s.copy(ramTotalGb = total, ramUsedGb = s.ramUsedGb ?: s.memPct?.let { it / 100 * total })
-
-        // Once per app start, the full system status and hardware info go to the log, to find where (if anywhere)
-        // this TiinyOS reports temperatures and power.
-        if (!sysLogged && s.gateway) {
-            sysLogged = true
-            for (path in listOf("/api/v1/sys/status", "/api/v1/sys/device_info", "/api/v1/sys/performance")) {
-                try {
-                    val r = c.request("GET", path, null, 8, log = false)
-                    ApiLog.add("$path (full): ${String(r.bytes).take(3000)}", "Device")
-                } catch (e: Exception) {
-                }
-            }
-        }
 
         // Storage changes slowly: read it once a minute.
         val d = disk
