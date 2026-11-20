@@ -153,7 +153,7 @@ object ApiLog {
         line.contains("chat/completions") -> "Chat"
         line.startsWith("web search") || line.startsWith("news via") -> "Search"
         line.contains("auth.api.tiiny") || line.startsWith("Logged in") || line.contains("unlock", true) -> "Unlock"
-        line.contains("/api/v1/models") || line.startsWith("Loading ") || line.startsWith("Unloading ") ||
+        line.contains("/api/v1/models") || line.contains("/v1/models ") || line.startsWith("Loading ") || line.startsWith("Unloading ") ||
             line.startsWith("Model list") || line.startsWith("unload_candidate") -> "Models"
         Regex("^(GET|POST|DELETE|PUT) /v1/").containsMatchIn(line) || line.contains(" failed: ") -> "Create"
         else -> "Device"
@@ -318,7 +318,12 @@ class TiinyApi(url: String, private val key: String) {
         val run = json(call("GET", "/api/v1/models/running", routine = true))
         if (!catalogLogged) {
             catalogLogged = true
-            ApiLog.add("Model list as the Tiiny reports it:\n${inst.toString().take(6000)}")
+            // One short line per model (id, type, state, NPU share): the store texts would fill the shared log.
+            val arr = inst.optJSONArray("data") ?: JSONArray()
+            val lines = (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { m -> "${m.optString("id")} · ${m.optString("type")} · ${m.optString("status")} · ${m.optInt("npu_usage")}% NPU" }
+            }
+            ApiLog.add("Model list as the Tiiny reports it (${lines.size}):\n" + lines.joinToString("\n"))
         }
 
         val instances = run.optJSONObject("instances") ?: JSONObject()

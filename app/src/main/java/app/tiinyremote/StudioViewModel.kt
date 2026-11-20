@@ -147,6 +147,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val _chatList = MutableStateFlow<List<ChatInfo>>(emptyList())
     /** Titles you gave chats yourself (a save keeps them instead of using the first message). */
     private val customTitles = java.util.concurrent.ConcurrentHashMap<String, String>()
+    /** One page condensed by the helper at a time (the Tiiny takes one model's requests in turn). */
+    private val helperTurn = java.util.concurrent.Semaphore(1, true)
     /** Titles the fast helper model wrote (yours win over them). */
     private val autoTitles = java.util.concurrent.ConcurrentHashMap<String, String>()
     /** A long chat's older part, condensed by the helper: (how many messages it covers, the summary). */
@@ -747,7 +749,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             if (list.isEmpty()) list else list.dropLast(1) + list.last().let { m -> if (m.sources.any { it.url == url }) m else m.copy(sources = m.sources + Source(host, url)) }
         }
         if (helper != null && text.length > 1500) {
-            setStatus(id, "Summarising $host with ${helper.substringAfterLast('/')}")
+            // Pages are fetched at the same time, but condensed one after the other: the speed test showed the Tiiny
+            // answers one model's requests in turn anyway, so queueing them here keeps the status honest.
+            setStatus(id, "Waiting to condense $host")
+            helperTurn.acquire()
+            setStatus(id, "Condensing $host with ${helper.substringAfterLast('/')}")
             val started = System.currentTimeMillis()
             try {
                 val summary = Tools.chatOnce(c, helper, PAGE_SYSTEM, "Question: ${question.take(1000)}\n\nPage ($url):\n$text", 450)
@@ -755,6 +761,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 return "Page $url (condensed by a helper model to what answers the question):\n\n$summary"
             } catch (e: Exception) {
                 ApiLog.add("The helper couldn't summarise $host (${e.message}); the chat model gets the page itself", "Chat")
+            } finally {
+                helperTurn.release()
             }
         }
         return "Page $url:\n\n$text"
@@ -914,22 +922,24 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         x.await() to y.await()
                     }
                     fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
-                    // The same work (what each wrote alone), one after the other vs. at the same time.
+                    // The same work (what each wrote alone), timed one after the other and at the same time. Times,
+                    // not added-up speeds: when the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
                     val seq = a.first / rate(a) + b.first / rate(b)
                     val par = maxOf(a.first / rate(a2), b.first / rate(b2))
-                    val saved = (1 - par / seq) * 100
                     val helperSeq = 2 * b.first / rate(b)
                     val helperPar = maxOf(b.first / rate(h1), b.first / rate(h2))
-                    val helperSaved = (1 - helperPar / helperSeq) * 100
-                    fun verdict(p: Double) = when {
-                        p >= 15 -> "saves ${Math.round(p)}% of the time: worth it"
-                        p > -5 -> "about the same (${Math.round(p)}%): the Tiiny shares its speed between them"
-                        else -> "${Math.round(-p)}% slower: better one after the other"
+                    fun verdict(seqS: Double, parS: Double): String {
+                        val p = (1 - parS / seqS) * 100
+                        val times = "${Math.round(parS)} s instead of ${Math.round(seqS)} s one after the other"
+                        return when {
+                            p >= 10 -> "$times (${Math.round(p)}% sooner): worth it"
+                            p > -5 -> "$times: no gain, the Tiiny takes them in turn"
+                            else -> "$times (${Math.round(-p)}% slower): better one after the other"
+                        }
                     }
                     "Alone: ${big.name} ${f(rate(a))} tok/s, ${small.name} ${f(rate(b))} tok/s.\n" +
-                        "At the same time: ${f(rate(a2))} + ${f(rate(b2))} = ${f(rate(a2) + rate(b2))} tok/s together.\n" +
-                        "Both models at once ${verdict(saved)}.\n" +
-                        "${small.name} twice at once (how pages are condensed): ${f(rate(h1) + rate(h2))} tok/s together, ${verdict(helperSaved)}."
+                        "Both models at once: ${verdict(seq, par)}.\n" +
+                        "${small.name} twice at once: ${verdict(helperSeq, helperPar)}."
                 }
                 _speed.value = out
                 ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
@@ -1004,6 +1014,24 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val cfg = settingsStore.load()
                     val helper = fastHelper(cfg, models, model)
                     val shown = history.filter { !(it.role == "assistant" && it.text.isBlank()) }
+                    // A new chat is named by the helper from its first question, while the chat model answers: the speed
+                    // test showed two different models working at once finish sooner than one after the other.
+                    if (helper != null && shown.count { it.role == "user" } == 1 && question.isNotBlank() &&
+                        customTitles[id] == null && autoTitles[id] == null
+                    ) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            try {
+                                val t = Tools.chatOnce(c, helper, TITLE_SYSTEM, "User: ${question.take(1500)}", 30)
+                                    .lines().first().trim().trim('"', '“', '”', '*', '#', ' ').trimEnd('.').take(48)
+                                if (t.isNotBlank() && _all.value.containsKey(id) && customTitles[id] == null) {
+                                    autoTitles[id] = t
+                                    saveChat(id)
+                                }
+                            } catch (e: Exception) {
+                                ApiLog.add("The helper couldn't name the chat (${e.message})", "Chat")
+                            }
+                        }
+                    }
                     val convo = JSONArray()
                     var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "")
                     val notes = helper?.let { condenseIfLong(id, c, it, shown) }
@@ -1084,20 +1112,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         upd(id) { list ->
                             val last = list.lastOrNull() ?: return@upd list
                             list.dropLast(1) + last.copy(text = if (last.text.isBlank()) last.text else last.text + "\n\n")
-                        }
-                    }
-                    // A new chat gets a real title from the helper after its first answer (yours always wins).
-                    val answer = _all.value[id]?.lastOrNull()?.text.orEmpty()
-                    if (helper != null && !chatStop.get() && answer.isNotBlank() && shown.count { it.role == "user" } == 1 &&
-                        customTitles[id] == null && autoTitles[id] == null
-                    ) {
-                        try {
-                            setStatus(id, "Naming the chat")
-                            val t = Tools.chatOnce(c, helper, TITLE_SYSTEM, "User: ${question.take(1500)}\n\nAssistant: ${answer.take(1500)}", 30)
-                                .lines().first().trim().trim('"', '“', '”', '*', '#', ' ').trimEnd('.').take(48)
-                            if (t.isNotBlank()) autoTitles[id] = t
-                        } catch (e: Exception) {
-                            ApiLog.add("The helper couldn't name the chat (${e.message})", "Chat")
                         }
                     }
                 }
