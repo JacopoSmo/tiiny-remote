@@ -1,5 +1,9 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.FilterChip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.widthIn
@@ -340,17 +344,23 @@ fun AppRoot(vm: MainViewModel) {
 @Composable
 private fun StatusCard(s: UiState, onUnlock: () -> Unit, onSettings: () -> Unit) {
     val cs = MaterialTheme.colorScheme
+    val green = Color(0xFF2E7D32)
+    val orange = Color(0xFFE65100)
+    val red = Color(0xFFC62828)
+    val anyRunning = s.models.any { it.status == "running" }
+    // The whole field is coloured: green = online, orange = a model is loaded and running, red = offline or blocked.
     val (title, color) = when (s.device) {
-        DeviceState.ONLINE -> "Tiiny online" to cs.primaryContainer
+        DeviceState.ONLINE -> if (anyRunning) "Tiiny running" to orange else "Tiiny online" to green
         DeviceState.CHECKING -> "Checking the Tiiny…" to cs.surfaceVariant
         DeviceState.NOT_CONFIGURED -> "Not set up yet" to cs.surfaceVariant
-        DeviceState.LOCKED -> "Tiiny locked after a restart" to cs.errorContainer
-        DeviceState.UNAUTHORIZED -> "API key rejected" to cs.errorContainer
-        DeviceState.UNREACHABLE -> "Tiiny not reachable" to cs.errorContainer
-        DeviceState.ERROR -> "Unexpected answer from the Tiiny" to cs.errorContainer
+        DeviceState.LOCKED -> "Tiiny locked after a restart" to red
+        DeviceState.UNAUTHORIZED -> "API key rejected" to red
+        DeviceState.UNREACHABLE -> "Tiiny offline" to red
+        DeviceState.ERROR -> "Unexpected answer from the Tiiny" to red
     }
+    val strong = color == green || color == orange || color == red
     Card(
-        colors = CardDefaults.cardColors(containerColor = color),
+        colors = CardDefaults.cardColors(containerColor = color, contentColor = if (strong) Color.White else cs.onSurface),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -422,28 +432,45 @@ private fun VpnCard(s: UiState, vm: MainViewModel, onSettings: () -> Unit) {
     }
 }
 
+private val FILTERS = listOf<Triple<String, String, (ModelInfo) -> Boolean>>(
+    Triple("chat", "Chat", { it.isChat }),
+    Triple("makes", "Makes things", { it.makesThings }),
+    Triple("sees", "Sees images", { it.isChat && it.seesImages }),
+    Triple("thinks", "Thinks", { it.thinks }),
+)
+
+private val SORTS = listOf("name" to "Name", "type" to "Type", "npu" to "NPU load")
+
 @Composable
 private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Unit) {
-    var chatOnly by rememberSaveable { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("models_ui", android.content.Context.MODE_PRIVATE) }
+    // Filters, sorting and favourites are remembered.
+    var filters by remember { mutableStateOf(prefs.getStringSet("filters", emptySet())!!.toSet()) }
+    var sort by remember { mutableStateOf(prefs.getString("sort", "name") ?: "name") }
+    var descending by remember { mutableStateOf(prefs.getBoolean("desc", false)) }
+    var favs by remember { mutableStateOf(prefs.getStringSet("favs", emptySet())!!.toSet()) }
+    var info by remember { mutableStateOf<ModelInfo?>(null) }
+    var sortOpen by remember { mutableStateOf(false) }
+
+    val active = FILTERS.filter { it.first in filters }
+    val byKey: Comparator<ModelInfo> = when (sort) {
+        "type" -> compareBy<ModelInfo>({ it.type.ifBlank { "~" }.lowercase() }, { it.name.lowercase() })
+        "npu" -> compareBy<ModelInfo>({ it.npuUsage ?: Double.MAX_VALUE }, { it.name.lowercase() })
+        else -> compareBy { it.name.lowercase() }
+    }
     val list = s.models
-        .filter { !chatOnly || it.isChat }
+        .filter { m -> active.all { it.third(m) } }
         .sortedWith(
             compareBy<ModelInfo>(
-                {
-                    when {
-                        it.status == "running" -> 0
-                        it.status == "loading" -> 1
-                        it.id in s.unavailable -> 3
-                        else -> 2
-                    }
-                },
-                { it.name.lowercase() },
-            )
+                { if (it.id in favs) 0 else 1 }, // favourites on top
+                { if (it.id in s.unavailable && it.status == "stopped") 1 else 0 },
+            ).then(if (descending) byKey.reversed() else byKey)
         )
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+        contentPadding = PaddingValues(if (LocalUi.current.compact) 10.dp else 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item { StatusCard(s, onUnlock = { vm.unlock() }, onSettings = onOpenSettings) }
@@ -452,20 +479,59 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         }
         if (s.device == DeviceState.ONLINE) {
             item {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = chatOnly, onCheckedChange = { chatOnly = it })
-                    Spacer(Modifier.width(10.dp))
-                    Text("Chat models only")
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for ((key, label, _) in FILTERS) {
+                            FilterChip(
+                                selected = key in filters,
+                                onClick = {
+                                    filters = if (key in filters) filters - key else filters + key
+                                    prefs.edit().putStringSet("filters", filters).apply()
+                                },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${list.size} of ${s.models.size} models" + if (favs.isNotEmpty()) " · ★ first" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Box {
+                            TextButton(onClick = { sortOpen = true }) { Text("Sort: ${SORTS.first { it.first == sort }.second} ▾") }
+                            DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                                for ((k, l) in SORTS) DropdownMenuItem(
+                                    text = { Text((if (k == sort) "● " else "○ ") + l) },
+                                    onClick = {
+                                        sort = k
+                                        prefs.edit().putString("sort", k).apply()
+                                        sortOpen = false
+                                    },
+                                )
+                            }
+                        }
+                        TextButton(onClick = { descending = !descending; prefs.edit().putBoolean("desc", descending).apply() }) {
+                            Text(if (descending) "↓" else "↑")
+                        }
+                    }
                 }
             }
             if (list.isEmpty()) {
-                item { Text("No models to show. Download models in TiinyOS first.") }
+                item { Text(if (s.models.isEmpty()) "No models to show. Download models in TiinyOS first." else "No model matches all the chosen filters.") }
             }
             items(list, key = { it.id }) { m ->
                 ModelCard(
                     m = m,
                     working = m.id in s.working,
                     unavailable = m.id in s.unavailable && m.status == "stopped",
+                    favourite = m.id in favs,
+                    onFavourite = {
+                        favs = if (m.id in favs) favs - m.id else favs + m.id
+                        prefs.edit().putStringSet("favs", favs).apply()
+                    },
+                    onInfo = { info = m },
                     onLoad = { vm.load(m) },
                     onRetry = { vm.retry(m) },
                     onUnload = { vm.unload(m) },
@@ -473,6 +539,45 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
             }
         }
     }
+    info?.let { m -> ModelInfoDialog(m) { info = null } }
+}
+
+/** "About this model", as in Tiiny Studio: the model's own description plus what the Tiiny says about it. */
+@Composable
+private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(m.name) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("About this model", style = MaterialTheme.typography.titleSmall)
+                Text(m.desc.replace("**", "").ifBlank { "The Tiiny has no description for this model." }, style = MaterialTheme.typography.bodyMedium)
+                HorizontalDivider()
+                val rows = listOfNotNull(
+                    "ID" to m.id,
+                    m.type.takeIf { it.isNotBlank() }?.let { "Type" to it },
+                    m.input.takeIf { it.isNotBlank() }?.let { "Input" to it.replace(",", ", ") },
+                    m.supported.takeIf { it.isNotEmpty() }?.let { "Supports" to it.joinToString(", ") },
+                    m.abilities.takeIf { it.isNotEmpty() }?.let { "In this app" to it.joinToString(" · ") },
+                    m.npuUsage?.let { "NPU" to "${pct(it)} of the NPU when loaded" },
+                    m.loadTimeSec?.let { "Loading" to "about ${fmtSec(it)}" },
+                    if (m.thinks) "Thinking" to (if (m.alwaysThinks) "always reasons (effort adjustable)" else "can be switched on and off") else null,
+                    "Status" to when (m.status) {
+                        "running" -> if (m.busy) "loaded, working" else "loaded"
+                        "loading" -> "loading"
+                        else -> "not loaded"
+                    },
+                )
+                for ((k, v) in rows) {
+                    Column {
+                        Text(k, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(v, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -480,56 +585,73 @@ private fun ModelCard(
     m: ModelInfo,
     working: Boolean,
     unavailable: Boolean,
+    favourite: Boolean,
+    onFavourite: () -> Unit,
+    onInfo: () -> Unit,
     onLoad: () -> Unit,
     onRetry: () -> Unit,
     onUnload: () -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp)) {
-            Text(m.name, style = MaterialTheme.typography.titleMedium)
-            val meta = listOfNotNull(
-                m.type.takeIf { it.isNotBlank() },
-                m.npuUsage?.let { "${pct(it)} NPU" },
-                m.loadTimeSec?.let { "loads in ~${fmtSec(it)}" },
-            ).joinToString(" · ")
-            if (meta.isNotEmpty()) {
-                Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (m.abilities.isNotEmpty()) {
-                Text(
-                    m.abilities.joinToString("  ·  "),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            if (unavailable) {
-                Text(
-                    "The Tiiny lists this model but can't load it, often a leftover copy. Delete it in TiinyOS to remove it.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            Spacer(Modifier.height(8.dp))
+        Column(Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val label = when {
-                    m.status == "running" -> if (m.busy) "Loaded · working" else "Loaded"
-                    m.status == "loading" -> "Loading…"
-                    unavailable -> "Not available on the Tiiny"
-                    else -> "Not loaded"
+                Text(m.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (m.status == "running") MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.weight(1f))
-                when {
-                    working || m.status == "loading" ->
-                        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                    m.status == "running" -> OutlinedButton(onClick = onUnload) { Text("Unload") }
-                    unavailable -> TextButton(onClick = onRetry) { Text("Try again") }
-                    else -> Button(onClick = onLoad) { Text("Load") }
+                IconButton(onClick = onFavourite) {
+                    Text(
+                        if (favourite) "★" else "☆",
+                        style = MaterialTheme.typography.titleLarge,
+                        color = if (favourite) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Column(Modifier.padding(end = 8.dp)) {
+                val meta = listOfNotNull(
+                    m.type.takeIf { it.isNotBlank() },
+                    m.npuUsage?.let { "${pct(it)} NPU" },
+                    m.loadTimeSec?.let { "loads in ~${fmtSec(it)}" },
+                ).joinToString(" · ")
+                if (meta.isNotEmpty()) {
+                    Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (m.abilities.isNotEmpty()) {
+                    Text(
+                        m.abilities.joinToString("  ·  "),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (unavailable) {
+                    Text(
+                        "The Tiiny lists this model but can't load it, often a leftover copy. Delete it in TiinyOS to remove it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val label = when {
+                        m.status == "running" -> if (m.busy) "Loaded · working" else "Loaded"
+                        m.status == "loading" -> "Loading…"
+                        unavailable -> "Not available on the Tiiny"
+                        else -> "Not loaded"
+                    }
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (m.status == "running") Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    when {
+                        working || m.status == "loading" ->
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        m.status == "running" -> OutlinedButton(onClick = onUnload) { Text("Unload") }
+                        unavailable -> TextButton(onClick = onRetry) { Text("Try again") }
+                        else -> Button(onClick = onLoad) { Text("Load") }
+                    }
                 }
             }
         }
