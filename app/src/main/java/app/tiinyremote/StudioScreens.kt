@@ -116,13 +116,12 @@ internal const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI ke
 // ---------------- the Create tab ----------------
 
 @Composable
-fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: () -> Unit) {
-    var toolId by rememberSaveable { mutableStateOf<String?>(null) }
-    BackHandler(enabled = toolId != null) { toolId = null }
+fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: String?, setTool: (String?) -> Unit, openChat: () -> Unit) {
+    // The open tool lives in AppRoot, so its ← back button and Android's back gesture can close it.
     val openTool by st.openTool.collectAsState()
     LaunchedEffect(openTool) {
         openTool?.let {
-            toolId = it
+            setTool(it)
             st.toolOpened()
         }
     }
@@ -130,11 +129,20 @@ fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, openChat: (
     if (tool == null) {
         ToolHub(s, st, openChat) { id ->
             if (id == "chat") openChat()
-            if (id != "chat") toolId = id
+            if (id != "chat") setTool(id)
         }
     } else {
-        ToolScreen(tool, s, vm, st, { toolId = it }) { toolId = null }
+        ToolScreen(tool, s, vm, st, { setTool(it) }) { setTool(null) }
     }
+}
+
+internal fun toolTitle(id: String) = TOOLS.firstOrNull { it.id == id }?.title ?: "Create"
+
+/** The kinds of creation in the order arranged under Create → Create. */
+internal fun createTypeOrder(st: StudioViewModel): List<String> {
+    val all = TOOLS.map { it.type }.distinct()
+    val saved = st.setting("create.order", "").split('|').filter { it in all }
+    return saved + all.filter { it !in saved }
 }
 
 /** Where results land in "Creations". */
@@ -176,8 +184,8 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
     var createOpen by rememberSaveable { mutableStateOf(st.setting("hub.create", "1") == "1") }
     var creationsOpen by rememberSaveable { mutableStateOf(st.setting("hub.creations", "0") == "1") }
     var arranging by rememberSaveable { mutableStateOf(false) }
-    var openType by rememberSaveable { mutableStateOf<String?>(null) }
-    var openGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    var openType by remember { mutableStateOf(st.setting("hub.type", "").ifBlank { null }) }
+    var openGroup by remember { mutableStateOf(st.setting("hub.group", "").ifBlank { null }) }
     // The kinds of creation, in the order you arranged them (new kinds go at the end).
     val defaultOrder = TOOLS.map { it.type }.distinct()
     var order by remember {
@@ -240,7 +248,7 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
                 val loaded = s.models.count { m -> m.running && tools.any { it.fits(m) } }
                 val expanded = openType == type && !arranging
                 Card(
-                    onClick = { if (!arranging) openType = if (expanded) null else type },
+                    onClick = { if (!arranging) { openType = if (expanded) null else type; st.setSetting("hub.type", openType ?: "") } },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
@@ -298,7 +306,7 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
             for ((i, name) in groupOrder.withIndex()) {
                 val count = if (name == "Chats") chats.size else CREATION_GROUPS.first { it.first == name }.second.let { k -> results.count { it.kind in k } }
                 val expanded = openGroup == name && !arrangingC
-                Card(onClick = { if (!arrangingC) openGroup = if (expanded) null else name }, modifier = Modifier.fillMaxWidth(), enabled = count > 0 || arrangingC) {
+                Card(onClick = { if (!arrangingC) { openGroup = if (expanded) null else name; st.setSetting("hub.group", openGroup ?: "") } }, modifier = Modifier.fillMaxWidth(), enabled = count > 0 || arrangingC) {
                     Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         Text("$count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

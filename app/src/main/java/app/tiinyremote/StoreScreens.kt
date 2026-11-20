@@ -92,7 +92,7 @@ private fun storeAbilities(m: StoreModel): String = buildList {
 
 /** The Model Store: search, every model with its size, NPU share and an ⓘ, and Download. */
 @Composable
-internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?) {
+internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Set<String> = emptySet()) {
     var query by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<StoreModel?>(null) }
     var confirm by remember { mutableStateOf<StoreModel?>(null) }
@@ -126,7 +126,7 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?) {
             }
             s.storeError != null -> Text(s.storeError, color = MaterialTheme.colorScheme.error)
         }
-        val list = (s.store ?: emptyList()).filter { m ->
+        val list = (s.store ?: emptyList()).filter { m -> types.isEmpty() || m.type in types }.filter { m ->
             query.isBlank() || listOf(m.name, m.id, m.type, m.desc).any { it.contains(query.trim(), true) }
         }
         if (s.store != null) {

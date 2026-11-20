@@ -1,5 +1,6 @@
 package app.tiinyremote
 
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.clickable
@@ -53,18 +54,35 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
     var open by remember { mutableStateOf(false) }
     val st = stats
     val online = s.device == DeviceState.ONLINE
+    val loaded = s.models.count { it.running }
+    // Light green while the Tiiny is online, light red when it isn't.
+    val hue = if (online) Color(0xFF43A047) else Color(0xFFE53935)
     Box(Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(hue.copy(alpha = 0.22f).compositeOver(MaterialTheme.colorScheme.surface))
                 .clickable { open = true; vm.statsPanel(true) }
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Column {
+                Text(
+                    when (s.device) {
+                        DeviceState.ONLINE -> "Online"
+                        DeviceState.LOCKED -> "Locked"
+                        DeviceState.CHECKING -> "Checking"
+                        else -> "Offline"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = hue,
+                )
+                if (online) Text("$loaded loaded", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (!online) {
-                Text("Tiiny offline", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Text("Tap for details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             } else {
                 val mu = st?.npuMemUsedMb
                 val mt = st?.npuMemTotalMb
@@ -127,8 +145,23 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
     val running = s.models.filter { it.running }
     val used = running.sumOf { it.npuUsage ?: 0.0 }
             Column(Modifier.width(330.dp).padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (s.device != DeviceState.ONLINE) {
-                    Text("The Tiiny isn't online, so there are no live numbers.", style = MaterialTheme.typography.bodyMedium)
+                val on = s.device == DeviceState.ONLINE
+                val loadedN = running.size
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (on) "Tiiny online" else if (s.device == DeviceState.LOCKED) "Tiiny locked" else "Tiiny offline",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (on) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (on) Text("$loadedN model${if (loadedN == 1) "" else "s"} loaded", style = MaterialTheme.typography.labelLarge)
+                }
+                if (!on) {
+                    Text(
+                        s.deviceMessage.ifBlank { "The Tiiny isn't reachable, so there are no live numbers." },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
 
                 // NPU memory budget: what the loaded models take.

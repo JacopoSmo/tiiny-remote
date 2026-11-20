@@ -2,6 +2,10 @@
 
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.runtime.mutableStateListOf
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
@@ -168,9 +172,33 @@ fun AppRoot(vm: MainViewModel) {
     val anyChatBusy by st.busyChats.collectAsState()
     val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var toolId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Where you came from: ← and Android's back gesture go back through it; with nothing left, back closes the app.
+    val history = remember { mutableStateListOf<Pair<Int, String?>>() }
+    fun goTab(i: Int) {
+        if (i == tab) return
+        history.add(tab to toolId)
+        if (history.size > 30) history.removeAt(0)
+        tab = i
+    }
+    fun openToolNav(id: String?) {
+        if (id == toolId) return
+        if (id != null) history.add(tab to toolId)
+        else if (history.lastOrNull() == (tab to null)) history.removeAt(history.size - 1) // "‹ Tools" = back
+        toolId = id
+    }
+    val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null)
+    fun back() {
+        if (history.isNotEmpty()) {
+            val (t, tool) = history.removeAt(history.size - 1)
+            tab = t
+            toolId = tool
+        } else if (tab == 1 && toolId != null) toolId = null
+    }
+    BackHandler(enabled = canGoBack) { back() }
     val openTool by st.openTool.collectAsState()
     LaunchedEffect(openTool) {
-        if (openTool != null) tab = 1 // "Edit this" from the chat or results goes to the Create tab
+        if (openTool != null) goTab(1) // "Edit this" from the chat or results goes to the Create tab
     }
     val snackbar = remember { SnackbarHostState() }
 
@@ -222,7 +250,7 @@ fun AppRoot(vm: MainViewModel) {
         Triple("Settings", Icons.Filled.Settings, 4),
     )
     fun go(i: Int) {
-        tab = i
+        goTab(i)
         scope.launch { drawer.close() }
     }
 
@@ -284,10 +312,17 @@ fun AppRoot(vm: MainViewModel) {
                     TopAppBar(
                         expandedHeight = if (compact) 48.dp else TopAppBarDefaults.TopAppBarExpandedHeight,
                         navigationIcon = {
-                            IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Filled.Menu, contentDescription = "Menu") }
+                            Row {
+                                IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(Icons.Filled.Menu, contentDescription = "Menu") }
+                                if (canGoBack) IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                            }
                         },
                         title = {
-                            val t = if (tab == 2) chats.firstOrNull { it.id == current }?.title ?: "New chat" else sections.first { it.third == tab }.first
+                            val t = when {
+                                tab == 2 -> chats.firstOrNull { it.id == current }?.title ?: "New chat"
+                                tab == 1 && toolId != null -> toolTitle(toolId!!)
+                                else -> sections.first { it.third == tab }.first
+                            }
                             Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
                         },
                         actions = {
@@ -304,7 +339,7 @@ fun AppRoot(vm: MainViewModel) {
                         for ((label, icon, i) in sections) {
                             NavigationBarItem(
                                 selected = tab == i,
-                                onClick = { tab = i },
+                                onClick = { goTab(i) },
                                 icon = { Icon(icon, contentDescription = null) },
                                 label = { Text(label, maxLines = 1) },
                             )
@@ -323,8 +358,8 @@ fun AppRoot(vm: MainViewModel) {
                 ) {
                     if (s.settings.tiinyConfigured) StatsStrip(s, vm)
                     Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
-                        0 -> ModelsScreen(s, vm, onOpenSettings = { tab = 4 })
-                        1 -> CreateScreen(s, vm, st, openChat = { tab = 2 })
+                        0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
+                        1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openChat = { goTab(2) })
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
                         else -> SettingsScreen(s, vm)
@@ -464,7 +499,7 @@ private val FILTERS = listOf<Triple<String, String, (ModelInfo) -> Boolean>>(
 private val SORTS = listOf("name" to "Name", "type" to "Type", "npu" to "NPU load")
 
 @Composable
-private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Unit) {
+private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onOpenSettings: () -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("models_ui", android.content.Context.MODE_PRIVATE) }
     // Filters, sorting and favourites are remembered.
@@ -477,6 +512,13 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
     var renameM by remember { mutableStateOf<ModelInfo?>(null) }
     var deleteM by remember { mutableStateOf<ModelInfo?>(null) }
     var storeView by remember { mutableStateOf(false) }
+    var typeSel by remember { mutableStateOf(prefs.getStringSet("types", emptySet())!!.toSet()) }
+    var typesOpen by remember { mutableStateOf(false) }
+    val typeOrder = remember(s.models.size) {
+        // The order arranged in Create → Create, then any other type the Tiiny has.
+        val o = createTypeOrder(st)
+        o + s.models.map { it.type }.filter { it.isNotBlank() && it !in o }.distinct()
+    }
     val stats by vm.stats.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }
 
@@ -487,7 +529,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         else -> compareBy { it.name.lowercase() }
     }
     val list = s.models
-        .filter { m -> active.all { it.third(m) } }
+        .filter { m -> active.all { it.third(m) } && (typeSel.isEmpty() || m.type in typeSel) }
         .sortedWith(
             compareBy<ModelInfo>(
                 { if (loadedFirst && it.status != "stopped") 0 else 1 }, // loaded models first, when that's on
@@ -501,7 +543,12 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
         contentPadding = PaddingValues(if (LocalUi.current.compact) 10.dp else 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item { StatusCard(s, onUnlock = { vm.unlock() }, onSettings = onOpenSettings) }
+        // Online/offline and the loaded models are in the strip at the top; this card only shows when something needs doing.
+        if (s.device in setOf(DeviceState.LOCKED, DeviceState.NOT_CONFIGURED, DeviceState.UNAUTHORIZED, DeviceState.ERROR) ||
+            (s.device == DeviceState.UNREACHABLE && s.deviceMessage.isNotBlank())
+        ) {
+            item { StatusCard(s, onUnlock = { vm.unlock() }, onSettings = onOpenSettings) }
+        }
         if (s.settings.vpnConfigured) {
             item { VpnCard(s, vm, onSettings = onOpenSettings) }
         }
@@ -520,11 +567,36 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, onOpenSettings: () -> Un
                         onClick = { storeView = true; if (s.store == null) vm.loadStore() },
                         label = { Text("Store" + (s.store?.let { " ${it.size}" } ?: "")) },
                     )
+                    // Types: the kinds from Create → Create, for both lists.
+                    Box {
+                        FilterChip(
+                            selected = typeSel.isNotEmpty(),
+                            onClick = { typesOpen = true },
+                            label = { Text(if (typeSel.isEmpty()) "Types ▾" else "Types ${typeSel.size} ▾") },
+                        )
+                        DropdownMenu(expanded = typesOpen, onDismissRequest = { typesOpen = false }, modifier = Modifier.heightIn(max = 460.dp)) {
+                            DropdownMenuItem(
+                                text = { Text((if (typeSel.isEmpty()) "● " else "○ ") + "All types") },
+                                onClick = { typeSel = emptySet(); prefs.edit().putStringSet("types", typeSel).apply() },
+                            )
+                            HorizontalDivider()
+                            for (t in typeOrder) {
+                                val n = if (storeView) s.store?.count { it.type == t } ?: 0 else s.models.count { it.type == t }
+                                DropdownMenuItem(
+                                    text = { Text((if (t in typeSel) "☑ " else "☐ ") + t + "  ($n)") },
+                                    onClick = {
+                                        typeSel = if (t in typeSel) typeSel - t else typeSel + t
+                                        prefs.edit().putStringSet("types", typeSel).apply()
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
             }
             if (s.downloads.isNotEmpty()) item { DownloadsCard(s, vm) }
             if (storeView) {
-                item { StoreList(s, vm, stats?.diskFreeGb) }
+                item { StoreList(s, vm, stats?.diskFreeGb, typeSel) }
             } else {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
