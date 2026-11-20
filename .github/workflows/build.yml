@@ -25,10 +25,12 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/signing.keystore"
-            echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::The signing key isn't set up: add SIGNING_KEYSTORE_B64 and SIGNING_PASSWORD under Settings → Secrets and variables → Actions."
+            exit 1
           fi
+          echo "$KEYSTORE_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/signing.keystore"
+          echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
 
       - name: Build the APK
         env:
@@ -37,12 +39,6 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
           mv app/build/outputs/apk/release/app-release.apk TiinyRemote-2.0.${{ github.run_number }}.apk
-
-      - name: Keep the APK with this run
-        uses: actions/upload-artifact@v4
-        with:
-          name: TiinyRemote-apk
-          path: TiinyRemote-*.apk
 
       - name: Publish it as a release
         uses: softprops/action-gh-release@v2
