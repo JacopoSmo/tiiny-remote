@@ -10,6 +10,9 @@ import java.net.URLEncoder
 object WebSearch {
     class Hit(val title: String, val url: String, val snippet: String)
 
+    /** Only web addresses: a result pointing at intent:// or another app's scheme would open that app when tapped. */
+    private fun web(url: String) = url.startsWith("https://", true) || url.startsWith("http://", true)
+
     private const val UA = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36"
 
     private fun get(
@@ -18,6 +21,7 @@ object WebSearch {
     ): Pair<Int, Pair<String, ByteArray>> {
         var u = URL(url)
         var body = post
+        val firstHost = u.host
         repeat(5) {
             if (publicOnly) checkPublic(u)
             val c = u.openConnection() as HttpURLConnection
@@ -27,7 +31,8 @@ object WebSearch {
             c.setRequestProperty("User-Agent", UA)
             c.setRequestProperty("Accept", "application/json, text/html;q=0.9, */*;q=0.5")
             c.setRequestProperty("Accept-Language", "en,de;q=0.8")
-            for ((k, v) in headers) c.setRequestProperty(k, v)
+            // Keys (Tavily's) go only to the site they're for, never to where it redirects.
+            if (u.host.equals(firstHost, true)) for ((k, v) in headers) c.setRequestProperty(k, v)
             try {
                 body?.let { b ->
                     c.requestMethod = "POST"
@@ -187,7 +192,7 @@ object WebSearch {
             val src = htmlText(tag(it, "source")).ifEmpty { htmlText(tag(it, "News:Source")) }
             val desc = if (google) "" else htmlText(tag(it, "description"))
             Hit(htmlText(tag(it, "title")), link, listOf(src, date, desc).filter { s -> s.isNotBlank() }.joinToString(" · "))
-        }.filter { it.title.isNotBlank() && it.url.startsWith("http") }.toList()
+        }.filter { it.title.isNotBlank() && web(it.url) }.toList()
     }
 
     /** Bing's RSS answers (web or news); news links are click-redirects carrying the real address. */
@@ -206,7 +211,7 @@ object WebSearch {
             var href = Html.fromHtml(m.groupValues[1], Html.FROM_HTML_MODE_LEGACY).toString()
             Regex("[?&]uddg=([^&]+)").find(href)?.let { href = java.net.URLDecoder.decode(it.groupValues[1], "UTF-8") }
             if (href.startsWith("//")) href = "https:$href"
-            if (!href.startsWith("http") || href.contains("duckduckgo.com/y.js")) continue
+            if (!web(href) || href.contains("duckduckgo.com/y.js")) continue
             out.add(Hit(htmlText(m.groupValues[2]), href, snippets.getOrElse(i) { "" }))
             if (out.size >= count) break
         }
@@ -226,7 +231,7 @@ object WebSearch {
             val r = list.optJSONObject(i) ?: return@mapNotNull null
             Hit(r.optString("title").ifBlank { r.optString("url") }, r.optString("url"),
                 listOf(r.optString("published_date"), r.optString("content").trim()).filter { it.isNotBlank() && it != "null" }.joinToString(" · "))
-        }.filter { it.url.isNotBlank() }
+        }.filter { web(it.url) }
     }
 
     private fun htmlText(s: String) = Html.fromHtml(s, Html.FROM_HTML_MODE_LEGACY).toString().trim()
@@ -245,7 +250,7 @@ object WebSearch {
             var href = Html.fromHtml(m.groupValues[1], Html.FROM_HTML_MODE_LEGACY).toString()
             Regex("[?&]uddg=([^&]+)").find(href)?.let { href = java.net.URLDecoder.decode(it.groupValues[1], "UTF-8") }
             if (href.startsWith("//")) href = "https:$href"
-            if (!href.startsWith("http") || href.contains("duckduckgo.com/y.js")) continue // ads
+            if (!web(href) || href.contains("duckduckgo.com/y.js")) continue // ads
             out.add(Hit(htmlText(m.groupValues[2]), href, snippets.getOrElse(i) { "" }))
             if (out.size >= count) break
         }
@@ -291,7 +296,7 @@ object WebSearch {
         for (i in 0 until list.length()) {
             val r = list.optJSONObject(i) ?: continue
             val url = r.optString("url")
-            if (url.isBlank() || !seen.add(url)) continue
+            if (!web(url) || !seen.add(url)) continue
             out.add(Hit(r.optString("title").ifBlank { url }, url, r.optString("content").trim()))
             if (out.size >= count) break
         }
@@ -318,7 +323,12 @@ object WebSearch {
             val b = a.address
             val ula = b.size == 16 && (b[0].toInt() and 0xFE) == 0xFC // IPv6 fc00::/7
             val cgnat = b.size == 4 && (b[0].toInt() and 0xFF) == 100 && (b[1].toInt() and 0xC0) == 64 // 100.64/10
-            if (a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress || a.isAnyLocalAddress || a.isMulticastAddress || ula || cgnat) {
+            // NAT64 (64:ff9b::/96) carries an IPv4 address inside: check that one too, so 64:ff9b::192.168.1.1 can't pass.
+            val nat64 = b.size == 16 && b[0].toInt() == 0 && b[1].toInt() == 0x64 && (b[2].toInt() and 0xFF) == 0xFF &&
+                (b[3].toInt() and 0xFF) == 0x9B && (4..11).all { b[it].toInt() == 0 }
+            val inner = if (nat64) java.net.InetAddress.getByAddress(b.copyOfRange(12, 16)) else null
+            val innerLocal = inner != null && (inner.isLoopbackAddress || inner.isSiteLocalAddress || inner.isLinkLocalAddress || inner.isAnyLocalAddress)
+            if (a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress || a.isAnyLocalAddress || a.isMulticastAddress || ula || cgnat || innerLocal) {
                 throw MediaException("Pages on your own network can't be opened from the chat.")
             }
         }

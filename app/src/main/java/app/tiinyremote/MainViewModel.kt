@@ -52,6 +52,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var lastAutoUnlock = 0L
+    /** Automatic unlocks that failed in a row: each one doubles the wait (up to 15 min), so a wrong password doesn't retry forever. */
+    private var autoUnlockFails = 0
     private var lastVpnSwitch = 0L
     /** After you switch the VPN yourself, automatic switching pauses for 10 minutes. */
     private var vpnPausedUntil = 0L
@@ -76,7 +78,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun readStats() {
         val s = _state.value
-        if (s.device != DeviceState.ONLINE || !s.settings.tiinyConfigured) return
+        if (s.device != DeviceState.ONLINE || !s.settings.tiinyConfigured) {
+            _stats.value = null // no old numbers while the Tiiny is away
+            return
+        }
         _stats.value = withContext(Dispatchers.IO) { Stats.read(s.settings) }
     }
 
@@ -152,7 +157,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         // Direct unlocking is one quick request to the Tiiny: retry every 30 s. Through the NAS only, at most
         // every 5 minutes, so a wrong NAS password doesn't hammer it.
-        val gap = if (s.settings.directConfigured) 30_000L else 5 * 60_000L
+        val base = if (s.settings.directConfigured) 30_000L else 5 * 60_000L
+        val gap = minOf(base shl minOf(autoUnlockFails, 5), 15 * 60_000L)
         if (s.settings.autoUnlock && canUnlock(s.settings) && !s.unlocking && now - lastAutoUnlock > gap) {
             lastAutoUnlock = now
             unlock(automatic = true)
@@ -176,7 +182,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ApiLog.add("Loading ${model.id} failed: ${e.message}")
                 if (e.kind == TiinyException.Kind.NOT_FOUND) {
                     setUnavailable(_state.value.unavailable + model.id)
-                    toast("${model.name} isn't available on the Tiiny. If it's a leftover copy, delete it in TiinyOS.")
+                    toast("${model.name} isn't available on the Tiiny. If it's a leftover copy, delete it with the bin on its card.")
                 } else {
                     toast(e.message ?: "Loading failed")
                 }
@@ -306,7 +312,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         if (!ok) {
             _state.update { it.copy(unlocking = false) }
-            if (!automatic) toast("Unlock failed: see the Activity tab")
+            if (automatic) {
+                autoUnlockFails++
+                if (autoUnlockFails == 3) log("Automatic unlocking keeps failing: it now tries less often (up to every 15 min). Check the password in Settings.")
+            } else toast("Unlock failed: see the Activity tab")
             return
         }
         log("Login done. Waiting for the Tiiny's services (usually up to 2 minutes)…")
@@ -320,6 +329,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 break
             }
         }
+        if (back) autoUnlockFails = 0 else if (automatic) autoUnlockFails++
         log(if (back) "Tiiny is unlocked. Load a model to start chatting." else "The Tiiny still doesn't answer after 4 minutes. Try again, or open TiinyOS on a computer.")
         _state.update { it.copy(unlocking = false) }
         toast(if (back) "Tiiny unlocked" else "Tiiny still locked")
@@ -604,6 +614,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store.save(s)
         _state.update { it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") }
         lastAutoUnlock = 0L
+        autoUnlockFails = 0
         vpnPausedUntil = 0L
         toast("Saved")
         refreshNow()

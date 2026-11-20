@@ -20,7 +20,6 @@ data class DeviceStats(
     /** The Tiiny's RAM in GB: used and total (the total from the device if it says, else its 80 GB). */
     val ramUsedGb: Double? = null,
     val ramTotalGb: Double? = null,
-    val npuStatus: String? = null,
     val diskFreeGb: Double? = null,
     val diskTotalGb: Double? = null,
     /** Every temperature sensor the dashboard reports, hottest first. */
@@ -103,7 +102,6 @@ object Stats {
                     memPct = o.optJSONObject("memory")?.num("usage_percent"),
                     ramUsedGb = o.optJSONObject("memory")?.gb("used"),
                     ramTotalGb = o.optJSONObject("memory")?.gb("total"),
-                    npuStatus = o.optJSONObject("npu")?.optString("status")?.takeIf { it.isNotBlank() && it != "null" },
                 )
             }
         } catch (e: Exception) {

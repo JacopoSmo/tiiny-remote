@@ -5,6 +5,9 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -24,6 +27,9 @@ class WavRecorder {
     var recording = false
         private set
 
+    /** 20 minutes at most (about 38 MB): a forgotten recording can't fill the phone's memory. */
+    private val maxBytes = rate * 2 * 60 * 20
+
     val seconds get() = pcm.size() / (rate * 2.0)
 
     @SuppressLint("MissingPermission") // the caller asks for RECORD_AUDIO first
@@ -42,7 +48,7 @@ class WavRecorder {
             val buf = ByteArray(4096)
             while (recording) {
                 val n = r.read(buf, 0, buf.size)
-                if (n > 0) synchronized(pcm) { pcm.write(buf, 0, n) }
+                if (n > 0 && pcm.size() < maxBytes) synchronized(pcm) { pcm.write(buf, 0, n) }
             }
         }.also { it.start() }
     }
@@ -108,33 +114,28 @@ object Wav {
     }
 }
 
-/** Plays one file at a time. */
+/** Plays one file at a time. `playing` is screen state, so every Play/Stop button shows the truth. */
 object Player {
     private var mp: MediaPlayer? = null
-    var playing: String? = null
+    var playing: String? by mutableStateOf<String?>(null)
         private set
 
-    fun toggle(file: File, onEnd: () -> Unit) {
+    fun toggle(file: File) {
         if (playing == file.name) {
             stop()
-            onEnd()
             return
         }
         stop()
         val p = MediaPlayer()
         try {
             p.setDataSource(file.absolutePath)
-            p.setOnCompletionListener {
-                stop()
-                onEnd()
-            }
+            p.setOnCompletionListener { stop() }
             p.prepare()
             p.start()
             mp = p
             playing = file.name
         } catch (e: Exception) {
             p.release()
-            onEnd()
         }
     }
 

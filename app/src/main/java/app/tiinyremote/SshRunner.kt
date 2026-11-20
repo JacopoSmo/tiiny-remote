@@ -10,9 +10,8 @@ import com.jcraft.jsch.UIKeyboardInteractive
 import com.jcraft.jsch.UserInfo
 import java.io.ByteArrayOutputStream
 
+/** What the command printed, and why it failed (null when it worked). */
 data class SshResult(
-    val ok: Boolean,
-    val exitCode: Int?,
     val output: String,
     val error: String?,
 )
@@ -50,8 +49,6 @@ object SshRunner {
 
             val text = out.toString("UTF-8").trim()
             return SshResult(
-                ok = !timedOut && exit == 0,
-                exitCode = exit,
                 output = text,
                 error = when {
                     timedOut -> "No answer after $timeoutSec s. If \"tiiny login\" is waiting for input " +
@@ -63,7 +60,7 @@ object SshRunner {
                 },
             )
         } catch (e: Exception) {
-            return SshResult(false, null, "", friendly(e))
+            return SshResult("", friendly(e))
         } finally {
             session?.disconnect()
         }

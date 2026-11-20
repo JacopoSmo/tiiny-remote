@@ -436,7 +436,7 @@ private fun StatusCard(s: UiState, onUnlock: () -> Unit, onSettings: () -> Unit)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(10.dp))
-                            Text("Unlocking through the NAS…")
+                            Text("Unlocking…")
                         }
                     } else {
                         Button(onClick = onUnlock) { BtnLabel("Unlock now", androidx.compose.material.icons.Icons.Filled.Lock) }
@@ -668,7 +668,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                 }
             }
             if (list.isEmpty()) {
-                item { Text(if (s.models.isEmpty()) "No models to show. Download models in TiinyOS first." else "No model matches all the chosen filters.") }
+                item { Text(if (s.models.isEmpty()) "No models on the Tiiny yet. Download some from the Store above." else "No model matches all the chosen filters.") }
             }
             items(list, key = { it.id }) { m ->
                 ModelCard(
@@ -823,7 +823,7 @@ private fun ModelCard(
                 }
                 if (unavailable) {
                     Text(
-                        "The Tiiny lists this model but can't load it, often a leftover copy. Delete it in TiinyOS to remove it.",
+                        "The Tiiny lists this model but can't load it, often a leftover copy. Delete it with the bin above to remove it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )

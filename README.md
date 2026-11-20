@@ -39,7 +39,10 @@ and the NAS login for the SSH unlock fallback.
 - The NAS's SSH key is saved at the first connection; a different key later is refused.
 - Builds are signed with a key kept only in this repository's Actions secrets (`SIGNING_KEYSTORE_B64`,
   `SIGNING_PASSWORD`). Without them the build stops.
-- Pages the chat opens can only be on the public internet, never on your home network.
-- The shared log leaves out emails, keys, tokens, passwords and the device's serial number.
+- Pages the chat opens can only be on the public internet, never on your home network, and only addresses from
+  the chat's own search results or that you typed: a web page can't make the model send your chat elsewhere.
+- Only web links (http/https) can be tapped in answers and sources.
+- The shared log leaves out emails, keys, tokens, passwords, account names and the device's serial number, and
+  never contains your content (chat answers, text read from documents, transcripts): only its size.
 - The Tiiny only speaks plain HTTP, so use the app on your home network or through WireGuard.
 - Unofficial: the Tiiny endpoints come from community notes and may change with firmware updates.

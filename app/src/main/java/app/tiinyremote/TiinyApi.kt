@@ -127,14 +127,26 @@ object ApiLog {
         "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number|user_name|username)\"\\s*:\\s*\")[^\"]*\"?",
     )
     private val bearer = Regex("(Bearer\\s+)[A-Za-z0-9._~+/=-]{8,}")
+    /** The same in plain text, as a command line prints it ("token: …", "password=…"), and any JWT-shaped token. */
+    private val plainSecret = Regex("(?i)\\b(auth[_ ]?key|token|password|passwd|api[_ ]?key|secret)(\\s*[:=]\\s*)[^\\s\",}]+")
+    private val jwt = Regex("eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*")
+    /** A login written into an address (http://user:password@host). */
+    private val urlLogin = Regex("(?i)(https?://)[^/\\s:@]+:[^/\\s@]+@")
     /** File paths from a computer (C:\\Users\\…, /C$/Users/…, /home/…, /Users/…): they name people and folders. */
     private val localPath = Regex("(?i)(?:[A-Z]:|/[A-Z]\\$)?[\\\\/](?:Users|home)[\\\\/][^\"\\s,}]*")
     private val clock = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
     private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error", RegexOption.IGNORE_CASE)
 
     /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
-    fun redact(text: String): String =
-        localPath.replace(bearer.replace(secretFields.replace(email.replace(text, "***@***"), "$1***\""), "$1***"), "[local file path]")
+    fun redact(text: String): String {
+        var t = email.replace(text, "***@***")
+        t = secretFields.replace(t, "$1***\"")
+        t = bearer.replace(t, "$1***")
+        t = plainSecret.replace(t, "$1$2***")
+        t = jwt.replace(t, "***")
+        t = urlLogin.replace(t, "$1***@")
+        return localPath.replace(t, "[local file path]")
+    }
 
     /** Which kind an entry is, from what it says (when the caller doesn't name it). */
     private fun classify(line: String): String = when {
@@ -172,6 +184,13 @@ class TiinyApi(url: String, private val key: String) {
         /** The full model list is written to the log once per app start, to help debugging. */
         @Volatile
         private var catalogLogged = false
+
+        /**
+         * The last failure of the checks made every few seconds. The same failure again isn't logged: while the Tiiny
+         * is offline or locked for hours it would push everything else out of the log.
+         */
+        @Volatile
+        private var lastRoutineProblem: String? = null
 
         fun normalize(url: String): String {
             var u = url.trim().trimEnd('/')
@@ -226,14 +245,21 @@ class TiinyApi(url: String, private val key: String) {
             val code = conn.responseCode
             val stream = if (code >= 400) conn.errorStream else conn.inputStream
             val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            if (!routine || code !in 200..299) {
+            if (routine && code in 200..299) {
+                lastRoutineProblem = null
+            } else if (!routine || lastRoutineProblem != "$method $path $code") {
+                if (routine) lastRoutineProblem = "$method $path $code"
                 val sent = if (body != null) "\n  sent: $body" else ""
                 ApiLog.add("$method $base$path$sent\n  -> HTTP $code: ${text.take(1500)}")
             }
             return code to text
         } catch (e: Exception) {
             // Network errors (and anything unexpected) become one readable error instead of a crash.
-            ApiLog.add("$method $base$path\n  -> ${e.javaClass.simpleName}: ${e.message}")
+            val problem = "$method $path ${e.javaClass.simpleName}"
+            if (!routine || lastRoutineProblem != problem) {
+                if (routine) lastRoutineProblem = problem
+                ApiLog.add("$method $base$path\n  -> ${e.javaClass.simpleName}: ${e.message}")
+            }
             throw TiinyException(
                 TiinyException.Kind.UNREACHABLE,
                 "Can't reach the Tiiny at $base (${e.message ?: e.javaClass.simpleName}). " +

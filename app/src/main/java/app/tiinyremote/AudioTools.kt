@@ -228,11 +228,8 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
                 Hint("“${saved.text.take(160)}”")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val f = st.voiceFile(saved.id)
-                    var playing by remember(f.path) { mutableStateOf(Player.playing == f.name) }
-                    OutlinedButton(onClick = {
-                        Player.toggle(f) { playing = false }
-                        playing = Player.playing == f.name
-                    }) { BtnLabel(if (playing) "Stop" else "Play clip", symbol = if (playing) "■" else "▶") }
+                    val playing = Player.playing == f.name
+                    OutlinedButton(onClick = { Player.toggle(f) }) { BtnLabel(if (playing) "Stop" else "Play clip", symbol = if (playing) "■" else "▶") }
                     Spacer(Modifier.width(8.dp))
                     if (confirmDelete) DangerButton("Really delete", onClick = { st.deleteVoice(saved.id); choose("") })
                     else DangerButton("Delete", onClick = { confirmDelete = true })

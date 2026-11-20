@@ -58,7 +58,9 @@ class DeviceClient(url: String, private val key: String) {
         val code = conn.responseCode
         val stream = if (code >= 400) conn.errorStream else conn.inputStream
         val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
-        val shown = if (bytes.size > 2000 || !looksLikeText(bytes)) "(${bytes.size} bytes)" else String(bytes, Charsets.UTF_8).take(400)
+        // A successful answer is your content (chat replies, text read from documents, transcripts): only its size is
+        // logged. Errors are short and say what went wrong, so their text is kept.
+        val shown = if (code < 400 || bytes.size > 2000 || !looksLikeText(bytes)) "(${bytes.size} bytes)" else String(bytes, Charsets.UTF_8).take(400)
         if (log || code >= 400) ApiLog.add("$method $path -> HTTP $code: $shown")
         return Reply(code, bytes)
     }
@@ -179,7 +181,8 @@ class DeviceClient(url: String, private val key: String) {
                             val f = tc.optJSONObject("function")
                             if (f != null) {
                                 val n = f.optString("name")
-                                if (n != "null") slot.name += n
+                                // Some servers repeat the whole name in every piece: add only what's new.
+                                if (n.isNotEmpty() && n != "null" && slot.name != n) slot.name += n
                                 val a = f.optString("arguments")
                                 if (a != "null") slot.args.append(a)
                             }

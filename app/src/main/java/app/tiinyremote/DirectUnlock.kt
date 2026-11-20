@@ -6,7 +6,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
 
-class UnlockException(message: String, val unsupported: Boolean = false) : Exception(message)
+class UnlockException(message: String) : Exception(message)
 
 /**
  * Unlocks the Tiiny over the network, the way "tiiny login" does (as found in the Tiiny Control Panel project):
@@ -68,7 +68,7 @@ class DirectUnlock(tiinyUrl: String, private val store: Store, private val passw
             throw UnlockException("This Tiiny isn't activated yet. Activate it with TiinyOS first.")
         }
         if (code == 404 || code == 405) {
-            throw UnlockException("This Tiiny doesn't offer the password login (HTTP $code).", unsupported = true)
+            throw UnlockException("This Tiiny doesn't offer the password login (HTTP $code).")
         }
         throw UnlockException("The Tiiny didn't accept the password (HTTP $code): ${message(text)}")
     }

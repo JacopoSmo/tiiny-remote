@@ -187,11 +187,7 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
     var openType by remember { mutableStateOf(st.setting("hub.type", "").ifBlank { null }) }
     var openGroup by remember { mutableStateOf(st.setting("hub.group", "").ifBlank { null }) }
     // The kinds of creation, in the order you arranged them (new kinds go at the end).
-    val defaultOrder = TOOLS.map { it.type }.distinct()
-    var order by remember {
-        val saved = st.setting("create.order", "").split('|').filter { it in defaultOrder }
-        mutableStateOf(saved + defaultOrder.filter { it !in saved })
-    }
+    var order by remember { mutableStateOf(createTypeOrder(st)) }
     // The Creations groups, also in your order.
     var arrangingC by rememberSaveable { mutableStateOf(false) }
     val defaultGroups = listOf("Chats") + CREATION_GROUPS.map { it.first }
@@ -393,7 +389,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
     val choices = s.models.filter(fits).filter { it.id !in s.unavailable }
     if (choices.isEmpty()) {
         Text(
-            if (s.device == DeviceState.ONLINE) "No model for this is installed on your Tiiny. Download one in TiinyOS."
+            if (s.device == DeviceState.ONLINE) "No model for this is installed on your Tiiny. Download one in Models → Store."
             else "The Tiiny isn't online: see the Models tab.",
             color = MaterialTheme.colorScheme.error,
         )
@@ -591,6 +587,10 @@ internal fun AudioInput(audio: PickedAudio?, mimes: Array<String> = arrayOf("aud
     val scope = rememberCoroutineScope()
     val recorder = remember { WavRecorder() }
     var recording by remember { mutableStateOf(false) }
+    // Leaving the screen mid-recording switches the microphone off (it would otherwise keep listening).
+    androidx.compose.runtime.DisposableEffect(recorder) {
+        onDispose { if (recorder.recording) recorder.stop() }
+    }
     var seconds by remember { mutableStateOf(0.0) }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(recording) {
@@ -1195,11 +1195,8 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
                     if (e.kind != "speech" && e.text.isNotBlank()) {
                         Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 12)
                     }
-                    var playing by remember(f.path) { mutableStateOf(Player.playing == f.name) }
-                    Button(onClick = {
-                        Player.toggle(f) { playing = false }
-                        playing = Player.playing == f.name
-                    }) { BtnLabel(if (playing) "Stop" else "Play", symbol = if (playing) "■" else "▶") }
+                    val playing = Player.playing == f.name
+                    Button(onClick = { Player.toggle(f) }) { BtnLabel(if (playing) "Stop" else "Play", symbol = if (playing) "■" else "▶") }
                     if (e.kind == "song" && st.canContinue(e)) {
                         OutlinedButton(onClick = { st.continueSong(e) }) { Text("Continue to full song") }
                         Text("Takes about 15 minutes; the Tiiny keeps the preview's session only for a while.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1397,7 +1394,7 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel) {
                     }
                     if (showThinking) Text(m.reasoning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (m.text.isNotEmpty()) SelectionContainer { Text(m.text) }
+                if (m.text.isNotEmpty()) SelectionContainer { if (mine) Text(m.text) else MarkdownText(m.text) }
                 else if (live && m.reasoning.isBlank() && m.status.isBlank()) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 for (r in m.results) ResultCard(r, st, expanded = true)
                 if (m.sources.isNotEmpty()) {
@@ -1409,7 +1406,10 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                             maxLines = 2,
-                            modifier = Modifier.clickable { runCatching { uri.openUri(src.url) } },
+                            // Only web addresses open: a source can't launch another app through intent:// or similar.
+                            modifier = Modifier.clickable {
+                                if (src.url.startsWith("https://", true) || src.url.startsWith("http://", true)) runCatching { uri.openUri(src.url) }
+                            },
                         )
                     }
                 }

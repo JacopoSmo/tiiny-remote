@@ -118,8 +118,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- chats: several, each saved on the phone, able to run side by side ----------
 
     private val chatsDir = java.io.File(app.filesDir, "chats").apply { mkdirs() }
+    /**
+     * Chats with pictures are big files: they're written, renamed, deleted and listed on this one background thread,
+     * in order, so the screen doesn't stutter and a late save can't bring back a chat deleted meanwhile.
+     */
+    private val chatDisk = java.util.concurrent.Executors.newSingleThreadExecutor()
     private val _all = MutableStateFlow<Map<String, List<ChatMsg>>>(emptyMap())
-    private val _chatList = MutableStateFlow(loadChatList())
+    private val _chatList = MutableStateFlow<List<ChatInfo>>(emptyList())
+    /** Titles you gave chats yourself (a save keeps them instead of using the first message). */
+    private val customTitles = java.util.concurrent.ConcurrentHashMap<String, String>()
     /** Saved chats, newest first. */
     val chatList: StateFlow<List<ChatInfo>> = _chatList.asStateFlow()
     private val _currentChat = MutableStateFlow(
@@ -268,6 +275,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- results ----------
 
     fun delete(e: ResultEntry) {
+        Player.playing?.let { if (it in e.files) Player.stop() }
         store.delete(e)
         _results.value = store.all()
         if (_job.value?.result?.id == e.id) _job.value = null
@@ -296,6 +304,12 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         loadMessages(_currentChat.value)
+        chatDisk.execute { _chatList.value = loadChatList() }
+    }
+
+    override fun onCleared() {
+        chatDisk.shutdown() // what's queued is still written
+        super.onCleared()
     }
 
     private fun newChatId() = System.currentTimeMillis().toString(36) + kotlin.random.Random.nextInt(1296).toString(36)
@@ -306,7 +320,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         (chatsDir.listFiles { f -> f.name.endsWith(".json") } ?: emptyArray()).mapNotNull { f ->
             try {
                 val o = JSONObject(f.readText())
-                ChatInfo(f.nameWithoutExtension, o.optString("title", "Chat"), o.optLong("updated", f.lastModified()))
+                val title = o.optString("title", "Chat")
+                if (o.optBoolean("custom")) customTitles[f.nameWithoutExtension] = title
+                ChatInfo(f.nameWithoutExtension, title, o.optLong("updated", f.lastModified()))
             } catch (e: Exception) {
                 null
             }
@@ -341,19 +357,20 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun saveChat(id: String) {
         val msgs = _all.value[id] ?: return
+        chatDisk.execute { writeChat(id, msgs) }
+    }
+
+    /** On the chat thread. A chat deleted since the save was asked for is left deleted. */
+    private fun writeChat(id: String, msgs: List<ChatMsg>) {
+        if (!_all.value.containsKey(id)) return
         val f = chatFile(id)
         if (msgs.isEmpty()) {
             f.delete()
             _chatList.update { l -> l.filter { it.id != id } }
             return
         }
-        val old = try {
-            if (f.exists()) JSONObject(f.readText()) else JSONObject()
-        } catch (e: Exception) {
-            JSONObject()
-        }
-        val title = if (old.optBoolean("custom")) old.optString("title")
-        else msgs.firstOrNull { it.role == "user" && it.text.isNotBlank() }?.text?.lines()?.first()?.take(48)
+        val custom = customTitles[id]
+        val title = custom ?: msgs.firstOrNull { it.role == "user" && it.text.isNotBlank() }?.text?.lines()?.first()?.take(48)
             ?: if (msgs.any { it.image != null }) "Picture" else "Chat"
         val a = JSONArray()
         for (m in msgs) {
@@ -365,7 +382,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             a.put(o)
         }
         val now = System.currentTimeMillis()
-        f.writeText(JSONObject().put("title", title).put("custom", old.optBoolean("custom")).put("updated", now).put("messages", a).toString())
+        // Written beside it first, then swapped in: an app killed mid-write can't leave a broken chat behind.
+        val tmp = java.io.File(chatsDir, "$id.json.tmp")
+        tmp.writeText(JSONObject().put("title", title).put("custom", custom != null).put("updated", now).put("messages", a).toString())
+        if (!tmp.renameTo(f)) {
+            f.delete()
+            tmp.renameTo(f)
+        }
         _chatList.update { l -> (listOf(ChatInfo(id, title, now)) + l.filter { it.id != id }).sortedByDescending { it.updated } }
     }
 
@@ -390,20 +413,25 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun renameChat(id: String, title: String) {
-        val f = chatFile(id)
-        if (!f.exists() || title.isBlank()) return
-        try {
-            val o = JSONObject(f.readText()).put("title", title.trim().take(60)).put("custom", true)
-            f.writeText(o.toString())
-            _chatList.update { l -> l.map { if (it.id == id) it.copy(title = title.trim().take(60)) else it } }
-        } catch (e: Exception) {
+        if (title.isBlank()) return
+        val name = title.trim().take(60)
+        chatDisk.execute {
+            val f = chatFile(id)
+            if (!f.exists()) return@execute
+            try {
+                customTitles[id] = name
+                f.writeText(JSONObject(f.readText()).put("title", name).put("custom", true).toString())
+                _chatList.update { l -> l.map { if (it.id == id) it.copy(title = name) else it } }
+            } catch (e: Exception) {
+            }
         }
     }
 
     fun deleteChat(id: String) {
         stops[id]?.set(true)
-        chatFile(id).delete()
         _all.update { it - id }
+        customTitles.remove(id)
+        chatDisk.execute { chatFile(id).delete() }
         lastImages.remove(id)
         _chatList.update { l -> l.filter { it.id != id } }
         if (_currentChat.value == id) {
@@ -457,6 +485,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteVoice(id: String) {
+        if (Player.playing == voiceFile(id).name) Player.stop()
         voiceFile(id).delete()
         storeVoices(_voices.value.filter { it.id != id })
     }
