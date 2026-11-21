@@ -24,12 +24,18 @@ data class DeviceStats(
     val diskTotalGb: Double? = null,
     /** Every temperature sensor the dashboard reports, hottest first. */
     val temps: List<Pair<String, Double>> = emptyList(),
+    /** A fault the NPU reported (e.g. a PCIe transfer timeout), with when it happened, while the Tiiny reports it. */
+    val npuIssue: String? = null,
     val gateway: Boolean = false,
     val dashboard: Boolean = false,
     val time: Long = System.currentTimeMillis(),
 )
 
 object Stats {
+    /** The last NPU fault logged, so each one is logged once. */
+    @Volatile
+    private var lastIssue: String? = null
+
     private fun JSONObject.num(k: String): Double? = if (has(k) && !isNull(k)) optDouble(k).takeIf { !it.isNaN() } else null
 
     @Volatile
@@ -91,7 +97,23 @@ object Stats {
                     ApiLog.add("npu/status: ${o.toString().take(600)}")
                 }
                 val dev = o.optJSONArray("devices")?.optJSONObject(0) ?: JSONObject()
+                // A fault reported by the NPU: logged once each time it happens (it's kept in the status afterwards).
+                val npu = o.optJSONObject("npu")
+                val reason = npu?.optJSONObject("reason") ?: npu?.optJSONObject("failure")
+                val issue = reason?.let { r ->
+                    val msg = r.optString("message").takeIf { it.isNotBlank() && it != "null" } ?: r.optString("code")
+                    val at = npu?.num("started_at")?.let { t ->
+                        java.time.Instant.ofEpochMilli((t * 1000).toLong()).atZone(java.time.ZoneId.systemDefault())
+                            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.ROOT))
+                    }
+                    msg.takeIf { it.isNotBlank() && it != "null" }?.let { m -> if (at != null) "$m (NPU restarted $at)" else m }
+                }
+                if (issue != null && issue != lastIssue) {
+                    lastIssue = issue
+                    ApiLog.add("NPU fault reported by the Tiiny: $issue" + (reason?.optString("code")?.takeIf { it.isNotBlank() }?.let { " [$it]" } ?: ""), "Device")
+                }
                 s = s.copy(
+                    npuIssue = issue,
                     gateway = true,
                     npuUtil = dev.num("util_percent"),
                     npuMemUsedMb = dev.num("mem_used_mb"),

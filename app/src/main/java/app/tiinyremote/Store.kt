@@ -48,6 +48,8 @@ data class AppSettings(
     val notifyDone: Boolean = false,
     /** Labels as words, pictograms or both ("words", "icons", "both"). */
     val labels: String = "both",
+    /** Look for a newer Tiiny Remote once a day (GitHub Releases) and notify. */
+    val dailyUpdateCheck: Boolean = false,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -84,6 +86,7 @@ class Store(context: Context) {
         keepRunning = prefs.getBoolean("keep_running", false),
         notifyDone = prefs.getBoolean("notify_done", false),
         labels = prefs.getString("labels", "both") ?: "both",
+        dailyUpdateCheck = prefs.getBoolean("daily_update_check", false),
     )
 
     fun save(s: AppSettings) {
@@ -111,6 +114,7 @@ class Store(context: Context) {
             .putBoolean("keep_running", s.keepRunning)
             .putBoolean("notify_done", s.notifyDone)
             .putString("labels", s.labels)
+            .putBoolean("daily_update_check", s.dailyUpdateCheck)
             .apply()
     }
 

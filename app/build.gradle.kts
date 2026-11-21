@@ -79,6 +79,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // The optional daily check for a newer Tiiny Remote.
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     // SSH client used to run "tiiny login" on the NAS.
     implementation("com.github.mwiede:jsch:0.2.20")

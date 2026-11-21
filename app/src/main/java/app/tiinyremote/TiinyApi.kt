@@ -156,7 +156,7 @@ object ApiLog {
     /** File paths from a computer (C:\\Users\\…, /C$/Users/…, /home/…, /Users/…): they name people and folders. */
     private val localPath = Regex("(?i)(?:[A-Z]:|/[A-Z]\\$)?[\\\\/](?:Users|home)[\\\\/][^\"\\s,}]*")
     private val clock = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", Locale.ROOT)
-    private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error", RegexOption.IGNORE_CASE)
+    private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error|fault", RegexOption.IGNORE_CASE)
 
     /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
     fun redact(text: String): String {
@@ -511,6 +511,16 @@ class TiinyApi(url: String, private val key: String) {
     /** Deletes a downloaded model (or a partly downloaded one) from the Tiiny. */
     fun delete(id: String) {
         ok(call("DELETE", "/api/v1/models/${quote(id)}", null, 60))
+    }
+
+    /** Switches the Tiiny off (as the TiinyOS app's "Shut down"); it goes off about 10 s later. */
+    fun shutdown() {
+        ok(call("POST", "/api/v1/sys/shutdown/", JSONObject(), 20)) // the slash at the end is needed
+    }
+
+    /** Restarts the Tiiny; afterwards it's locked until unlocked again. */
+    fun reboot() {
+        ok(call("POST", "/api/v1/sys/reboot/", JSONObject(), 20))
     }
 
     /** Starts loading; the device answers once the load is accepted and finishes in the background. */

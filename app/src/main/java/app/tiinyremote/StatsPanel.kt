@@ -302,6 +302,13 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                                 }
                             }
                         }
+                        st?.npuIssue?.let { issue ->
+                            Text(
+                                "⚠ The NPU reported a fault: $issue. Once is usually harmless; if it keeps happening, tell Tiiny support.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                         val df = st?.diskFreeGb
                         val dt = st?.diskTotalGb
                         if (df != null && dt != null) {

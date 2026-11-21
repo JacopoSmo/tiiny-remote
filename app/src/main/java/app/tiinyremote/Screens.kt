@@ -1069,7 +1069,8 @@ private fun PictogramLegend(onClose: () -> Unit) {
         Icons.Filled.Check to "Save",
         Icons.Filled.Share to "Share",
         "⧉" to "Copy",
-        Icons.Filled.Refresh to "Try again",
+        "⏻" to "Power off the Tiiny",
+        Icons.Filled.Refresh to "Try again, check again, restart the Tiiny",
         Icons.Filled.Lock to "Unlock the Tiiny",
         Icons.Filled.Settings to "Open Settings",
     )
@@ -1170,7 +1171,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "")
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1214,6 +1215,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         keepRunning = cur.keepRunning,
         notifyDone = cur.notifyDone,
         labels = cur.labels,
+        dailyUpdateCheck = cur.dailyUpdateCheck,
     )
 
     Column(
@@ -1517,13 +1519,113 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("Tiiny", style = MaterialTheme.typography.titleMedium)
+        var powerAsk by remember { mutableStateOf<Boolean?>(null) } // true: restart, false: power off
+        val tiinyOn = s.device == DeviceState.ONLINE
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { powerAsk = true }, enabled = tiinyOn) { BtnLabel("Restart", Icons.Filled.Refresh) }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = { powerAsk = false },
+                enabled = tiinyOn,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { BtnLabel("Power off", symbol = "⏻") }
+        }
+        Text(
+            "Power off: to switch the Tiiny on again, press its power button. Restart: afterwards it's locked until " +
+                "unlocked (automatic with its saved password). Both unload the models and stop what's running on it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        powerAsk?.let { restart ->
+            val running = s.models.any { it.busy } || s.downloads.isNotEmpty()
+            ScaledAlertDialog(
+                onDismissRequest = { powerAsk = null },
+                title = { Text(if (restart) "Restart the Tiiny?" else "Power off the Tiiny?") },
+                text = {
+                    Text(
+                        (if (running) "Something is still running on it (a model at work or a download): it will be stopped. " else "") +
+                            if (restart) "The loaded models are unloaded. It's back in a few minutes, locked until unlocked " +
+                                "(the app does that by itself with the saved password)."
+                            else "The loaded models are unloaded and it switches off in about 10 seconds. " +
+                                "To switch it on again, press the power button on the Tiiny.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { vm.power(restart); powerAsk = null }) {
+                        Text(if (restart) "Restart" else "Power off", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { powerAsk = null }) { Text("Keep it on") } },
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("App updates", style = MaterialTheme.typography.titleMedium)
         val ctx = LocalContext.current
-        val version = remember {
-            try {
-                ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: ""
-            } catch (e: Exception) {
-                ""
+        val version = remember { AppUpdate.installed(ctx) }
+        val updScope = rememberCoroutineScope()
+        var release by remember { mutableStateOf<AppRelease?>(null) }
+        var updBusy by remember { mutableStateOf<String?>(null) }
+        var updNote by remember {
+            mutableStateOf(AppUpdate.known(ctx)?.let { "Tiiny Remote $it is out (found by the daily check)." })
+        }
+        fun checkNow(then: ((AppRelease) -> Unit)? = null) {
+            updBusy = "Checking…"
+            updScope.launch {
+                val r = withContext(kotlinx.coroutines.Dispatchers.IO) { runCatching { AppUpdate.check(ctx) } }
+                updBusy = null
+                r.onSuccess {
+                    release = it
+                    updNote = if (it == null) "Tiiny Remote $version is the newest." else "Tiiny Remote ${it.version} is out."
+                    if (it != null) then?.invoke(it)
+                }.onFailure { updNote = "Couldn't check for updates: ${it.message}" }
             }
+        }
+        fun updateNow(r: AppRelease) {
+            if (!AppUpdate.canInstall(ctx)) {
+                updNote = "Allow Tiiny Remote to install updates (the screen that opens), then tap Update app again."
+                AppUpdate.openInstallPermission(ctx)
+                return
+            }
+            updBusy = "Downloading ${r.version}…"
+            updScope.launch {
+                val f = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching { AppUpdate.download(ctx, r) { p -> updBusy = "Downloading ${r.version}: $p%" } }
+                }
+                updBusy = null
+                f.onSuccess {
+                    updNote = "Android's installer opens: confirm to update. Your settings stay."
+                    AppUpdate.install(ctx, it)
+                }.onFailure { updNote = "The download didn't work: ${it.message}" }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { checkNow() }, enabled = updBusy == null) { BtnLabel("Check for updates", Icons.Filled.Refresh) }
+            Spacer(Modifier.width(8.dp))
+            if (release != null || AppUpdate.known(ctx) != null) {
+                Button(onClick = { release?.let { updateNow(it) } ?: checkNow { updateNow(it) } }, enabled = updBusy == null) {
+                    BtnLabel("Update app", symbol = "⤓")
+                }
+            }
+        }
+        (updBusy ?: updNote)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Check for updates once a day", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Looks for a newer ${if (AppUpdate.experimental(ctx)) "experimental version" else "version"} on GitHub " +
+                        "and sends a notification when there is one. Updating is always your tap.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = cur.dailyUpdateCheck, onCheckedChange = {
+                vm.setDisplay(cur.copy(dailyUpdateCheck = it))
+                AppUpdate.schedule(ctx, it)
+                if (it) askIfNeeded()
+            })
         }
         Text(
             "Tiiny Remote $version · secrets are stored encrypted on this phone",

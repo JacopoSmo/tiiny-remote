@@ -158,6 +158,26 @@ object Notifier {
         if (allowed(ctx)) ctx.getSystemService(NotificationManager::class.java).notify(WORK_ID, work(ctx, label))
     }
 
+    /** "Tiiny Remote x.y.z is out": from the daily update check (Settings), whatever the "done" setting says. */
+    fun update(ctx: Context, version: String) {
+        val app = ctx.applicationContext
+        if (!allowed(app)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            app.getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(NotificationChannel("updates", "App updates", NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val n = NotificationCompat.Builder(app, "updates")
+            .setSmallIcon(R.drawable.ic_stat_tiiny)
+            .setContentTitle("Tiiny Remote $version is out")
+            .setContentText("Open Settings in the app and tap Update app.")
+            .setAutoCancel(true)
+            .setContentIntent(openApp(app))
+            .build()
+        app.getSystemService(NotificationManager::class.java).notify(UPDATE_ID, n)
+    }
+
+    private const val UPDATE_ID = 2
+
     /** "Done" notice, when that's turned on and the app isn't on screen (you'd see it there anyway). */
     fun done(ctx: Context, title: String, text: String) {
         val app = ctx.applicationContext

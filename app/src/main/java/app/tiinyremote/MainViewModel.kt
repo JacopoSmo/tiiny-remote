@@ -235,6 +235,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Settings → Power off / Restart the Tiiny. Loaded models are unloaded and running jobs stop on the device. */
+    fun power(restart: Boolean) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { if (restart) api().reboot() else api().shutdown() }
+                ApiLog.add(if (restart) "Tiiny restarting (asked from the app)" else "Tiiny switching off (asked from the app)", "Device")
+                toast(
+                    if (restart) "The Tiiny is restarting: it's back in a few minutes, then unlocked automatically if the password is saved."
+                    else "The Tiiny switches off in about 10 seconds. To switch it on again, press its power button.",
+                )
+                lastAutoUnlock = 0L // after a restart, unlock as soon as it answers
+                autoUnlockFails = 0
+            } catch (e: Exception) {
+                ApiLog.add("${if (restart) "Restart" else "Power off"} failed: ${e.message}", "Device")
+                toast("${if (restart) "Restart" else "Power off"} failed: ${e.message}")
+            }
+        }
+    }
+
     /** "Try again" on a model marked unavailable. */
     fun retry(model: ModelInfo) {
         setUnavailable(_state.value.unavailable - model.id)

@@ -33,6 +33,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The daily update check (Settings) is kept scheduled, or cancelled, to match the setting.
+        AppUpdate.schedule(this, Store(this).load().dailyUpdateCheck)
         // Check the Tiiny only while the app is on screen; stops in the background to save battery.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
