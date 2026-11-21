@@ -242,7 +242,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { if (restart) api().reboot() else api().shutdown() }
                 ApiLog.add(if (restart) "Tiiny restarting (asked from the app)" else "Tiiny switching off (asked from the app)", "Device")
                 toast(
-                    if (restart) "The Tiiny is restarting: it's back in a few minutes, then unlocked automatically if the password is saved."
+                    if (restart) "The Tiiny is restarting: it's back in a few minutes" +
+                        (if (settings.autoUnlock && canUnlock(settings)) ", then the app unlocks it." else ". Then unlock it (Unlock screen).")
                     else "The Tiiny switches off in about 10 seconds. To switch it on again, press its power button.",
                 )
                 lastAutoUnlock = 0L // after a restart, unlock as soon as it answers

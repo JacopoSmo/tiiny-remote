@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = buildNumber
-        // 3.0.x: the workflow sets APP_VERSION (3.0.0 was build 37, each later build counts up).
+        // The workflows set APP_VERSION (3.2.0 is build 46 of the normal app; experimental builds are 3.2.0-exp.N).
         versionName = System.getenv("APP_VERSION") ?: "3.0.$buildNumber-local"
     }
 

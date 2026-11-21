@@ -158,6 +158,8 @@ object ApiLog {
     private val problem = Regex("-> HTTP [45]\\d\\d|Exception|failed|didn't|refused|not reachable|error|fault", RegexOption.IGNORE_CASE)
 
     /** Email addresses, login keys and device attestations never reach the log, so a shared log stays private. */
+    private val phoneAddress = Regex("from /[0-9A-Fa-f.:%a-z]+ \\(port \\d+\\)")
+
     fun redact(text: String): String {
         var t = email.replace(text, "***@***")
         t = secretFields.replace(t, "$1***\"")
@@ -165,6 +167,8 @@ object ApiLog {
         t = plainSecret.replace(t, "$1$2***")
         t = jwt.replace(t, "***")
         t = urlLogin.replace(t, "$1***@")
+        // "failed to connect to … from /<this phone's address> (port …)": on mobile data that can be a public address.
+        t = phoneAddress.replace(t, "from this phone")
         return localPath.replace(t, "[local file path]")
     }
 

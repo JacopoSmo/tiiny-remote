@@ -16,8 +16,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
-/** A release of Tiiny Remote on GitHub: its version, the .apk to download, and its page. */
-data class AppRelease(val version: String, val apkUrl: String, val pageUrl: String, val sizeBytes: Long)
+/** A release of Tiiny Remote on GitHub: its version and the .apk to download. */
+data class AppRelease(val version: String, val apkUrl: String)
 
 /**
  * Updates of the app itself, from this repository's GitHub Releases: the normal app follows the release marked
@@ -36,7 +36,7 @@ object AppUpdate {
         ""
     }
 
-    /** Whether version `a` is newer than `b`, number by number (3.1.10 > 3.1.9; 3.1.0-exp.13 > 3.1.0-exp.12). */
+    /** Whether version `a` is newer than `b`, number by number (3.2.10 > 3.2.9; 3.2.0-exp.13 > 3.2.0-exp.12). */
     fun newer(a: String, b: String): Boolean {
         val x = Regex("\\d+").findAll(a).map { it.value.toLong() }.toList()
         val y = Regex("\\d+").findAll(b).map { it.value.toLong() }.toList()
@@ -89,7 +89,7 @@ object AppUpdate {
         val tag = tags.firstOrNull { if (exp) it.startsWith("exp-") else it.startsWith("v") } ?: return null
         val version = tag.removePrefix("exp-").removePrefix("v")
         val apk = (if (exp) "TiinyRemoteExp-" else "TiinyRemote-") + version + ".apk"
-        return AppRelease(version, "https://github.com/$REPO/releases/download/$tag/$apk", "https://github.com/$REPO/releases/tag/$tag", 0)
+        return AppRelease(version, "https://github.com/$REPO/releases/download/$tag/$apk")
     }
 
     private fun fromApi(ctx: Context): AppRelease? {
@@ -107,7 +107,7 @@ object AppUpdate {
             val url = apk.optString("browser_download_url")
             // Only this repository's own release files.
             if (!url.startsWith("https://github.com/$REPO/releases/download/")) continue
-            return AppRelease(tag.removePrefix("exp-").removePrefix("v"), url, o.optString("html_url"), apk.optLong("size"))
+            return AppRelease(tag.removePrefix("exp-").removePrefix("v"), url)
         }
         return null
     }

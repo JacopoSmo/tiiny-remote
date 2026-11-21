@@ -1,4 +1,4 @@
-# Tiiny Remote 3.1
+# Tiiny Remote 3.2
 
 An Android app to run a Tiiny AI Pocket Lab from your phone, at home or over WireGuard. It talks to the Tiiny
 the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
@@ -12,10 +12,13 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
   in GB, power and temperature (when the Tiiny reports them); tap it for the full panel (main and helper model,
   what's working).
 - **Fast helper model:** a quick chat model (e.g. gpt-oss-20b) kept loaded beside the main one names new chats while
-  the main model answers, condenses long chats, runs the writing helpers, and condenses web pages when it's at least
-  25% faster than the chat model (condensing can lose details). A speed test (Settings) measures one model at a time against two at once.
-- **Chat:** several chats side by side, saved on the phone, with Thinking, "Can make things" (pictures, voice,
-  music from the chat) and web search (your SearXNG, else Tavily, Bing, DuckDuckGo or Wikipedia from the phone).
+  the main model answers, suggests follow-ups, summarises, translates and rewrites, condenses long chats, runs the
+  writing helpers, and condenses web pages when it's at least 25% faster than the chat model (condensing can lose
+  details). A speed test (Settings, 1–4 runs averaged) measures one model at a time against two at once.
+- **Chat:** several chats side by side, saved on the phone, with a Thinking slider (Off, Auto, Low, Medium, High,
+  Max), "Can make things" (pictures, voice, music from the chat), web search (your SearXNG, else Tavily, Bing,
+  DuckDuckGo or Wikipedia from the phone), follow-up suggestions, Socratic and Student modes, Summarise, Translate
+  an answer, ✎ to shorten or reword your message, and a jump-to-newest button.
 - **Create:** images (create, edit, read text), voice (built-in, described or cloned), transcription, loops and
   songs, video, 3D models, text embedding, reranking and classification, laid out like Tiiny Studio. Results are
   kept under Creations and can be saved to the phone or shared.
@@ -25,7 +28,8 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 - **App updates:** Check for updates and Update app in Settings (the browser downloads the new version; open it to
   install), plus an optional daily check with a notification.
 - **VPN:** one-tap and automatic WireGuard switching (on away from home, off at home).
-- **Activity:** one colour-coded log with filters and Share (secrets removed).
+- **Activity:** one colour-coded log with filters and Share (secrets and the phone's own address removed).
+- **About:** Settings → ⓘ beside the version: version, links, what data goes where, licence.
 - **Display:** a compact layout for square screens (e.g. Unihertz Titan 2), sizes (menus and dialogs included),
   labels as words, pictograms or both (with a legend), and Enter-to-send for hardware keyboards.
 - **In the background (optional):** keeps working while a job, chat answer, speed test or download runs with the
@@ -34,7 +38,7 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 ## Install
 
 Every push to `main` builds the app on GitHub. Open this repository's **Releases** on the phone, download the
-newest `TiinyRemote-3.1.x.apk` (the one marked Latest) and open it. Newer builds install over the old one and keep your settings.
+newest `TiinyRemote-3.2.x.apk` (the one marked Latest) and open it. Newer builds install over the old one and keep your settings.
 
 Pre-releases named "Tiiny Remote Experimental" come from the `experimental` branch and install as a separate app,
 "Tiiny Remote Exp", with its own settings; they're for trying new features and never marked Latest.
