@@ -1069,7 +1069,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         Icons.Filled.Check to "Save",
         Icons.Filled.Share to "Share",
         "⧉" to "Copy",
-        "⏻" to "Power off the Tiiny",
+        PowerIcon to "Power off the Tiiny",
         Icons.Filled.Refresh to "Try again, check again, restart the Tiiny",
         Icons.Filled.Lock to "Unlock the Tiiny",
         Icons.Filled.Settings to "Open Settings",
@@ -1530,7 +1530,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 onClick = { powerAsk = false },
                 enabled = tiinyOn,
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            ) { BtnLabel("Power off", symbol = "⏻") }
+            ) { BtnLabel("Power off", PowerIcon) }
         }
         Text(
             "Power off: to switch the Tiiny on again, press its power button. Restart: afterwards it's locked until " +
