@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -128,8 +132,23 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
             }
             Text(if (open) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false; vm.statsPanel(false) }) {
-            StatsPanel(s, vm, st, studio)
+        // A window of its own (not a drop-down): as wide as the screen allows, its header always visible, the rest
+        // scrolling, so nothing gets cut at the top on square screens.
+        if (open) {
+            val close = { open = false; vm.statsPanel(false) }
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = close,
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                val maxH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.9f
+                androidx.compose.material3.Surface(
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                    tonalElevation = 6.dp,
+                    modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 560.dp).heightIn(max = maxH),
+                ) {
+                    StatsPanel(s, vm, st, studio, close)
+                }
+            }
         }
     }
 }
@@ -157,22 +176,29 @@ private fun Meter(label: String, v: Double?, modifier: Modifier, sub: String) {
 
 /** The full panel: NPU memory per loaded model, live activity, temperatures and storage. */
 @Composable
-private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: StudioViewModel) {
+private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: StudioViewModel, onClose: () -> Unit) {
     val running = s.models.filter { it.running }
     val used = running.sumOf { it.npuUsage ?: 0.0 }
-            Column(Modifier.width(330.dp).padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val on = s.device == DeviceState.ONLINE
-                val loadedN = running.size
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (on) "Tiiny online" else if (s.device == DeviceState.LOCKED) "Tiiny locked" else "Tiiny offline",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (on) Color(0xFF2E7D32) else Color(0xFFC62828),
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (on) Text("$loadedN model${if (loadedN == 1) "" else "s"} loaded", style = MaterialTheme.typography.labelLarge)
-                }
+    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+        val on = s.device == DeviceState.ONLINE
+        val loadedN = running.size
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (on) "Tiiny online" else if (s.device == DeviceState.LOCKED) "Tiiny locked" else "Tiiny offline",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (on) Color(0xFF2E7D32) else Color(0xFFC62828),
+                modifier = Modifier.weight(1f),
+            )
+            if (on) Text("$loadedN model${if (loadedN == 1) "" else "s"} loaded", style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            androidx.compose.material3.IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Close")
+            }
+        }
+            Column(
+                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(top = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 if (!on) {
                     Text(
                         s.deviceMessage.ifBlank { "The Tiiny isn't reachable, so there are no live numbers." },
@@ -200,12 +226,18 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                                         main -> if (helper != null) "Main chat model" else null
                                         else -> null
                                     }
-                                    if (role != null || m.isMoE) Text(
-                                        listOfNotNull(role, if (m.isMoE) "MoE" else null).joinToString(" · "),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        maxLines = 1,
-                                    )
+                                    val labels = listOfNotNull(role, if (m.isMoE) "MoE" else null)
+                                    if (labels.isNotEmpty() || m.busy) Row {
+                                        if (labels.isNotEmpty()) Text(tags(labels), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                                        // As on the Models page: the model is answering or making something right now.
+                                        if (m.busy) Text(
+                                            (if (labels.isNotEmpty()) "  ·  " else "") + tag("working"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFE65100),
+                                            maxLines = 1,
+                                        )
+                                    }
                                 }
                                 Text(fmt(m.npuUsage, "%", 1), style = MaterialTheme.typography.labelMedium)
                                 TextButton(onClick = { vm.unload(m) }, enabled = m.id !in s.working) { BtnLabel("Unload", symbol = "■") }
@@ -288,6 +320,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+    }
 }
 
 @Composable

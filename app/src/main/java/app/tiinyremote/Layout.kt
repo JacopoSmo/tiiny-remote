@@ -39,11 +39,53 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
-/** How the screen is laid out: compact (square screens like the Titan 2) or roomy (tall phones). */
-data class UiPrefs(val compact: Boolean = false, val enterSends: Boolean = true)
+/**
+ * How the screen is laid out: compact (square screens like the Titan 2) or roomy (tall phones), and whether labels
+ * are words, pictograms or both ("words", "icons", "both").
+ */
+data class UiPrefs(val compact: Boolean = false, val enterSends: Boolean = true, val labels: String = "both")
+
+/** Settings → Display → Labels. */
+val LABEL_STYLES = listOf(
+    "both" to "Pictograms and words",
+    "words" to "Words only",
+    "icons" to "Pictograms only (saves space)",
+)
+
+/** The pictogram for each label word used for models across the app (the legend in Settings lists them). */
+val TAG_ICONS = linkedMapOf(
+    "Chat" to "💬",
+    "Thinks" to "💭",
+    "Always thinks" to "🧠",
+    "Makes things" to "🛠",
+    "Sees images" to "👁",
+    "MoE" to "🧩",
+    "Mixture of experts" to "🧩",
+    "Main chat model" to "◉",
+    "Helper" to "⚡",
+    "working" to "⏳",
+)
+
+/** One label as Settings wants it: the word, its pictogram, or both. */
+@Composable
+fun tag(word: String): String {
+    val pic = TAG_ICONS[word] ?: return word
+    return when (LocalUi.current.labels) {
+        "words" -> word
+        "icons" -> pic
+        else -> "$pic $word"
+    }
+}
+
+/** Several labels in a row: pictograms close together, words with dots between. */
+@Composable
+fun tags(words: List<String>): String =
+    words.map { tag(it) }.joinToString(if (LocalUi.current.labels == "icons") "  " else "  ·  ")
 
 val LocalUi = compositionLocalOf { UiPrefs() }
 
@@ -164,13 +206,37 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
     }
 }
 
-/** A button's content: a sign (icon or symbol) before the word, so the standard buttons look the same everywhere. */
+/**
+ * A button's content: a sign (icon or symbol) and/or the word, as Settings → Labels says. A button without a sign
+ * always shows its word; with pictograms only, the word is still read out by TalkBack.
+ */
 @Composable
 fun BtnLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, symbol: String? = null) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, modifier = Modifier.padding(end = 6.dp).size(18.dp))
-        else if (symbol != null) Text(symbol, modifier = Modifier.padding(end = 6.dp))
-        Text(text, maxLines = 1)
+    val style = LocalUi.current.labels
+    val hasSign = icon != null || symbol != null
+    val showSign = hasSign && style != "words"
+    val showWord = !hasSign || style != "icons"
+    val gap = if (showWord) Modifier.padding(end = 6.dp) else Modifier
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = text },
+    ) {
+        if (showSign) {
+            if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, modifier = gap.size(18.dp))
+            else Text(symbol!!, modifier = gap)
+        }
+        if (showWord) Text(text, maxLines = 1)
+    }
+}
+
+/** A dialog's title with a small ✕ to close it, instead of a Close button taking a whole row. */
+@Composable
+fun ClosableTitle(onClose: () -> Unit, content: @Composable () -> Unit) {
+    Row(verticalAlignment = Alignment.Top) {
+        Box(Modifier.weight(1f)) { content() }
+        androidx.compose.material3.IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Close")
+        }
     }
 }
 

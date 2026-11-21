@@ -366,9 +366,10 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
-                        if (m.abilities.isNotEmpty()) {
+                        val labels = m.abilities + if (m.isMoE) listOf("MoE") else emptyList()
+                        if (labels.isNotEmpty()) {
                             Text(
-                                m.abilities.joinToString(" · "),
+                                tags(labels),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,

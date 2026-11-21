@@ -46,6 +46,8 @@ data class AppSettings(
     val keepRunning: Boolean = false,
     /** A notification when a job, chat answer, speed test or download finishes while the app isn't on screen. */
     val notifyDone: Boolean = false,
+    /** Labels as words, pictograms or both ("words", "icons", "both"). */
+    val labels: String = "both",
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -81,6 +83,7 @@ class Store(context: Context) {
         helperModel = prefs.getString("helper_model", "") ?: "",
         keepRunning = prefs.getBoolean("keep_running", false),
         notifyDone = prefs.getBoolean("notify_done", false),
+        labels = prefs.getString("labels", "both") ?: "both",
     )
 
     fun save(s: AppSettings) {
@@ -107,6 +110,7 @@ class Store(context: Context) {
             .putString("helper_model", s.helperModel)
             .putBoolean("keep_running", s.keepRunning)
             .putBoolean("notify_done", s.notifyDone)
+            .putString("labels", s.labels)
             .apply()
     }
 

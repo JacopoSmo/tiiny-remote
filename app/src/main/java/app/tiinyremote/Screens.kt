@@ -258,7 +258,7 @@ fun AppRoot(vm: MainViewModel) {
 
     CompositionLocalProvider(
         LocalDensity provides Density(base.density * uiScale, base.fontScale * textScale),
-        LocalUi provides UiPrefs(compact = compact, enterSends = s.settings.enterSends),
+        LocalUi provides UiPrefs(compact = compact, enterSends = s.settings.enterSends, labels = s.settings.labels),
     ) {
         ModalNavigationDrawer(
             drawerState = drawer,
@@ -615,7 +615,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                                         filters = if (key in filters) filters - key else filters + key
                                         prefs.edit().putStringSet("filters", filters).apply()
                                     },
-                                    label = { Text(label) },
+                                    label = { Text(tag(label)) },
                                 )
                             }
                         }
@@ -736,7 +736,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
 @Composable
 fun MoeBadge() {
     Text(
-        "MoE",
+        tag("MoE"),
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -760,9 +760,11 @@ private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
         title = {
-            Column {
-                Text(full.substringAfterLast('/'), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if ('/' in full) Text(full.substringBeforeLast('/'), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ClosableTitle(onClose) {
+                Column {
+                    Text(full.substringAfterLast('/'), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if ('/' in full) Text(full.substringBeforeLast('/'), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         },
         text = {
@@ -801,7 +803,7 @@ private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+        confirmButton = {},
     )
 }
 
@@ -852,7 +854,7 @@ private fun ModelCard(
                     Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (m.abilities.isNotEmpty()) {
-                    Text(m.abilities.joinToString("  ·  "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(tags(m.abilities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 if (unavailable) {
                     Text(
@@ -1050,6 +1052,67 @@ private fun SettingDropdown(label: String, options: List<Pair<String, String>>, 
     }
 }
 
+/** The ⓘ beside Labels: what each pictogram means. */
+@Composable
+private fun PictogramLegend(onClose: () -> Unit) {
+    val signs = listOf<Pair<@Composable () -> Unit, String>>(
+        { Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp)) } to "Load a model, resume a download",
+        { Text("■") } to "Unload a model, stop",
+        { Text("⤓") } to "Download, save to the phone",
+        { Text("⟳") } to "Update a model",
+        { Text("❚❚") } to "Pause a download",
+        { Icon(Icons.Filled.Close, null, Modifier.size(18.dp)) } to "Cancel, remove, close",
+        { Icon(Icons.Filled.Edit, null, Modifier.size(18.dp)) } to "Edit, rename",
+        { Icon(Icons.Filled.Check, null, Modifier.size(18.dp)) } to "Save",
+        { Icon(Icons.Filled.Share, null, Modifier.size(18.dp)) } to "Share",
+        { Text("⧉") } to "Copy",
+        { Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp)) } to "Try again",
+        { Icon(Icons.Filled.Lock, null, Modifier.size(18.dp)) } to "Unlock the Tiiny",
+        { Icon(Icons.Filled.Settings, null, Modifier.size(18.dp)) } to "Open Settings",
+    )
+    AlertDialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
+        title = { ClosableTitle(onClose) { Text("What the pictograms mean") } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Models", style = MaterialTheme.typography.titleSmall)
+                val meaning = mapOf(
+                    "Chat" to "Chat model",
+                    "Thinks" to "Can think before answering (can be switched off)",
+                    "Always thinks" to "Always thinks before answering",
+                    "Makes things" to "Can use the chat's tools (images, speech, songs…)",
+                    "Sees images" to "Understands pictures you attach",
+                    "MoE" to "Mixture of experts: writes much faster than its size suggests",
+                    "Main chat model" to "The chat's main model (when a helper is loaded)",
+                    "Helper" to "The fast helper model",
+                    "working" to "Working on something right now",
+                )
+                for ((word, what) in meaning) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(TAG_ICONS[word] ?: "", modifier = Modifier.width(36.dp))
+                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text("Buttons", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                for ((sign, what) in signs) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(36.dp)) { sign() }
+                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text(
+                    "A button with no pictogram always shows its word. Others: ● loaded, ▾ opens a menu, ★ favourite.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {},
+    )
+}
+
 /** The ⓘ beside the speed test: dense vs. mixture-of-experts models, and which to use for what. */
 @Composable
 private fun ModelChoiceInfo(onClose: () -> Unit) {
@@ -1057,7 +1120,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
-        title = { Text("Which model for what?") },
+        title = { ClosableTitle(onClose) { Text("Which model for what?") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Two kinds of chat models", style = MaterialTheme.typography.titleSmall)
@@ -1093,7 +1156,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+        confirmButton = {},
     )
 }
 
@@ -1101,7 +1164,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "")
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1144,6 +1207,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         helperModel = helper,
         keepRunning = cur.keepRunning,
         notifyDone = cur.notifyDone,
+        labels = cur.labels,
     )
 
     Column(
@@ -1163,6 +1227,16 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         )
         SettingDropdown("Size of everything", UI_SCALES, cur.uiScale) { vm.setDisplay(cur.copy(uiScale = it)) }
         SettingDropdown("Text size", TEXT_SCALES, cur.textScale) { vm.setDisplay(cur.copy(textScale = it)) }
+        var legend by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                SettingDropdown("Labels", LABEL_STYLES, cur.labels) { vm.setDisplay(cur.copy(labels = it)) }
+            }
+            IconButton(onClick = { legend = true }) {
+                Icon(Icons.Filled.Info, contentDescription = "What the pictograms mean", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (legend) PictogramLegend { legend = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = cur.enterSends, onCheckedChange = { vm.setDisplay(cur.copy(enterSends = it)) })
             Spacer(Modifier.width(10.dp))
@@ -1280,7 +1354,10 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val chatModels = s.models.filter { it.isChat }
         SettingDropdown(
             "Helper",
-            listOf("" to "None (the chat model does everything)") + chatModels.map { it.id to it.name },
+            // ● = loaded now, as in the chat's model menu; mixture-of-experts models carry their tag.
+            listOf("" to "None (the chat model does everything)") + chatModels.map { m ->
+                m.id to (if (m.running) "● " else "") + m.name + if (m.isMoE) "  " + tag("MoE") else ""
+            },
             helper,
         ) { helper = it }
         Text(
