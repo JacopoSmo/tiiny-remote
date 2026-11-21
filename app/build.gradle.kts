@@ -17,6 +17,7 @@ android {
     defaultConfig {
         applicationId = if (experimental) "app.tiinyremote.exp" else "app.tiinyremote"
         manifestPlaceholders["appLabel"] = if (experimental) "Tiiny Remote Exp" else "Tiiny Remote"
+        manifestPlaceholders["appIcon"] = if (experimental) "@mipmap/ic_launcher_exp" else "@mipmap/ic_launcher"
         minSdk = 26
         targetSdk = 35
         versionCode = buildNumber

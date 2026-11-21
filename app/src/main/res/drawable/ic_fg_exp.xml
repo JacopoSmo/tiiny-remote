@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app icon with an "exp" sash, for the experimental app. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,44h32a4,4 0,0 1,4 4v20a4,4 0,0 1,-4 4h-32a4,4 0,0 1,-4 -4v-20a4,4 0,0 1,4 -4z" />
+    <path
+        android:fillColor="#1F3A5F"
+        android:pathData="M44,52h20v12h-20z" />
+    <path
+        android:fillColor="#7FD1FF"
+        android:pathData="M54,30a16,16 0,0 1,14 8l-3.5,2a12,12 0,0 0,-21 0l-3.5,-2a16,16 0,0 1,14 -8z" />
+    <path
+        android:fillColor="#7FD1FF"
+        android:pathData="M54,36a10,10 0,0 1,8.7 5l-3.5,2a6,6 0,0 0,-10.4 0l-3.5,-2a10,10 0,0 1,8.7 -5z" />
+    <!-- Experimental app: an orange "exp" sash across the top-right corner, inside the launcher's visible area. -->
+    <group android:rotation="45" android:pivotX="74" android:pivotY="34">
+        <path
+            android:fillColor="#FF8F00"
+            android:pathData="M40,28h68v12h-68z" />
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M65.5,34.5L70,34.5A2.25,3 0,1 0,69.2 36.8M72,31.5L77,37.5M77,31.5L72,37.5M79,31.5L79,39.3M79,34.5A2,3 0,1 1,83 34.5A2,3 0,1 1,79 34.5" />
+    </group>
+</vector>
