@@ -1084,7 +1084,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 Text("Models", style = MaterialTheme.typography.titleSmall)
                 val meaning = mapOf(
                     "Chat" to "Chat model",
-                    "Thinks" to "Can think before answering (can be switched off); in the chat: thinking on",
+                    "Thinks" to "Can think before answering (can be switched off); in the chat: thinking on (how deep: the Thinking slider)",
                     "Always thinks" to "Always thinks before answering",
                     "Makes things" to "Can use the chat's tools (images, speech, songs…); in the chat: tools on",
                     "Sees images" to "Understands pictures you attach",
@@ -1093,6 +1093,9 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Helper" to "The fast helper model",
                     "working" to "Working on something right now",
                     "Web search" to "Chat: web search on",
+                    "Suggestions" to "Chat: follow-up suggestions on",
+                    "Socratic" to "Chat: Socratic mode (guides with questions)",
+                    "Student" to "Chat: Student mode (teaches step by step)",
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1400,7 +1403,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         Text(
             "A quick chat model kept loaded beside your main one. While it's loaded it names new chats (while the main model " +
-                "answers), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
+                "answers), suggests follow-up questions, condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
                 "only when the speed test found it at least 25% faster than the chat model (details can get lost, see ⓘ); otherwise the chat model reads " +
                 "them itself. It's never swapped in: when it isn't loaded, the chat model does everything.",
             style = MaterialTheme.typography.bodySmall,

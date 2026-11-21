@@ -74,6 +74,9 @@ val TAG_ICONS = linkedMapOf(
     "Thinking" to "💭",
     "Can make things" to "🛠",
     "Web search" to "🌐",
+    "Suggestions" to "💡",
+    "Socratic" to "🤔",
+    "Student" to "🎓",
 )
 
 /** The sign alone, for places that show only signs (the chat's compact switch summary). */

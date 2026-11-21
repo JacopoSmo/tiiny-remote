@@ -74,6 +74,56 @@ private const val PAGE_SYSTEM = "You condense a web page for another assistant w
     "in the page's own words for key facts. Note the page's date if it gives one. If nothing helps, reply exactly: " +
     "NOTHING RELEVANT. Under 250 words, no preamble."
 
+/** Thinking depth on the chat's slider, shallowest first. */
+val DEPTHS = listOf("off", "auto", "low", "medium", "high", "max")
+val DEPTH_LABELS = mapOf("off" to "Off", "auto" to "Auto", "low" to "Low", "medium" to "Medium", "high" to "High", "max" to "Max")
+
+/** The chat's ways of answering: plain, Socratic (guides with questions), Student (teaches). */
+val CHAT_MODES = listOf("normal" to "Normal", "socratic" to "Socratic", "student" to "Student")
+
+private const val SOCRATIC_PROMPT = "\n\nSocratic mode: don't hand the user the answer. Guide them to find it themselves: ask one or " +
+    "two well-chosen questions at a time that build on what they said, point out gaps or contradictions gently, and " +
+    "give a small hint when they are stuck. When they get there, confirm it and sum up briefly what they found. If the " +
+    "user clearly asks for the answer itself, give it. For simple facts or practical requests, just answer."
+
+private const val STUDENT_PROMPT = "\n\nStudent mode: teach. Explain step by step in plain language, define terms when they first " +
+    "come up, use a small concrete example, and connect new ideas to what the user already knows. With homework or an " +
+    "exercise, show the method and let the user do the steps rather than handing over a finished solution. End with " +
+    "one short question to check understanding, or a small practice task. Adapt to the user's level."
+
+/** Spoken to models that think when told to: there's no thinking budget to set, so the depth is asked for in words. */
+private fun depthPrompt(level: String): String = when (level) {
+    "low" -> "\n\nThink only briefly before answering: as little as the question needs."
+    "high" -> "\n\nReason carefully before answering: work step by step, consider other readings of the question, and check your result."
+    "max" -> "\n\nTake all the time you need before answering: work step by step, explore alternatives, look for mistakes in " +
+        "your own reasoning and verify every step and figure before you answer."
+    else -> ""
+}
+
+/**
+ * Auto thinking: the depth from the question itself, without asking a model (that would delay the answer): short
+ * everyday questions think little, maths, code, analysis and planning think more.
+ */
+internal fun autoDepth(q: String): String {
+    val t = q.lowercase()
+    val hard = Regex(
+        "\\b(prove|proof|derive|calculat|comput|solve|equation|integral|probabilit|statistic|debug|algorithm|optimi[sz]|" +
+            "analy[sz]|compar|trade-?off|step by step|why (does|is|do|are)|plan|strateg|evaluat|design|architect|" +
+            "beweis|berechn|lös|warum|vergleich|analysier|strategie|pourquoi|calcul|démontr|compar|perché|calcol)"
+    ).containsMatchIn(t)
+    val maths = Regex("\\d\\s*[-+*/^=<>×÷]\\s*[\\d(]|```|\\b(fun|def|class|function|SELECT)\\b").containsMatchIn(q)
+    return when {
+        (hard && maths) || (hard && q.length > 400) -> "high"
+        hard || maths || q.length > 600 -> "medium"
+        q.length < 120 -> "low"
+        else -> "medium"
+    }
+}
+
+private const val SUGGEST_SYSTEM = "Suggest exactly 3 short follow-up messages the user might send next in this conversation, " +
+    "written as the user would write them, in the user's language. Each under 12 words, specific to what was just " +
+    "discussed, and different from each other. One per line: no numbering, no quotes, nothing else."
+
 private const val TITLE_SYSTEM = "Give this conversation a short title of 3 to 6 words in the user's language. " +
     "Reply with the title only: no quotes, no final period."
 
@@ -526,6 +576,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------- helpers: a chat model suggests loop tags or writes lyrics, the ASR model transcribes a clip ----------
+
+    private val _suggestions = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    /** Follow-up suggestions per chat, after its last answer (gone once something is sent). */
+    val suggestions: StateFlow<Map<String, List<String>>> = _suggestions.asStateFlow()
 
     private val _helper = MutableStateFlow<String?>(null) // what a helper is doing, while it runs
     val helper: StateFlow<String?> = _helper.asStateFlow()
@@ -1042,13 +1096,42 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Three follow-up suggestions for a chat, after its answer: from the helper when it's loaded (it works beside the
+     * chat model), otherwise from the chat model itself with thinking off. Runs on its own, so the chat is free at once.
+     */
+    private fun suggestNext(id: String, c: DeviceClient, who: String, question: String) {
+        val answer = _all.value[id]?.lastOrNull()?.text.orEmpty()
+        if (answer.isBlank() || answer.startsWith("Error:")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val raw = Tools.chatOnce(c, who, SUGGEST_SYSTEM, "User: ${question.take(1500)}\n\nAssistant: ${answer.takeLast(4000)}", 100)
+                val list = raw.lines()
+                    .map { it.trim().replace(Regex("^([-*•]|\\d+[.)])\\s*"), "").trim('"', '“', '”', '*').trim() }
+                    .filter { it.length in 2..120 }
+                    .distinct()
+                    .take(3)
+                // Only if nothing new was sent meanwhile: a stale suggestion would answer the wrong message.
+                if (list.isNotEmpty() && id !in _busyChats.value && _all.value[id]?.lastOrNull()?.text == answer) {
+                    _suggestions.update { it + (id to list) }
+                }
+            } catch (e: Exception) {
+                ApiLog.add("No suggestions this time (${e.message})", "Chat")
+            }
+        }
+    }
+
+    /**
      * Sends a message. With canMake on, the model may call tools (images, edits, speech, loops, songs); a tool's model
      * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards. With a fast helper
      * model loaded beside it, the helper names the chat, condenses long chats, and condenses pages when it's clearly faster.
      */
-    fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, web: Boolean, models: List<ModelInfo>) {
+    fun send(
+        model: String, text: String, image: String?, depth: String, chatMode: String, canMake: Boolean, web: Boolean,
+        suggest: Boolean, models: List<ModelInfo>,
+    ) {
         val id = _currentChat.value
         if (id in _busyChats.value || (text.isBlank() && image == null)) return
+        _suggestions.update { it - id }
         if (image != null) lastImages[id] = image
         val history = (_all.value[id] ?: emptyList()) + ChatMsg("user", text.trim(), image = image)
         upd(id) { history + ChatMsg("assistant", "") }
@@ -1087,7 +1170,27 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                     val convo = JSONArray()
-                    var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "")
+                    val mode = Tools.thinkingMode(c, model)
+                    // The depth actually used: Auto picks one from the question; gpt-oss can't stop thinking, so Off is Low there.
+                    val level = when {
+                        mode == "none" -> "off"
+                        depth == "auto" -> autoDepth(question).also { ApiLog.add("Thinking on Auto: ${DEPTH_LABELS[it]} for this question", "Chat") }
+                        depth == "off" && mode == "always" -> "low"
+                        else -> depth
+                    }
+                    var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
+                        (if (mode == "switch" || level == "max") depthPrompt(level) else "") +
+                        when (chatMode) {
+                            "socratic" -> SOCRATIC_PROMPT
+                            "student" -> STUDENT_PROMPT
+                            else -> ""
+                        }
+                    // Deeper thinking needs room: the reasoning comes out of the same budget as the answer.
+                    var maxTokens = when (level) {
+                        "high" -> 8192
+                        "max" -> 12288
+                        else -> 4096
+                    }
                     val notes = helper?.let { condenseIfLong(id, c, it, shown) }
                     if (notes != null) {
                         system += "\n\nNotes on the earlier part of this conversation (condensed):\n" + notes.second
@@ -1097,7 +1200,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         convo.put(JSONObject().put("role", "system").put("content", system))
                         for (m in shown) convo.put(asMessage(m))
                     }
-                    val mode = Tools.thinkingMode(c, model)
                     val tools = JSONArray()
                     if (canMake) toolSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
                     if (web) webSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }
@@ -1106,19 +1208,33 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     // Pages are read (and condensed) up to 3 at a time; the media tools one after the other.
                     val pages = Semaphore(3)
                     for (round in 0..maxRounds) {
-                        val body = JSONObject().put("model", model).put("messages", convo).put("stream", true).put("max_tokens", 4096)
-                        when (mode) {
-                            "always" -> body.put("reasoning_effort", if (thinking) "medium" else "low")
-                            "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", thinking))
+                        fun body() = JSONObject().put("model", model).put("messages", convo).put("stream", true).put("max_tokens", maxTokens).also { b ->
+                            when (mode) {
+                                "always" -> b.put("reasoning_effort", when (level) {
+                                    "off", "low" -> "low"
+                                    "medium" -> "medium"
+                                    else -> "high"
+                                })
+                                "switch" -> b.put("chat_template_kwargs", JSONObject().put("enable_thinking", level != "off"))
+                            }
+                            if (tools.length() > 0 && round < maxRounds) b.put("tools", tools)
                         }
-                        if (tools.length() > 0 && round < maxRounds) body.put("tools", tools)
                         setStatus(id, "")
-                        val done = c.streamChat(body, { content, reasoning ->
+                        val onText = { content: String, reasoning: String ->
                             upd(id) { list ->
                                 val last = list.lastOrNull() ?: return@upd list
                                 list.dropLast(1) + last.copy(text = last.text + content, reasoning = last.reasoning + reasoning)
                             }
-                        }, { chatStop.get() })
+                        }
+                        val done = try {
+                            c.streamChat(body(), onText, { chatStop.get() })
+                        } catch (e: MediaException) {
+                            // The model's context can be too small for the bigger budget of High and Max: the usual one then.
+                            if (maxTokens <= 4096 || !Regex("(?i)context|max_tokens|maximum|too long|too large").containsMatchIn(e.message ?: "")) throw e
+                            ApiLog.add("No room for $maxTokens tokens with this model; answering with 4096", "Chat")
+                            maxTokens = 4096
+                            c.streamChat(body(), onText, { chatStop.get() })
+                        }
                         if (chatStop.get() || done.calls.isEmpty()) {
                             if (done.calls.isEmpty() && done.finish == "length" && (_all.value[id]?.lastOrNull()?.text ?: "").isBlank()) {
                                 throw MediaException("The model reasoned until it ran out of room and gave no answer. Try again, or ask for less.")
@@ -1168,6 +1284,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             list.dropLast(1) + last.copy(text = if (last.text.isBlank()) last.text else last.text + "\n\n")
                         }
                     }
+                    if (suggest && !chatStop.get()) suggestNext(id, c, helper ?: model, question)
                 }
                 if (!chatStop.get()) {
                     val title = _chatList.value.firstOrNull { it.id == id }?.title ?: "Chat"

@@ -51,6 +51,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -86,6 +88,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
+import kotlin.math.roundToInt
 
 /** A tool, filed under the model type TiinyOS shows in its store. */
 private class Tool(val id: String, val type: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
@@ -1248,7 +1251,13 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val msgs by st.chat.collectAsState()
     val busy by st.chatBusy.collectAsState()
     var input by rememberSaveable { mutableStateOf("") }
-    var thinking by rememberSaveable { mutableStateOf(true) }
+    var depth by rememberSaveable { mutableStateOf(st.setting("chat.depth", "auto").takeIf { it in DEPTHS } ?: "auto") }
+    var chatMode by rememberSaveable { mutableStateOf(st.setting("chat.mode", "normal")) }
+    var suggest by rememberSaveable { mutableStateOf(st.setting("chat.suggest", "1") == "1") }
+    fun setDepth(d: String) { depth = d; st.setSetting("chat.depth", d) }
+    fun setMode(m: String) { chatMode = m; st.setSetting("chat.mode", m) }
+    fun toggleSuggest() { suggest = !suggest; st.setSetting("chat.suggest", if (suggest) "1" else "0") }
+    val suggestions by st.suggestions.collectAsState()
     var canMake by rememberSaveable { mutableStateOf(true) }
     var web by rememberSaveable { mutableStateOf(st.setting("chat.web", "0") == "1") }
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
@@ -1262,32 +1271,51 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = if (ui.compact) 8.dp else 12.dp)) {
         Spacer(Modifier.height(if (ui.compact) 4.dp else 8.dp))
         var options by remember { mutableStateOf(false) }
+        var sub by remember { mutableStateOf<String?>(null) } // "depth" or "mode": the menu shows that choice
         var model: ModelInfo? = null
+        val modeLabel = CHAT_MODES.firstOrNull { it.first == chatMode }?.second ?: "Normal"
         if (ui.compact) {
             // One line: model picker and a menu with the chat options.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { model = ModelPicker("chat", { it.isChat }, s, vm, st) }
+                val thinksNow = model?.thinks == true
                 Box {
                     TextButton(onClick = { options = true }) {
                         Text(listOfNotNull(
-                            if (model?.thinks == true && thinking) sign("Thinking") else null,
+                            if (thinksNow && depth != "off") sign("Thinking") else null,
                             if (canMake) sign("Can make things") else null,
                             if (web && hasSearx) sign("Web search") else null,
+                            if (suggest) sign("Suggestions") else null,
+                            if (chatMode != "normal") sign(modeLabel) else null,
                         ).joinToString("").ifEmpty { "⋯" } + " ▾")
                     }
-                    ScaledDropdownMenu(expanded = options, onDismissRequest = { options = false }) {
-                        DropdownMenuItem(
-                            text = { Text((if (model?.thinks == true && thinking) "☑ " else "☐ ") + if (model?.alwaysThinks == true) "Think more" else "Thinking") },
-                            enabled = model?.thinks == true,
-                            onClick = { thinking = !thinking },
-                        )
-                        DropdownMenuItem(text = { Text((if (canMake) "☑ " else "☐ ") + "Can make things") }, onClick = { canMake = !canMake })
-                        DropdownMenuItem(
-                            text = { Text((if (web && hasSearx) "☑ " else "☐ ") + "Web search") },
-                            enabled = hasSearx,
-                            onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") },
-                        )
-                        DropdownMenuItem(text = { Text("New chat") }, enabled = msgs.isNotEmpty(), onClick = { st.newChat(); options = false })
+                    ScaledDropdownMenu(expanded = options, onDismissRequest = { options = false; sub = null }) {
+                        when (sub) {
+                            "depth" -> {
+                                DropdownMenuItem(text = { Text("◂ Back") }, onClick = { sub = null })
+                                DepthSlider(depth, model?.alwaysThinks == true) { setDepth(it) }
+                            }
+                            "mode" -> {
+                                DropdownMenuItem(text = { Text("◂ Back") }, onClick = { sub = null })
+                                ModeChoices(chatMode) { setMode(it); sub = null }
+                            }
+                            else -> {
+                                DropdownMenuItem(
+                                    text = { Text("Thinking: " + (if (thinksNow) DEPTH_LABELS[depth] else "—") + "  ▸") },
+                                    enabled = thinksNow,
+                                    onClick = { sub = "depth" },
+                                )
+                                DropdownMenuItem(text = { Text((if (canMake) "☑ " else "☐ ") + "Can make things") }, onClick = { canMake = !canMake })
+                                DropdownMenuItem(
+                                    text = { Text((if (web && hasSearx) "☑ " else "☐ ") + "Web search") },
+                                    enabled = hasSearx,
+                                    onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") },
+                                )
+                                DropdownMenuItem(text = { Text((if (suggest) "☑ " else "☐ ") + "Suggestions") }, onClick = { toggleSuggest() })
+                                DropdownMenuItem(text = { Text("Mode: $modeLabel  ▸") }, onClick = { sub = "mode" })
+                                DropdownMenuItem(text = { Text("New chat") }, enabled = msgs.isNotEmpty(), onClick = { st.newChat(); options = false })
+                            }
+                        }
                     }
                 }
             }
@@ -1297,16 +1325,30 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val thinks = model?.thinks == true
         val makes = model?.makesThings == true
         if (!ui.compact) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
-            FilterChip(
-                selected = thinks && thinking,
-                onClick = { thinking = !thinking },
-                enabled = thinks,
-                label = { Text(if (model?.alwaysThinks == true) "Thinking: ${if (thinking) "more" else "less"}" else "Thinking") },
-            )
+            Box {
+                FilterChip(
+                    selected = thinks && depth != "off",
+                    onClick = { sub = "depth" },
+                    enabled = thinks,
+                    label = { Text("Thinking: ${if (thinks) DEPTH_LABELS[depth] else "—"} ▾") },
+                )
+                ScaledDropdownMenu(expanded = sub == "depth", onDismissRequest = { sub = null }) {
+                    DepthSlider(depth, model?.alwaysThinks == true) { setDepth(it) }
+                }
+            }
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text("Can make things") })
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { Text("Web search") })
+            Spacer(Modifier.width(8.dp))
+            FilterChip(selected = suggest, onClick = { toggleSuggest() }, label = { Text("Suggestions") })
+            Spacer(Modifier.width(8.dp))
+            Box {
+                FilterChip(selected = chatMode != "normal", onClick = { sub = "mode" }, label = { Text("Mode: $modeLabel ▾") })
+                ScaledDropdownMenu(expanded = sub == "mode", onDismissRequest = { sub = null }) {
+                    ModeChoices(chatMode) { setMode(it); sub = null }
+                }
+            }
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = { st.newChat() }, enabled = msgs.isNotEmpty()) { Text("New chat") }
         }
@@ -1321,11 +1363,23 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         // The fast helper (Settings) at work beside the chat model, when it's loaded.
         val helperName = s.models.firstOrNull { it.id == s.settings.helperModel && it.running && it.id != model?.id }?.name
-        val helperNote = helperName?.let { "Helper $it names the chat, condenses long chats, and condenses pages when it's faster." }
-        val shownHint = listOfNotNull(hint, helperNote).joinToString(" ").ifBlank { null }
+        val helperNote = helperName?.let { "Helper $it names the chat, suggests follow-ups, condenses long chats, and condenses pages when it's clearly faster." }
+        val modeNote = when (chatMode) {
+            "socratic" -> "Socratic: the model guides you with questions instead of giving the answer."
+            "student" -> "Student: the model teaches step by step and checks your understanding."
+            else -> null
+        }
+        val shownHint = listOfNotNull(hint, modeNote, helperNote).joinToString(" ").ifBlank { null }
         // On compact screens the hint shows only before the chat starts, to leave room for the conversation.
         if (shownHint != null && (!ui.compact || msgs.isEmpty())) {
             Text(shownHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        fun sendText(text: String) {
+            val m = model ?: return
+            if (busy) return
+            st.send(m.id, text, image.firstOrNull()?.dataUri, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models)
+            input = ""
+            image = emptyList()
         }
         Column(
             Modifier
@@ -1343,16 +1397,25 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 )
             }
             for ((i, m) in msgs.withIndex()) ChatBubble(m, live = busy && i == msgs.lastIndex, st = st)
+            val ideas = suggestions[current].orEmpty()
+            if (suggest && !busy && ideas.isNotEmpty()) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (idea in ideas) {
+                        SuggestionChip(
+                            onClick = { if (model?.running == true) sendText(idea) },
+                            label = { Text(idea, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+                            icon = { Text(sign("Suggestions")) },
+                        )
+                    }
+                }
+            }
         }
         if (model?.seesImages == true) {
             ImagePickerRow(image, 1, "Add a picture") { image = it }
         }
         val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty()) && !busy
         fun doSend() {
-            val m = model ?: return
-            st.send(m.id, input, image.firstOrNull()?.dataUri, thinks && thinking, canMake, web && hasSearx, s.models)
-            input = ""
-            image = emptyList()
+            sendText(input)
         }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             OutlinedTextField(
@@ -1427,5 +1490,65 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel) {
                 }
             }
         }
+    }
+}
+
+/** The thinking-depth slider: Off, Auto, Low, Medium, High, Max. A model that always thinks (gpt-oss) can't go to Off. */
+@Composable
+private fun DepthSlider(depth: String, alwaysThinks: Boolean, onChange: (String) -> Unit) {
+    val i = DEPTHS.indexOf(depth).coerceAtLeast(0)
+    Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Thinking: ${DEPTH_LABELS[depth]}", style = MaterialTheme.typography.titleSmall)
+        Slider(
+            value = i.toFloat(),
+            onValueChange = { v ->
+                val d = DEPTHS[v.roundToInt().coerceIn(0, DEPTHS.lastIndex)]
+                onChange(if (alwaysThinks && d == "off") "low" else d)
+            },
+            valueRange = 0f..DEPTHS.lastIndex.toFloat(),
+            steps = DEPTHS.size - 2,
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            for (d in DEPTHS) Text(if (d == "medium") "Mid" else DEPTH_LABELS.getValue(d), style = MaterialTheme.typography.labelSmall)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            when (depth) {
+                "off" -> "Answers at once, without thinking first. Fastest."
+                "auto" -> "Picks the depth from each question: little for everyday questions, more for maths, code, analysis and plans."
+                "low" -> "Thinks briefly. Good for simple questions and chat."
+                "medium" -> "Thinks as much as the model usually does."
+                "high" -> "Thinks carefully and checks its result. Slower; more room for the answer."
+                else -> "Thinks as long as it needs and double-checks every step. Slowest: on the 27B several minutes."
+            } + if (alwaysThinks) " This model always thinks: Off isn't possible, and its own Low, Medium and High are used." else
+                " The model is told how deeply to think; it mostly follows.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** The chat's modes, with what each does. */
+@Composable
+private fun ModeChoices(selected: String, onPick: (String) -> Unit) {
+    for ((key, label) in CHAT_MODES) {
+        DropdownMenuItem(
+            text = {
+                Column {
+                    Text((if (key == selected) "◉ " else "○ ") + label + if (key != "normal") " " + sign(label) else "")
+                    Text(
+                        when (key) {
+                            "socratic" -> "Guides you to the answer with questions and hints instead of giving it. Ask for the answer and you get it."
+                            "student" -> "Teaches: step by step, with examples, shows the method on exercises, and ends with a question to check understanding."
+                            else -> "Answers directly."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            modifier = Modifier.width(300.dp),
+            onClick = { onPick(key) },
+        )
     }
 }
