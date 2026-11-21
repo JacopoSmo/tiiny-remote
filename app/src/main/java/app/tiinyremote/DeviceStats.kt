@@ -127,8 +127,15 @@ object Stats {
                 }
                 if (issue != null && issue != lastIssue) {
                     lastIssue = issue
-                    // TiinyOS keeps the last fault in its status: the time tells whether it's the same one or a new one.
-                    ApiLog.add("NPU fault reported by the Tiiny: $issue" + (reason?.optString("code")?.takeIf { it.isNotBlank() }?.let { " [$it]" } ?: ""), "Device")
+                    // TiinyOS keeps the last fault in its status until the NPU restarts again: one from more than 10
+                    // minutes ago (seen when the app starts, say) is an old one, and the log says so.
+                    val ageMin = npu?.num("started_at")?.let { (System.currentTimeMillis() / 1000.0 - it) / 60 }
+                    val code = reason?.optString("code")?.takeIf { it.isNotBlank() }?.let { " [$it]" } ?: ""
+                    ApiLog.add(
+                        if (ageMin != null && ageMin > 10) "Earlier NPU fault, still in the Tiiny's status (${Math.round(ageMin)} min ago, nothing new): $issue$code"
+                        else "NPU fault reported by the Tiiny: $issue$code",
+                        "Device",
+                    )
                 }
                 s = s.copy(
                     npuIssue = issue,
