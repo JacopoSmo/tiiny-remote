@@ -50,6 +50,8 @@ data class AppSettings(
     val labels: String = "both",
     /** Look for a newer Tiiny Remote once a day (GitHub Releases) and notify. */
     val dailyUpdateCheck: Boolean = false,
+    /** How many times the speed test repeats its measurements (1–4); the results are averaged. */
+    val speedRuns: Int = 1,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -87,6 +89,7 @@ class Store(context: Context) {
         notifyDone = prefs.getBoolean("notify_done", false),
         labels = prefs.getString("labels", "both") ?: "both",
         dailyUpdateCheck = prefs.getBoolean("daily_update_check", false),
+        speedRuns = prefs.getInt("speed_runs", 1).coerceIn(1, 4),
     )
 
     fun save(s: AppSettings) {
@@ -115,6 +118,7 @@ class Store(context: Context) {
             .putBoolean("notify_done", s.notifyDone)
             .putString("labels", s.labels)
             .putBoolean("daily_update_check", s.dailyUpdateCheck)
+            .putInt("speed_runs", s.speedRuns.coerceIn(1, 4))
             .apply()
     }
 

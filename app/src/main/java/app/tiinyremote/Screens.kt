@@ -1158,7 +1158,10 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                     "Times each model alone, both at the same time, and the helper twice at once, and remembers the " +
                         "speeds for the page decision. Run it once for each main model you pair with the helper. Two " +
                         "different models at once usually finish 10–20% sooner; the same model twice brings nothing, " +
-                        "because the Tiiny takes its requests in turn.",
+                        "because the Tiiny takes its requests in turn.\n\n" +
+                        "One run can be off by several percent (the same pair measured 9% and 11%, another 7% and 18%). " +
+                        "With 2–4 test runs the results are averaged, the spread is shown, and the 15% rule is applied " +
+                        "to the average, so one lucky or unlucky run doesn't decide.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -1171,7 +1174,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1386,9 +1389,14 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
             ?: chatModels.firstOrNull { it.running && it.id != helper }
         var speedInfo by remember { mutableStateOf(false) }
+        SettingDropdown(
+            "Test runs",
+            (1..4).map { n -> n.toString() to if (n == 1) "1 (quick)" else "$n, averaged" },
+            cur.speedRuns.toString(),
+        ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(
-                onClick = { if (big != null && small != null) st.speedTest(big, small) },
+                onClick = { if (big != null && small != null) st.speedTest(big, small, cur.speedRuns) },
                 enabled = big != null && small != null && speed?.startsWith("Testing") != true,
                 modifier = Modifier.weight(1f),
             ) { Text("Speed test: one at a time or both at once?") }
@@ -1402,7 +1410,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 helper.isBlank() -> "Choose a helper first."
                 small == null -> "Load the helper and your chat model to run the speed test."
                 big == null -> "Load your chat model too to run the speed test."
-                else -> "Tests ${big.name} and ${small.name}, alone and at the same time (a few minutes)."
+                else -> "Tests ${big.name} and ${small.name}, alone and at the same time, " +
+                    (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary by a few percent from run to run: more runs give a steadier average."
+                    else "${cur.speedRuns} times and averages the results (about ${cur.speedRuns * 2} minutes).")
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

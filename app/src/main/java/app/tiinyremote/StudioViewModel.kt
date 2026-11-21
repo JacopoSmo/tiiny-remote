@@ -875,14 +875,16 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Measures how fast the chat model and the helper write alone, then at the same time, and the helper twice at
-     * once (how pages are condensed). Both must be loaded; nothing is swapped. Tells whether parallel work pays off.
+     * once (how pages are condensed), [runs] times (1–4), and averages: one run can be off by several percent. Both
+     * must be loaded; nothing is swapped. Tells whether parallel work pays off.
      */
-    fun speedTest(big: ModelInfo, small: ModelInfo) {
+    fun speedTest(big: ModelInfo, small: ModelInfo, runs: Int = 1) {
         if (_speed.value?.startsWith("Testing") == true) return
         if (!deviceBusy.compareAndSet(false, true)) {
             note("The Tiiny is busy with a job: run the test when it's done.")
             return
         }
+        val n = runs.coerceIn(1, 4)
         _speed.value = "Testing…"
         viewModelScope.launch {
             try {
@@ -897,8 +899,14 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
                             "always" -> body.put("reasoning_effort", "low")
                         }
-                        val t0 = System.nanoTime()
-                        val r = c.request("POST", "/v1/chat/completions", body, 600)
+                        var t0 = System.nanoTime()
+                        var r = c.request("POST", "/v1/chat/completions", body, 600)
+                        if (!r.ok && r.code >= 500) {
+                            // A model that has only just loaded can answer 500 once (seen with gpt-oss): one retry.
+                            Thread.sleep(5000)
+                            t0 = System.nanoTime()
+                            r = c.request("POST", "/v1/chat/completions", body, 600)
+                        }
                         val secs = (System.nanoTime() - t0) / 1e9
                         if (!r.ok) throw MediaException("${model.substringAfterLast('/')}: ${r.error()}")
                         val o = r.json()
@@ -908,45 +916,68 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         return tokens to secs
                     }
                     fun rate(r: Pair<Int, Double>) = r.first / r.second
-                    _speed.value = "Testing ${big.name} alone…"
-                    val a = one(big.id)
-                    _speed.value = "Testing ${small.name} alone…"
-                    val b = one(small.id)
-                    _speed.value = "Testing both at the same time…"
-                    val (a2, b2) = coroutineScope {
-                        val x = async { one(big.id) }
-                        val y = async { one(small.id) }
-                        x.await() to y.await()
-                    }
-                    // Remembered per model: the chat uses them to decide whether the helper should condense pages.
-                    prefs.edit().putFloat("speed_${big.id}", rate(a).toFloat()).putFloat("speed_${small.id}", rate(b).toFloat()).apply()
-                    _speed.value = "Testing ${small.name} twice at the same time…"
-                    val (h1, h2) = coroutineScope {
-                        val x = async { one(small.id) }
-                        val y = async { one(small.id) }
-                        x.await() to y.await()
-                    }
-                    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
-                    // The same work (what each wrote alone), timed one after the other and at the same time. Times,
-                    // not added-up speeds: when the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
-                    val seq = a.first / rate(a) + b.first / rate(b)
-                    val par = maxOf(a.first / rate(a2), b.first / rate(b2))
-                    val helperSeq = 2 * b.first / rate(b)
-                    val helperPar = maxOf(b.first / rate(h1), b.first / rate(h2))
-                    fun verdict(seqS: Double, parS: Double): String {
-                        val p = (1 - parS / seqS) * 100
-                        val times = "${Math.round(parS)} s instead of ${Math.round(seqS)} s one after the other"
-                        return when {
-                            p >= 10 -> "$times (${Math.round(p)}% sooner): worth it"
-                            p >= 3 -> "$times (${Math.round(p)}% sooner): a little faster"
-                            p > -3 -> "$times: no gain, the Tiiny takes them in turn"
-                            p > -5 -> "$times: about the same"
-                            else -> "$times (${Math.round(-p)}% slower): better one after the other"
+                    val bigRates = mutableListOf<Double>()
+                    val smallRates = mutableListOf<Double>()
+                    val bothGains = mutableListOf<Double>()
+                    val helperGains = mutableListOf<Double>()
+                    // Times, not added-up speeds, per run: the same work (what each wrote alone), timed one after the
+                    // other and at the same time. When the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
+                    fun gain(seqS: Double, parS: Double) = (1 - parS / seqS) * 100
+                    for (i in 1..n) {
+                        val run = if (n > 1) " (run $i of $n)" else ""
+                        _speed.value = "Testing${run}: ${big.name} alone…"
+                        val a = one(big.id)
+                        _speed.value = "Testing${run}: ${small.name} alone…"
+                        val b = one(small.id)
+                        _speed.value = "Testing${run}: both at the same time…"
+                        val (a2, b2) = coroutineScope {
+                            val x = async { one(big.id) }
+                            val y = async { one(small.id) }
+                            x.await() to y.await()
                         }
+                        _speed.value = "Testing${run}: ${small.name} twice at the same time…"
+                        val (h1, h2) = coroutineScope {
+                            val x = async { one(small.id) }
+                            val y = async { one(small.id) }
+                            x.await() to y.await()
+                        }
+                        bigRates += rate(a)
+                        smallRates += rate(b)
+                        bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
+                        helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
                     }
-                    "Alone: ${big.name} ${f(rate(a))} tok/s, ${small.name} ${f(rate(b))} tok/s.\n" +
-                        "Both models at once: ${verdict(seq, par)}.\n" +
-                        "${small.name} twice at once: ${verdict(helperSeq, helperPar)}."
+                    val bigRate = bigRates.average()
+                    val smallRate = smallRates.average()
+                    // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
+                    prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
+                    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
+                    fun spread(l: List<Double>, unit: String) =
+                        if (l.size > 1) " (${f(l.min())}–${f(l.max())}$unit)" else ""
+                    fun pct(v: Double) = "${Math.round(v)}%"
+                    fun gainSpread(l: List<Double>) =
+                        if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else ""
+                    fun verdict(l: List<Double>): String {
+                        val p = l.average()
+                        val text = when {
+                            p >= 15 -> "${pct(p)} sooner: worth it"
+                            p >= 3 -> "${pct(p)} sooner: a little faster"
+                            p > -3 -> "no gain, the Tiiny takes them in turn"
+                            p > -5 -> "about the same"
+                            else -> "${pct(-p)} slower: better one after the other"
+                        }
+                        return text + gainSpread(l)
+                    }
+                    val faster = (smallRate / bigRate - 1) * 100
+                    val pages = if (smallRate >= bigRate * 1.15)
+                        "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
+                    else
+                        "${small.name} isn't at least 15% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
+                            "${big.name} reads web pages itself."
+                    (if (n > 1) "Average of $n runs. " else "") +
+                        "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigRates, "")}, ${small.name} ${f(smallRate)} tok/s${spread(smallRates, "")}.\n" +
+                        "Both models at once: ${verdict(bothGains)}.\n" +
+                        "${small.name} twice at once: ${verdict(helperGains)}.\n" +
+                        pages
                 }
                 _speed.value = out
                 ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
