@@ -915,6 +915,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         val y = async { one(small.id) }
                         x.await() to y.await()
                     }
+                    // Remembered per model: the chat uses them to decide whether the helper should condense pages.
+                    prefs.edit().putFloat("speed_${big.id}", rate(a).toFloat()).putFloat("speed_${small.id}", rate(b).toFloat()).apply()
                     _speed.value = "Testing ${small.name} twice at the same time…"
                     val (h1, h2) = coroutineScope {
                         val x = async { one(small.id) }
@@ -952,6 +954,17 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 deviceBusy.set(false)
             }
         }
+    }
+
+    /**
+     * Whether the helper should condense pages for this chat model: only when the speed test measured it clearly
+     * faster (by 20%). A helper as fast as the chat model would only add waiting; the chat model then reads the pages
+     * itself. Before any speed test, pages are condensed.
+     */
+    private fun helperCondensesPages(helper: String, chatModel: String): Boolean {
+        val h = prefs.getFloat("speed_$helper", 0f)
+        val m = prefs.getFloat("speed_$chatModel", 0f)
+        return h <= 0f || m <= 0f || h >= m * 1.2f
     }
 
     /** The fast helper model chosen in Settings, when it's loaded and isn't the chat model itself (never swapped in for this). */
@@ -996,7 +1009,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Sends a message. With canMake on, the model may call tools (images, edits, speech, loops, songs); a tool's model
      * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards. With a fast helper
-     * model loaded beside it, the helper condenses pages (several at once) and long chats, and names the chat.
+     * model loaded beside it, the helper names the chat, condenses long chats, and condenses pages when it's clearly faster.
      */
     fun send(model: String, text: String, image: String?, thinking: Boolean, canMake: Boolean, web: Boolean, models: List<ModelInfo>) {
         val id = _currentChat.value
@@ -1015,6 +1028,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val c = client()
                     val cfg = settingsStore.load()
                     val helper = fastHelper(cfg, models, model)
+                    val pageHelper = helper?.takeIf { web && helperCondensesPages(it, model) }
+                    if (web && helper != null && pageHelper == null) {
+                        ApiLog.add("Pages go to the chat model directly: by the speed test, the helper isn't clearly faster than it", "Chat")
+                    }
                     val shown = history.filter { !(it.role == "assistant" && it.text.isBlank()) }
                     // A new chat is named by the helper from its first question, while the chat model answers: the speed
                     // test showed two different models working at once finish sooner than one after the other.
@@ -1087,7 +1104,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 JSONObject()
                             }
                             return try {
-                                if (call.name in WEB_TOOLS) null to webTool(id, call.name, args, cfg, c, helper, question)
+                                if (call.name in WEB_TOOLS) null to webTool(id, call.name, args, cfg, c, pageHelper, question)
                                 else runTool(id, c, call.name, args, models, p)
                             } catch (e: Exception) {
                                 if (chatStop.get()) throw e

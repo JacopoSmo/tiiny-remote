@@ -57,6 +57,7 @@ jobs:
           make_latest: "false"
           body: |
             Experimental: installs as a separate app, "Tiiny Remote Exp", beside the normal Tiiny Remote, with its own settings.
-            New here: a fast helper model (Settings → Fast helper model) that summarises web pages for the chat model (several at once),
-            names chats, condenses long chats and runs the helpers; plus a speed test for running two models at the same time.
+            New here: a fast helper model (Settings → Fast helper model) that names new chats while the main model answers,
+            condenses long chats, runs the writing helpers, and condenses web pages when the speed test found it clearly
+            faster than the chat model; plus that speed test (one model at a time or two at once).
           files: TiinyRemoteExp-*.apk

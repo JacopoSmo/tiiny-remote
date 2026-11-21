@@ -1160,9 +1160,10 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             helper,
         ) { helper = it }
         Text(
-            "A small, quick chat model kept loaded beside your main one. While it's loaded it condenses web pages for the " +
-                "chat (several at once), condenses long chats, names new chats, and runs Improve prompt, lyrics and tags. " +
-                "It's never swapped in: when it isn't loaded, the chat model does everything as before. Save to use it.",
+            "A quick chat model kept loaded beside your main one. While it's loaded it names new chats (while the main model " +
+                "answers), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
+                "only when the speed test found it clearly faster than the chat model; otherwise the chat model reads them " +
+                "itself. It's never swapped in: when it isn't loaded, the chat model does everything. Save to use it.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

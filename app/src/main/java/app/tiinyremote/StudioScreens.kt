@@ -1320,7 +1320,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         // The fast helper (Settings) at work beside the chat model, when it's loaded.
         val helperName = s.models.firstOrNull { it.id == s.settings.helperModel && it.running && it.id != model?.id }?.name
-        val helperNote = helperName?.let { "Helper $it condenses pages and long chats and names the chat." }
+        val helperNote = helperName?.let { "Helper $it names the chat, condenses long chats, and condenses pages when it's faster." }
         val shownHint = listOfNotNull(hint, helperNote).joinToString(" ").ifBlank { null }
         // On compact screens the hint shows only before the chat starts, to leave room for the conversation.
         if (shownHint != null && (!ui.compact || msgs.isEmpty())) {
