@@ -140,12 +140,12 @@ object ApiLog {
 
     private val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
     /**
-     * Fields whose values never reach the log: login keys, tokens, passwords, the account's name and the device's
-     * serial number. The closing quote is optional: callers cut long answers before logging them, and a value cut
+     * Fields whose values never reach the log: login keys, tokens, passwords, the account's name, and what identifies
+     * the device (serial number, device ID, its name, the phone's name, MAC address). The closing quote is optional: callers cut long answers before logging them, and a value cut
      * in the middle must still be hidden.
      */
     private val secretFields = Regex(
-        "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number|user_name|username)\"\\s*:\\s*\")[^\"]*\"?",
+        "(\"(?:auth_key|authKey|attestation|token|access_token|refresh_token|id_token|password|api_key|apiKey|secret|sn|serial|serial_number|user_name|username|device_id|deviceId|device_name|pc_name|uuid|mac)\"\\s*:\\s*\")[^\"]*\"?",
     )
     private val bearer = Regex("(Bearer\\s+)[A-Za-z0-9._~+/=-]{8,}")
     /** The same in plain text, as a command line prints it ("token: …", "password=…"), and any JWT-shaped token. */
