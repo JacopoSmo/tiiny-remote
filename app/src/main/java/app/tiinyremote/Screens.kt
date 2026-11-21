@@ -1055,20 +1055,21 @@ private fun SettingDropdown(label: String, options: List<Pair<String, String>>, 
 /** The ⓘ beside Labels: what each pictogram means. */
 @Composable
 private fun PictogramLegend(onClose: () -> Unit) {
-    val signs = listOf<Pair<@Composable () -> Unit, String>>(
-        { Icon(Icons.Filled.PlayArrow, null, Modifier.size(18.dp)) } to "Load a model, resume a download",
-        { Text("■") } to "Unload a model, stop",
-        { Text("⤓") } to "Download, save to the phone",
-        { Text("⟳") } to "Update a model",
-        { Text("❚❚") } to "Pause a download",
-        { Icon(Icons.Filled.Close, null, Modifier.size(18.dp)) } to "Cancel, remove, close",
-        { Icon(Icons.Filled.Edit, null, Modifier.size(18.dp)) } to "Edit, rename",
-        { Icon(Icons.Filled.Check, null, Modifier.size(18.dp)) } to "Save",
-        { Icon(Icons.Filled.Share, null, Modifier.size(18.dp)) } to "Share",
-        { Text("⧉") } to "Copy",
-        { Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp)) } to "Try again",
-        { Icon(Icons.Filled.Lock, null, Modifier.size(18.dp)) } to "Unlock the Tiiny",
-        { Icon(Icons.Filled.Settings, null, Modifier.size(18.dp)) } to "Open Settings",
+    // A Material icon or a text symbol, as the buttons use them.
+    val signs = listOf<Pair<Any, String>>(
+        Icons.Filled.PlayArrow to "Load a model, resume a download",
+        "■" to "Unload a model, stop",
+        "⤓" to "Download, save to the phone",
+        "⟳" to "Update a model",
+        "❚❚" to "Pause a download",
+        Icons.Filled.Close to "Cancel, remove, close",
+        Icons.Filled.Edit to "Edit, rename",
+        Icons.Filled.Check to "Save",
+        Icons.Filled.Share to "Share",
+        "⧉" to "Copy",
+        Icons.Filled.Refresh to "Try again",
+        Icons.Filled.Lock to "Unlock the Tiiny",
+        Icons.Filled.Settings to "Open Settings",
     )
     AlertDialog(
         onDismissRequest = onClose,
@@ -1098,7 +1099,9 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 Text("Buttons", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for ((sign, what) in signs) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.width(36.dp)) { sign() }
+                        Box(Modifier.width(36.dp)) {
+                            if (sign is androidx.compose.ui.graphics.vector.ImageVector) Icon(sign, null, Modifier.size(18.dp)) else Text(sign.toString())
+                        }
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
