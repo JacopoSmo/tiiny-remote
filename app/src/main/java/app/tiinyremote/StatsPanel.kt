@@ -37,10 +37,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.fillMaxHeight
 import java.util.Locale
 
 private fun fmt(v: Double?, unit: String, digits: Int = 0): String =
     if (v == null) "—" else String.format(Locale.ROOT, "%.${digits}f", v) + unit
+
+/** The colour of the n-th loaded model in the NPU memory bar and before its name. */
+private fun modelColor(n: Int): Color = listOf(
+    Color(0xFF42A5F5), Color(0xFFAB47BC), Color(0xFF26A69A), Color(0xFFFFCA28), Color(0xFFEC407A), Color(0xFF8D6E63),
+)[n % 6]
 
 /** Utilisation colours: up to 50 % green, 51–75 % orange, 76 % and more red. */
 @Composable
@@ -221,11 +230,25 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                             Text("NPU memory", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                             Text("${fmt(used, "%")} used · ${fmt((100 - used).coerceAtLeast(0.0), "%")} free", style = MaterialTheme.typography.labelLarge)
                         }
-                        LinearProgressIndicator(progress = { (used / 100).toFloat().coerceIn(0f, 1f) }, color = loadColor(used), modifier = Modifier.fillMaxWidth())
+                        // One bar, split per loaded model in its own colour (the dot before each name below), the rest free.
+                        val track = MaterialTheme.colorScheme.surfaceVariant
+                        Row(
+                            Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(track),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            val total = running.sumOf { it.npuUsage }.coerceAtLeast(100.0)
+                            for ((i, m) in running.withIndex()) {
+                                if (m.npuUsage > 0) Box(Modifier.weight((m.npuUsage / total).toFloat()).fillMaxHeight().background(modelColor(i)))
+                            }
+                            val free = (1 - running.sumOf { it.npuUsage } / total).toFloat()
+                            if (free > 0.001f) Spacer(Modifier.weight(free))
+                        }
                         if (running.isEmpty()) Text("Nothing loaded", style = MaterialTheme.typography.bodySmall)
                         val (main, helper) = chatRoles(s, studio)
-                        for (m in running) {
+                        for ((idx, m) in running.withIndex()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(10.dp).background(modelColor(idx), CircleShape))
+                                Spacer(Modifier.width(8.dp))
                                 Column(Modifier.weight(1f)) {
                                     // The short name on one line: "org/" alone used to fill the row.
                                     Text(m.name.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)

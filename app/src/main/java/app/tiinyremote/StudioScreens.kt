@@ -1429,7 +1429,9 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
             for ((i, m) in msgs.withIndex()) {
                 val live = busy && i == msgs.lastIndex
-                ChatBubble(m, live = live, st = st, onTranslate = if (live || helperBusy != null) null else { lang ->
+                // The question an answer belongs to, for "Share question and answer".
+                val asked = msgs.getOrNull(i - 1)?.takeIf { m.role == "assistant" && it.role == "user" }?.text
+                ChatBubble(m, live = live, st = st, question = asked, onTranslate = if (live || helperBusy != null) null else { lang ->
                     st.translateText(m.text, lang, s.models) { quick = "Translation ($lang)" to it }
                 })
             }
@@ -1517,10 +1519,13 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 }
 
 @Composable
-private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, onTranslate: ((String) -> Unit)? = null) {
+private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question: String? = null, onTranslate: ((String) -> Unit)? = null) {
     val mine = m.role == "user"
     var showThinking by remember { mutableStateOf(false) }
     var langs by remember { mutableStateOf(false) }
+    var shareMenu by remember { mutableStateOf(false) }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Card(
             colors = CardDefaults.cardColors(
@@ -1555,8 +1560,26 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, onTransla
                         )
                     }
                 }
-                if (!mine && onTranslate != null && m.text.isNotBlank() && !m.text.startsWith("Error:")) {
+                if (!mine && !live && m.text.isNotBlank()) Row {
+                    // Copy or share this answer, alone or with the question it answers.
+                    val pair = if (question != null) "Question:\n${question.trim()}\n\nAnswer:\n${m.text.trim()}" else m.text.trim()
+                    fun share(text: String) = runCatching {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, text)
+                        ctx.startActivity(android.content.Intent.createChooser(send, "Share"))
+                    }
                     Box {
+                        TextButton(onClick = { shareMenu = true }) { Text("Share ▾", style = MaterialTheme.typography.labelMedium) }
+                        ScaledDropdownMenu(expanded = shareMenu, onDismissRequest = { shareMenu = false }) {
+                            if (question != null) {
+                                DropdownMenuItem(text = { Text("Share question and answer") }, onClick = { shareMenu = false; share(pair) })
+                                DropdownMenuItem(text = { Text("Copy question and answer") }, onClick = { shareMenu = false; clipboard.setText(AnnotatedString(pair)) })
+                            }
+                            DropdownMenuItem(text = { Text("Share the answer") }, onClick = { shareMenu = false; share(m.text.trim()) })
+                            DropdownMenuItem(text = { Text("Copy the answer") }, onClick = { shareMenu = false; clipboard.setText(AnnotatedString(m.text.trim())) })
+                        }
+                    }
+                    if (onTranslate != null && !m.text.startsWith("Error:")) Box {
                         TextButton(onClick = { langs = true }) { Text("Translate ▾", style = MaterialTheme.typography.labelMedium) }
                         ScaledDropdownMenu(expanded = langs, onDismissRequest = { langs = false }) {
                             for (lang in TRANSLATE_LANGUAGES) {

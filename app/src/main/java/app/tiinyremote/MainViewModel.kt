@@ -379,6 +379,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Log → "Tiiny's request statistics": what the Tiiny itself counted, as one log entry. */
+    fun logTiinyStats() {
+        viewModelScope.launch {
+            try {
+                val text = withContext(Dispatchers.IO) { TiinyInfo.requestStats(settings) }
+                ApiLog.add(text, "Device")
+            } catch (e: Exception) {
+                ApiLog.add("Couldn't read the Tiiny's request statistics: ${e.message}", "Device")
+            }
+        }
+    }
+
     fun clearLog() {
         ApiLog.clear()
     }

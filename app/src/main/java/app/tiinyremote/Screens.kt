@@ -1,4 +1,4 @@
-@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 
 package app.tiinyremote
 
@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
@@ -137,7 +138,7 @@ private fun fmtSec(s: Int): String =
     if (s >= 60) "${s / 60} min" + (if (s % 60 > 0) " ${s % 60} s" else "") else "$s s"
 
 /** Everything useful for debugging in one text: status, the API log and the unlock log. No keys or passwords. */
-private fun buildReport(ctx: Context, s: UiState, types: Set<String>? = null, errorsOnly: Boolean = false): String {
+private fun buildReport(ctx: Context, s: UiState, types: Set<String>? = null, errorsOnly: Boolean = false, picked: List<LogEntry>? = null): String {
     val version = try {
         ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "?"
     } catch (e: Exception) {
@@ -147,20 +148,23 @@ private fun buildReport(ctx: Context, s: UiState, types: Set<String>? = null, er
         append("Tiiny Remote ").append(version).append('\n')
         append("Status: ").append(s.device).append(' ').append(s.deviceMessage).append("\n\n")
         // The same choice as the Activity screen, so Share sends exactly what's shown.
-        val shown = ApiLog.entries.value.filter { (types == null || it.type in types) && (!errorsOnly || it.error) }
+        val shown = picked ?: ApiLog.entries.value.filter { (types == null || it.type in types) && (!errorsOnly || it.error) }
         append("== Log (newest first)")
-        if (types != null) append(": ").append(types.joinToString(", "))
-        if (errorsOnly) append(", problems only")
+        if (picked != null) append(": ${picked.size} chosen entr${if (picked.size == 1) "y" else "ies"}")
+        else {
+            if (types != null) append(": ").append(types.joinToString(", "))
+            if (errorsOnly) append(", problems only")
+        }
         append(" ==\n")
         append(if (shown.isEmpty()) "(none)" else shown.joinToString("\n\n") { "${it.time}  [${it.type}] ${it.text}" })
     }
 }
 
-private fun shareLog(ctx: Context, s: UiState, types: Set<String>? = null, errorsOnly: Boolean = false) {
+private fun shareLog(ctx: Context, s: UiState, types: Set<String>? = null, errorsOnly: Boolean = false, picked: List<LogEntry>? = null) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_SUBJECT, "Tiiny Remote log")
-        putExtra(Intent.EXTRA_TEXT, buildReport(ctx, s, types, errorsOnly))
+        putExtra(Intent.EXTRA_TEXT, buildReport(ctx, s, types, errorsOnly, picked))
     }
     ctx.startActivity(Intent.createChooser(send, "Share log"))
 }
@@ -926,6 +930,11 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
     var problems by remember { mutableStateOf(prefs.getBoolean("problems", false)) }
     val list = entries.filter { (shown.isEmpty() || it.type in shown) && (!problems || it.error) }
     val compact = LocalUi.current.compact
+    // Long-press picks entries: then Share and Copy send only those (an error with what came before and after it).
+    var picked by remember { mutableStateOf(setOf<String>()) }
+    fun keyOf(e: LogEntry) = "${e.ms}-${e.text.hashCode()}-${e.type}"
+    val pickedEntries = entries.filter { keyOf(it) in picked }
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Column(
         Modifier
@@ -968,7 +977,19 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
                 colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.errorContainer),
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (pickedEntries.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${pickedEntries.size} chosen",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { shareLog(ctx, s, picked = pickedEntries) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
+            TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(buildReport(ctx, s, picked = pickedEntries))); picked = emptySet() }) {
+                BtnLabel("Copy", symbol = "⧉")
+            }
+            TextButton(onClick = { picked = emptySet() }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) }
+        } else Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "${list.size} entr${if (list.size == 1) "y" else "ies"}" + if (shown.isNotEmpty() || problems) " shown" else "",
                 style = MaterialTheme.typography.bodySmall,
@@ -978,29 +999,48 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
             TextButton(onClick = { shareLog(ctx, s, shown.takeIf { it.isNotEmpty() }, problems) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
             DangerButton("Clear", onClick = { vm.clearLog() }, icon = androidx.compose.material.icons.Icons.Filled.Clear)
         }
+        if (pickedEntries.isEmpty()) TextButton(onClick = { vm.logTiinyStats() }, enabled = s.device == DeviceState.ONLINE) {
+            BtnLabel("Add the Tiiny's request statistics", symbol = "📊")
+        }
         Text(
-            "Share sends what's shown, without keys, passwords or email addresses.",
+            if (pickedEntries.isNotEmpty()) "Tap entries to add or remove them. Share and Copy send only the chosen ones."
+            else "Share sends what's shown, without keys, passwords or email addresses. Long-press an entry to choose just some.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (list.isEmpty()) item { Text("Nothing here yet.", style = MaterialTheme.typography.bodyMedium) }
-            items(list, key = { "${it.ms}-${it.text.hashCode()}-${it.type}" }) { e -> LogRow(e) }
+            items(list, key = { keyOf(it) }) { e ->
+                val k = keyOf(e)
+                LogRow(
+                    e,
+                    chosen = k in picked,
+                    choosing = picked.isNotEmpty(),
+                    onChoose = { picked = if (k in picked) picked - k else picked + k },
+                )
+            }
         }
     }
 }
 
 /** One log line: a bar in its kind's colour, time and kind, and the text (tap to see all of a long one). */
 @Composable
-private fun LogRow(e: LogEntry) {
+private fun LogRow(e: LogEntry, chosen: Boolean, choosing: Boolean, onChoose: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     val c = logColor(e.type)
     Row(
         Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
-            .background(if (e.error) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .clickable { open = !open },
+            .background(
+                when {
+                    chosen -> MaterialTheme.colorScheme.primaryContainer
+                    e.error -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                },
+            )
+            // Tap opens a long entry (or, while choosing, adds or removes it); long-press starts choosing.
+            .combinedClickable(onClick = { if (choosing) onChoose() else open = !open }, onLongClick = onChoose),
     ) {
         Box(Modifier.width(4.dp).fillMaxHeight().background(c))
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -1008,6 +1048,10 @@ private fun LogRow(e: LogEntry) {
                 Text(e.time, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
                 Text(e.type, style = MaterialTheme.typography.labelSmall, color = c)
+                if (chosen) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("✓", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
                 if (e.error) {
                     Spacer(Modifier.width(6.dp))
                     Text("⚠", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
@@ -1186,7 +1230,8 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                 Text(
                     "Run the test once for each chat model you pair with the helper. With 2–4 runs the results are " +
                         "averaged, the spread is shown, and the rules apply to the average, so one lucky or unlucky run " +
-                        "doesn't decide.",
+                        "doesn't decide. With 3 or 4 runs, a clear outlier (far from the others, e.g. a hiccup on the " +
+                        "Tiiny) is left out of the average, and the result says which.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -1678,7 +1723,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 Icon(Icons.Filled.Info, contentDescription = "About this app", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (about) AboutDialog(version) { about = false }
+        if (about) AboutDialog(version, cur) { about = false }
     }
 }
 
@@ -1686,13 +1731,17 @@ private const val REPO = "https://github.com/JacopoSmo/tiiny-remote"
 
 /** The ⓘ beside the version: what the app is, where it lives, what it sends where, and what it's built with. */
 @Composable
-private fun AboutDialog(version: String, onClose: () -> Unit) {
+private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> Unit) {
     val ctx = LocalContext.current
+    // What the Tiiny says about itself: TiinyOS and service versions, hardware (asked when About opens).
+    var tiiny by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+    LaunchedEffect(Unit) { tiiny = withContext(kotlinx.coroutines.Dispatchers.IO) { TiinyInfo.about(settings) } }
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val exp = AppUpdate.experimental(ctx)
     val device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
-    val info = "Tiiny Remote $version${if (exp) " (experimental)" else ""} · ${ctx.packageName} · $device"
+    val os = tiiny?.filter { it.first in setOf("TiinyOS", "Service version") }?.joinToString(" · ") { "${it.first} ${it.second}" }
+    val info = "Tiiny Remote $version${if (exp) " (experimental)" else ""} · ${ctx.packageName} · $device" + (os?.ifBlank { null }?.let { " · $it" } ?: "")
     fun open(url: String) { runCatching { uri.openUri(url) } }
     ScaledAlertDialog(
         onDismissRequest = onClose,
@@ -1708,6 +1757,14 @@ private fun AboutDialog(version: String, onClose: () -> Unit) {
                 TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(info)) }) {
                     BtnLabel("Copy for a bug report", symbol = "⧉")
                 }
+                AboutHead("Your Tiiny")
+                AboutBody(
+                    when {
+                        tiiny == null -> "Asking the Tiiny…"
+                        tiiny!!.isEmpty() -> "The Tiiny isn't reachable right now, or doesn't say."
+                        else -> tiiny!!.joinToString("\n") { "${it.first}: ${it.second}" }
+                    },
+                )
                 AboutHead("Links")
                 AboutLink("Source code on GitHub") { open(REPO) }
                 AboutLink("All versions and what's new") { open("$REPO/releases") }

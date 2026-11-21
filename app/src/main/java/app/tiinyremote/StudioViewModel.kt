@@ -1053,16 +1053,30 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
                         helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
                     }
-                    val bigRate = bigRates.average()
-                    val smallRate = smallRates.average()
+                    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
+                    fun pct(v: Double) = "${Math.round(v)}%"
+                    // With 3 or 4 runs, one clear outlier (a hiccup on the Tiiny, say) is left out: it lies more than 3
+                    // robust standard deviations (MAD) from the median, and more than `floor` away. At most one per list.
+                    fun clean(l: List<Double>, floor: Double): Pair<List<Double>, Double?> {
+                        if (l.size < 3) return l to null
+                        fun median(v: List<Double>) = v.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
+                        val m = median(l)
+                        val mad = median(l.map { kotlin.math.abs(it - m) }) * 1.4826
+                        val worst = l.indices.maxByOrNull { kotlin.math.abs(l[it] - m) } ?: return l to null
+                        return if (kotlin.math.abs(l[worst] - m) > maxOf(3 * mad, floor)) l.filterIndexed { i, _ -> i != worst } to l[worst]
+                        else l to null
+                    }
+                    val (bigOk, bigOut) = clean(bigRates, bigRates.average() * 0.1)
+                    val (smallOk, smallOut) = clean(smallRates, smallRates.average() * 0.1)
+                    val (bothOk, bothOut) = clean(bothGains, 5.0)
+                    val (helperOk, helperOut) = clean(helperGains, 5.0)
+                    val bigRate = bigOk.average()
+                    val smallRate = smallOk.average()
                     // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
                     prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
-                    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
-                    fun spread(l: List<Double>) = if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else ""
-                    fun pct(v: Double) = "${Math.round(v)}%"
-                    fun gainSpread(l: List<Double>) =
-                        if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else ""
-                    fun verdict(l: List<Double>): String {
+                    fun spread(l: List<Double>, out: Double?) =
+                        (if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else "") + (out?.let { " [outlier ${f(it)} left out]" } ?: "")
+                    fun verdict(l: List<Double>, out: Double?): String {
                         val p = l.average()
                         val text = when {
                             p >= 10 -> "${pct(p)} sooner: worth it"
@@ -1071,7 +1085,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             p > -5 -> "about the same"
                             else -> "${pct(-p)} slower: better one after the other"
                         }
-                        return text + gainSpread(l)
+                        return text + (if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else "") +
+                            (out?.let { " [outlier ${pct(it)} left out]" } ?: "")
                     }
                     val faster = (smallRate / bigRate - 1) * 100
                     val pages = if (smallRate >= bigRate * PAGE_RULE)
@@ -1080,9 +1095,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
                             "${big.name} reads web pages itself."
                     (if (n > 1) "Average of $n runs. " else "") +
-                        "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigRates)}, ${small.name} ${f(smallRate)} tok/s${spread(smallRates)}.\n" +
-                        "Both models at once: ${verdict(bothGains)}.\n" +
-                        "${small.name} twice at once: ${verdict(helperGains)}.\n" +
+                        "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigOk, bigOut)}, ${small.name} ${f(smallRate)} tok/s${spread(smallOk, smallOut)}.\n" +
+                        "Both models at once: ${verdict(bothOk, bothOut)}.\n" +
+                        "${small.name} twice at once: ${verdict(helperOk, helperOut)}.\n" +
                         pages
                 }
                 _speed.value = out

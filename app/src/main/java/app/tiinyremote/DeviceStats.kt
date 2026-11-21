@@ -211,3 +211,68 @@ object Stats {
         return s
     }
 }
+
+/** What the Tiiny says about itself (Settings → About) and its own request statistics (Log). */
+object TiinyInfo {
+    /** TiinyOS, service and hardware lines for About, in order; empty when the Tiiny can't be asked. No device name. */
+    fun about(settings: AppSettings): List<Pair<String, String>> {
+        if (!settings.tiinyConfigured) return emptyList()
+        val c = DeviceClient(settings.tiinyUrl, settings.apiKey)
+        val o = try {
+            c.request("GET", "/api/v1/sys/device_info", null, 8, log = false).takeIf { it.ok }?.json()
+        } catch (e: Exception) {
+            null
+        } ?: return emptyList()
+        fun v(k: String) = o.optString(k).takeIf { it.isNotBlank() && it != "null" }
+        val api = try {
+            c.request("GET", "/openapi.json", null, 8, log = false).takeIf { it.ok }?.json()?.optJSONObject("info")?.optString("version")
+        } catch (e: Exception) {
+            null
+        }?.takeIf { it.isNotBlank() }
+        return listOfNotNull(
+            v("tiiny_os")?.let { "TiinyOS" to it },
+            v("version")?.let { "Service version" to it },
+            api?.let { "Gateway API" to it },
+            listOfNotNull(v("device_model_name"), v("device_model_version")).joinToString(" ").ifBlank { null }?.let { "Model" to it },
+            v("dnpu")?.let { "NPU" to it },
+            v("cpu")?.let { "CPU" to it },
+            v("ram")?.let { "RAM" to it },
+            v("storage")?.let { "Storage" to it },
+        )
+    }
+
+    /**
+     * The Tiiny's own statistics of the requests it served (/api/v1/sys/performance), as one readable text: totals, the
+     * endpoints that had errors (with their HTTP codes), and the slowest. For finding what failed around a fault.
+     */
+    fun requestStats(settings: AppSettings): String {
+        val c = DeviceClient(settings.tiinyUrl, settings.apiKey)
+        val r = c.request("GET", "/api/v1/sys/performance?limit=200&sort_by=error_count", null, 10, log = false)
+        if (!r.ok) throw MediaException(if (r.code == 404) "This TiinyOS has no request statistics." else r.error())
+        val o = r.json()
+        fun ms(v: Double) = if (v >= 1000) String.format(java.util.Locale.ROOT, "%.1f s", v / 1000) else "${Math.round(v)} ms"
+        val sum = o.optJSONObject("summary") ?: org.json.JSONObject()
+        val eps = o.optJSONArray("endpoints") ?: org.json.JSONArray()
+        val list = (0 until eps.length()).mapNotNull { eps.optJSONObject(it) }
+        fun line(e: org.json.JSONObject): String {
+            val codes = e.optJSONObject("status_code_counts")?.let { cc ->
+                cc.keys().asSequence().filter { !it.startsWith("2") }.joinToString(", ") { "HTTP $it ×${cc.optInt(it)}" }
+            }.orEmpty()
+            val last = e.optString("last_seen_at").takeIf { it.isNotBlank() && it != "null" }?.let { " · last $it" } ?: ""
+            return "${e.optString("method")} ${e.optString("path")}: ${e.optInt("count")}×" +
+                (if (e.optInt("error_count") > 0) ", ${e.optInt("error_count")} errors" + (if (codes.isNotBlank()) " ($codes)" else "") else "") +
+                " · typical ${ms(e.optDouble("p50_ms"))}, slowest ${ms(e.optDouble("max_ms"))}$last"
+        }
+        val withErrors = list.filter { it.optInt("error_count") > 0 }.take(10)
+        val slowest = list.sortedByDescending { it.optDouble("p95_ms") }.filter { it !in withErrors }.take(3)
+        return buildString {
+            append("The Tiiny's request statistics (last ${o.optInt("sample_size")} requests): ")
+            append("${sum.optInt("total_requests")} requests, ${sum.optInt("total_errors")} errors")
+            val total = sum.optInt("total_requests")
+            if (total > 0) append(String.format(java.util.Locale.ROOT, " (%.1f%%)", sum.optInt("total_errors") * 100.0 / total))
+            append(".")
+            if (withErrors.isNotEmpty()) append("\nWith errors:\n").append(withErrors.joinToString("\n") { "• " + line(it) })
+            if (slowest.isNotEmpty()) append("\nSlowest:\n").append(slowest.joinToString("\n") { "• " + line(it) })
+        }
+    }
+}
