@@ -410,7 +410,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                 ) {
                     Text(
-                        (if (model.running) "● " else "○ ") + model.name + "  ▾",
+                        (if (model.running) "●\u00A0" else "○\u00A0") + model.name + "\u00A0\u00A0▾",
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         color = if (model.running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,

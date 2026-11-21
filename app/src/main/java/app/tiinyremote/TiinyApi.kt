@@ -11,7 +11,6 @@ class TiinyException(val kind: Kind, message: String) : Exception(message) {
 }
 
 private val moeName = Regex("(?i)-A(\\d+(?:\\.\\d+)?)B(?![a-z])")
-private val moeDesc = Regex("(?i:mixture[- ]of[- ]experts)|\\bMoE\\b") // "MoE" as written, not any "moe"
 
 data class ModelInfo(
     val id: String,
@@ -58,11 +57,11 @@ data class ModelInfo(
 
     /**
      * A mixture of experts: holds many parameters but uses only a few for each word ("A3B" = about 3 billion active),
-     * so it writes much faster than a dense model of the same size. Known from the name (…-A3B, gpt-oss) or the
-     * description.
+     * so it writes much faster than a dense model of the same size. Known from the name only (…-A3B, gpt-oss): a
+     * description can mention MoE while comparing, as Qwen3.8-27B's does, and it's dense.
      */
     val isMoE: Boolean
-        get() = moeName.containsMatchIn(id) || id.contains("gpt-oss", true) || moeDesc.containsMatchIn(desc)
+        get() = moeName.containsMatchIn(id) || id.contains("gpt-oss", true)
 
     /** "3B" for a …-35B-A3B model, when the name says how many parameters are active per word. */
     val activeParams: String?

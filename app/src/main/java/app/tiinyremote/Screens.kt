@@ -1364,7 +1364,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             "Helper",
             // ● = loaded now, as in the chat's model menu; mixture-of-experts models carry their tag.
             listOf("" to "None (the chat model does everything)") + chatModels.map { m ->
-                m.id to (if (m.running) "● " else "") + m.name + if (m.isMoE) "  " + tag("MoE") else ""
+                // No-break spaces: the ● stays in front of its name, even when a long name wraps.
+                m.id to (if (m.running) "●\u00A0" else "") + m.name + if (m.isMoE) "\u00A0\u00A0" + tag("MoE") else ""
             },
             helper,
         ) {
