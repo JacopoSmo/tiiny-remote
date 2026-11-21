@@ -1712,6 +1712,7 @@ private fun AboutDialog(version: String, onClose: () -> Unit) {
                 AboutLink("Source code on GitHub") { open(REPO) }
                 AboutLink("All versions and what's new") { open("$REPO/releases") }
                 AboutLink("Report a problem or suggest an idea") { open("$REPO/issues") }
+                AboutLink("Licence: MIT (free to use, change and share; no warranty)") { open("$REPO/blob/main/LICENSE") }
                 AboutHead("Your data")
                 AboutBody("• Talks only to your Tiiny (and your NAS, if you unlock over SSH), over your Wi-Fi or your WireGuard tunnel. No account, no ads, no tracking, no analytics.\n" +
                     "• Web search, when you turn it on, goes from the phone to the search service you chose (SearXNG, Tavily, Bing, DuckDuckGo or Wikipedia).\n" +

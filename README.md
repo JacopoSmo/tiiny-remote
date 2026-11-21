@@ -63,3 +63,7 @@ and the NAS login for the SSH unlock fallback.
 - Cancelling a download asks first and never deletes an installed model.
 - The Tiiny only speaks plain HTTP, so use the app on your home network or through WireGuard.
 - Unofficial: the Tiiny endpoints come from community notes and may change with firmware updates.
+
+## Licence
+
+MIT, see [LICENSE](LICENSE): free to use, change and share, with no warranty. Not affiliated with Tiiny AI.

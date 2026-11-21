@@ -91,6 +91,9 @@ import java.util.Date
 import java.util.Locale
 import kotlin.random.Random
 import kotlin.math.roundToInt
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.material3.SmallFloatingActionButton
 
 /** A tool, filed under the model type TiinyOS shows in its store. */
 private class Tool(val id: String, val type: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
@@ -1268,7 +1271,13 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     val scroll = rememberScrollState()
-    LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) { scroll.animateScrollTo(scroll.maxValue) }
+    var lastCount by remember { mutableStateOf(0) }
+    LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) {
+        // A new message always shows; a streaming answer follows only while you're near the end, so reading higher up stays put.
+        val near = scroll.maxValue - scroll.value < scroll.viewportSize / 2 + 200
+        if (msgs.size != lastCount || near) scroll.animateScrollTo(scroll.maxValue)
+        lastCount = msgs.size
+    }
     val ui = LocalUi.current
     val current by st.currentChat.collectAsState()
     // Each chat keeps its own scroll; switching chats jumps to the end.
@@ -1395,10 +1404,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             input = ""
             image = emptyList()
         }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         Column(
             Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -1427,6 +1436,17 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         )
                     }
                 }
+            }
+        }
+            // Scrolled up by more than about a screen: a button back down to the newest message.
+            val farUp by remember { derivedStateOf { scroll.maxValue - scroll.value > scroll.viewportSize * 1.2f } }
+            val jumpScope = rememberCoroutineScope()
+            if (farUp) {
+                SmallFloatingActionButton(
+                    onClick = { jumpScope.launch { scroll.animateScrollTo(scroll.maxValue) } },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                ) { Icon(androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to the newest message") }
             }
         }
         if (model?.seesImages == true) {
