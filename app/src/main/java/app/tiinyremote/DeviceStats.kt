@@ -104,12 +104,13 @@ object Stats {
                     val msg = r.optString("message").takeIf { it.isNotBlank() && it != "null" } ?: r.optString("code")
                     val at = npu?.num("started_at")?.let { t ->
                         java.time.Instant.ofEpochMilli((t * 1000).toLong()).atZone(java.time.ZoneId.systemDefault())
-                            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.ROOT))
+                            .format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.ENGLISH)) // "21 Nov 08:18"
                     }
-                    msg.takeIf { it.isNotBlank() && it != "null" }?.let { m -> if (at != null) "$m (NPU restarted $at)" else m }
+                    msg.takeIf { it.isNotBlank() && it != "null" }?.let { m -> if (at != null) "$m (on $at; the NPU restarted then)" else m }
                 }
                 if (issue != null && issue != lastIssue) {
                     lastIssue = issue
+                    // TiinyOS keeps the last fault in its status: the time tells whether it's the same one or a new one.
                     ApiLog.add("NPU fault reported by the Tiiny: $issue" + (reason?.optString("code")?.takeIf { it.isNotBlank() }?.let { " [$it]" } ?: ""), "Device")
                 }
                 s = s.copy(
