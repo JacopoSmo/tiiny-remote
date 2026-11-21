@@ -70,7 +70,14 @@ val TAG_ICONS = linkedMapOf(
     "Main chat model" to "◉",
     "Helper" to "⚡",
     "working" to "⏳",
+    // The chat's switches use the same signs as the model labels.
+    "Thinking" to "💭",
+    "Can make things" to "🛠",
+    "Web search" to "🌐",
 )
+
+/** The sign alone, for places that show only signs (the chat's compact switch summary). */
+fun sign(word: String): String = TAG_ICONS[word] ?: word
 
 /** One label as Settings wants it: the word, its pictogram, or both. */
 @Composable

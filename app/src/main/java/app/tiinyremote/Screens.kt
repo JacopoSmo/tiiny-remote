@@ -1081,14 +1081,15 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 Text("Models", style = MaterialTheme.typography.titleSmall)
                 val meaning = mapOf(
                     "Chat" to "Chat model",
-                    "Thinks" to "Can think before answering (can be switched off)",
+                    "Thinks" to "Can think before answering (can be switched off); in the chat: thinking on",
                     "Always thinks" to "Always thinks before answering",
-                    "Makes things" to "Can use the chat's tools (images, speech, songs…)",
+                    "Makes things" to "Can use the chat's tools (images, speech, songs…); in the chat: tools on",
                     "Sees images" to "Understands pictures you attach",
                     "MoE" to "Mixture of experts: writes much faster than its size suggests",
                     "Main chat model" to "The chat's main model (when a helper is loaded)",
                     "Helper" to "The fast helper model",
                     "working" to "Working on something right now",
+                    "Web search" to "Chat: web search on",
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1167,7 +1168,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "")
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "")
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1362,12 +1363,16 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 m.id to (if (m.running) "● " else "") + m.name + if (m.isMoE) "  " + tag("MoE") else ""
             },
             helper,
-        ) { helper = it }
+        ) {
+            // Saved at once (no Save needed), like the display settings.
+            helper = it
+            vm.setDisplay(cur.copy(helperModel = it))
+        }
         Text(
             "A quick chat model kept loaded beside your main one. While it's loaded it names new chats (while the main model " +
                 "answers), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
                 "only when the speed test found it at least 15% faster than the chat model; otherwise the chat model reads " +
-                "them itself. It's never swapped in: when it isn't loaded, the chat model does everything. Save to use it.",
+                "them itself. It's never swapped in: when it isn't loaded, the chat model does everything.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

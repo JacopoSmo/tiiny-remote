@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.Close
@@ -74,10 +75,12 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
     val loaded = s.models.count { it.running }
     // Light green while the Tiiny is online, light red when it isn't.
     val hue = if (online) Color(0xFF43A047) else Color(0xFFE53935)
+    var stripHeight by remember { mutableStateOf(0) }
     Box(Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
+                .onSizeChanged { stripHeight = it.height }
                 .background(hue.copy(alpha = 0.22f).compositeOver(MaterialTheme.colorScheme.surface))
                 .clickable { open = true; vm.statsPanel(true) }
                 .padding(horizontal = 12.dp, vertical = 4.dp),
@@ -133,19 +136,23 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
             }
             Text(if (open) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
         }
-        // A window of its own (not a drop-down): as wide as the screen allows, its header always visible, the rest
-        // scrolling, so nothing gets cut at the top on square screens.
+        // The overlay under the strip, as before, a bit wider (60% of the screen, 330–560 dp). Its own layout, not a
+        // drop-down menu: the header stays in place and only the body scrolls, so nothing gets cut at the top.
         if (open) {
             val close = { open = false; vm.statsPanel(false) }
-            androidx.compose.ui.window.Dialog(
+            val conf = androidx.compose.ui.platform.LocalConfiguration.current
+            val width = (conf.screenWidthDp * 0.6f).coerceIn(330f, 560f).dp
+            androidx.compose.ui.window.Popup(
+                alignment = Alignment.TopStart,
+                offset = androidx.compose.ui.unit.IntOffset(0, stripHeight),
                 onDismissRequest = close,
-                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                properties = androidx.compose.ui.window.PopupProperties(focusable = true),
             ) {
-                val maxH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp * 0.9f
                 androidx.compose.material3.Surface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                    tonalElevation = 6.dp,
-                    modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 560.dp).heightIn(max = maxH),
+                    shape = MaterialTheme.shapes.extraSmall,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.width(width).heightIn(max = (conf.screenHeightDp * 0.85f).dp),
                 ) {
                     StatsPanel(s, vm, st, studio, close)
                 }
