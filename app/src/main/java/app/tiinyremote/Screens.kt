@@ -1148,20 +1148,42 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                     "• Everyday chat, web search, summaries, quick drafts: an A3B model.\n" +
                         "• Hard problems, careful writing, analysis you want double-checked: the dense 27B.\n" +
                         "• Helper: a fast, small MoE like gpt-oss-20b (27% NPU). It names chats and condenses long ones. " +
-                        "It condenses web pages only when it's at least 15% faster than the chat model: yes beside the " +
-                        "27B, no beside an A3B (equally fast), which then reads the pages itself.\n" +
+                        "It also condenses web pages, but only when it's clearly faster than the chat model (see below).\n" +
                         "• Both pairs fit: A3B + gpt-oss about 75%, 27B + gpt-oss about 86% of the NPU.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text("The speed test", style = MaterialTheme.typography.titleSmall)
+                Text("The speed test measures two different things", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Times each model alone, both at the same time, and the helper twice at once, and remembers the " +
-                        "speeds for the page decision. Run it once for each main model you pair with the helper. Two " +
-                        "different models at once usually finish 10–20% sooner; the same model twice brings nothing, " +
-                        "because the Tiiny takes its requests in turn.\n\n" +
-                        "One run can be off by several percent (the same pair measured 9% and 11%, another 7% and 18%). " +
-                        "With 2–4 test runs the results are averaged, the spread is shown, and the 15% rule is applied " +
-                        "to the average, so one lucky or unlucky run doesn't decide.",
+                    "1. How fast each model writes alone. This decides who reads web pages. It barely changes " +
+                        "between runs (a few percent), and the speeds are remembered.\n\n" +
+                        "2. How much sooner two jobs finish when both models work at the same time instead of one after " +
+                        "the other. This tells whether the helper can name a chat while the chat model answers. It " +
+                        "varies a lot between runs (the same pair measured 7% and 18%). Any gain means the title costs " +
+                        "nothing, so this is done unless the test finds it slower. From 10% the test calls it \"worth it\". " +
+                        "The same model twice brings nothing: the Tiiny takes a model's requests in turn.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text("Web pages: the 25% rule", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Before answering, the helper shortens each web page it found to the parts that matter, and the " +
+                        "chat model reads only those. It does this only when the helper writes at least 25% faster than " +
+                        "the chat model, for example gpt-oss-20b beside the 27B (more than twice as fast). Beside an A3B " +
+                        "model (as fast as gpt-oss) the chat model reads the pages itself.\n\n" +
+                        "Drawbacks of condensing:\n" +
+                        "• Details can get lost: exact numbers, dates, names, quotes or a side remark the helper didn't " +
+                        "think important. The answer can then only be as good as the summary.\n" +
+                        "• Mistakes add up: the smaller helper can misread a page, and the chat model can't notice, " +
+                        "because it never sees the original.\n" +
+                        "• An extra step: the helper has to read the whole page first. That only pays off when it's " +
+                        "clearly faster, hence the strict 25%.\n" +
+                        "When details matter, use the chat model alone (helper None) or pair the helper with an A3B model.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text("Test runs", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Run the test once for each chat model you pair with the helper. With 2–4 runs the results are " +
+                        "averaged, the spread is shown, and the rules apply to the average, so one lucky or unlucky run " +
+                        "doesn't decide.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -1379,7 +1401,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         Text(
             "A quick chat model kept loaded beside your main one. While it's loaded it names new chats (while the main model " +
                 "answers), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
-                "only when the speed test found it at least 15% faster than the chat model; otherwise the chat model reads " +
+                "only when the speed test found it at least 25% faster than the chat model (details can get lost, see ⓘ); otherwise the chat model reads " +
                 "them itself. It's never swapped in: when it isn't loaded, the chat model does everything.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

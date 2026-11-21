@@ -13,7 +13,7 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
   what's working).
 - **Fast helper model:** a quick chat model (e.g. gpt-oss-20b) kept loaded beside the main one names new chats while
   the main model answers, condenses long chats, runs the writing helpers, and condenses web pages when it's at least
-  15% faster than the chat model. A speed test (Settings) measures one model at a time against two at once.
+  25% faster than the chat model (condensing can lose details). A speed test (Settings) measures one model at a time against two at once.
 - **Chat:** several chats side by side, saved on the phone, with Thinking, "Can make things" (pictures, voice,
   music from the chat) and web search (your SearXNG, else Tavily, Bing, DuckDuckGo or Wikipedia from the phone).
 - **Create:** images (create, edit, read text), voice (built-in, described or cloned), transcription, loops and

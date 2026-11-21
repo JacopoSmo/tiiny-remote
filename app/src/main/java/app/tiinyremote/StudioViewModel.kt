@@ -959,7 +959,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     fun verdict(l: List<Double>): String {
                         val p = l.average()
                         val text = when {
-                            p >= 15 -> "${pct(p)} sooner: worth it"
+                            p >= 10 -> "${pct(p)} sooner: worth it"
                             p >= 3 -> "${pct(p)} sooner: a little faster"
                             p > -3 -> "no gain, the Tiiny takes them in turn"
                             p > -5 -> "about the same"
@@ -968,10 +968,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         return text + gainSpread(l)
                     }
                     val faster = (smallRate / bigRate - 1) * 100
-                    val pages = if (smallRate >= bigRate * 1.15)
+                    val pages = if (smallRate >= bigRate * PAGE_RULE)
                         "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
                     else
-                        "${small.name} isn't at least 15% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
+                        "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
                             "${big.name} reads web pages itself."
                     (if (n > 1) "Average of $n runs. " else "") +
                         "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigRates, "")}, ${small.name} ${f(smallRate)} tok/s${spread(smallRates, "")}.\n" +
@@ -993,13 +993,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Whether the helper should condense pages for this chat model: only when the speed test measured it clearly
-     * faster (by 15%). A helper as fast as the chat model would only add waiting; the chat model then reads the pages
+     * faster (by 25%): condensing can lose details and adds a step. A helper as fast as the chat model would only add waiting; the chat model then reads the pages
      * itself. Before any speed test, pages are condensed.
      */
     private fun helperCondensesPages(helper: String, chatModel: String): Boolean {
         val h = prefs.getFloat("speed_$helper", 0f)
         val m = prefs.getFloat("speed_$chatModel", 0f)
-        return h <= 0f || m <= 0f || h >= m * 1.15f
+        return h <= 0f || m <= 0f || h >= m * PAGE_RULE
     }
 
     /** The fast helper model chosen in Settings, when it's loaded and isn't the chat model itself (never swapped in for this). */
@@ -1206,3 +1206,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+/** The helper condenses web pages only when it writes at least this many times as fast as the chat model (25% faster). */
+private const val PAGE_RULE = 1.25f

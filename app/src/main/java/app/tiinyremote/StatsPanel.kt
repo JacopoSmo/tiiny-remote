@@ -253,7 +253,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                         }
                         val chosen = s.settings.helperModel
                         val helperLine = when {
-                            helper != null -> "Helper active: ${helper.name.substringAfterLast('/')} names chats and condenses long ones (and web pages when it's at least 15% faster)."
+                            helper != null -> "Helper active: ${helper.name.substringAfterLast('/')} names chats and condenses long ones (and web pages when it's at least 25% faster)."
                             chosen.isNotBlank() && running.any { it.id == chosen } -> "Helper loaded, but no other chat model: it works as the main model."
                             chosen.isNotBlank() -> "Helper not active: ${s.models.firstOrNull { it.id == chosen }?.name?.substringAfterLast('/') ?: "it"} isn't loaded, so the chat model does everything."
                             running.count { it.isChat } > 1 -> "Two chat models loaded, but no helper chosen (Settings → Fast helper model)."
