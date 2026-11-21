@@ -236,11 +236,12 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                             Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(track),
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            val total = running.sumOf { it.npuUsage }.coerceAtLeast(100.0)
+                            val total = running.sumOf { it.npuUsage ?: 0.0 }.coerceAtLeast(100.0)
                             for ((i, m) in running.withIndex()) {
-                                if (m.npuUsage > 0) Box(Modifier.weight((m.npuUsage / total).toFloat()).fillMaxHeight().background(modelColor(i)))
+                                val part = m.npuUsage ?: 0.0
+                                if (part > 0) Box(Modifier.weight((part / total).toFloat()).fillMaxHeight().background(modelColor(i)))
                             }
-                            val free = (1 - running.sumOf { it.npuUsage } / total).toFloat()
+                            val free = (1 - running.sumOf { it.npuUsage ?: 0.0 } / total).toFloat()
                             if (free > 0.001f) Spacer(Modifier.weight(free))
                         }
                         if (running.isEmpty()) Text("Nothing loaded", style = MaterialTheme.typography.bodySmall)
