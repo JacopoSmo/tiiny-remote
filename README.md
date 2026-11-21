@@ -1,14 +1,19 @@
-# Tiiny Remote 3.0
+# Tiiny Remote 3.1
 
 An Android app to run a Tiiny AI Pocket Lab from your phone, at home or over WireGuard. It talks to the Tiiny
 the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 
-- **Models:** installed models with filters (Chat, Makes things, Sees images, Thinks), types, sorting, favourites,
-  your own short names and "About this model". Load and unload, with a swap offer when the NPU is full.
+- **Models:** installed models with filters (Chat, Makes things, Sees images, Thinks, Mixture of experts), types,
+  sorting, favourites, your own short names and "About this model". Mixture-of-experts models (…-A3B, gpt-oss)
+  are tagged "MoE". Load and unload, with a swap offer when the NPU is full.
 - **Store:** browse TiinyOS's Model Store, download models (progress, pause, cancel), update models with a newer
   version, and delete models from the Tiiny.
-- **Live strip:** online/offline, models loaded, NPU and CPU load (colour-coded), NPU memory and RAM in GB, power
-  and temperature (when the Tiiny reports them); tap it for the full panel.
+- **Live strip:** online/offline, models loaded, helper on/off, NPU and CPU load (colour-coded), NPU memory and RAM
+  in GB, power and temperature (when the Tiiny reports them); tap it for the full panel (main and helper model,
+  what's working).
+- **Fast helper model:** a quick chat model (e.g. gpt-oss-20b) kept loaded beside the main one names new chats while
+  the main model answers, condenses long chats, runs the writing helpers, and condenses web pages when it's at least
+  15% faster than the chat model. A speed test (Settings) measures one model at a time against two at once.
 - **Chat:** several chats side by side, saved on the phone, with Thinking, "Can make things" (pictures, voice,
   music from the chat) and web search (your SearXNG, else Tavily, Bing, DuckDuckGo or Wikipedia from the phone).
 - **Create:** images (create, edit, read text), voice (built-in, described or cloned), transcription, loops and
@@ -17,13 +22,18 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 - **Unlock:** after a restart the app unlocks the Tiiny with its password (or through the NAS over SSH).
 - **VPN:** one-tap and automatic WireGuard switching (on away from home, off at home).
 - **Activity:** one colour-coded log with filters and Share (secrets removed).
-- **Display:** a compact layout for square screens (e.g. Unihertz Titan 2), sizes, and Enter-to-send for
-  hardware keyboards.
+- **Display:** a compact layout for square screens (e.g. Unihertz Titan 2), sizes (menus and dialogs included),
+  labels as words, pictograms or both (with a legend), and Enter-to-send for hardware keyboards.
+- **In the background (optional):** keeps working while a job, chat answer, speed test or download runs with the
+  app in the background, and notifies you when it's done.
 
 ## Install
 
 Every push to `main` builds the app on GitHub. Open this repository's **Releases** on the phone, download the
-newest `TiinyRemote-3.0.x.apk` and open it. Newer builds install over the old one and keep your settings.
+newest `TiinyRemote-3.1.x.apk` (the one marked Latest) and open it. Newer builds install over the old one and keep your settings.
+
+Pre-releases named "Tiiny Remote Experimental" come from the `experimental` branch and install as a separate app,
+"Tiiny Remote Exp", with its own settings; they're for trying new features and never marked Latest.
 
 Upgrading from 2.0.35 or older: uninstall the old app first (the signing key changed in 2.0.36).
 
@@ -44,5 +54,7 @@ and the NAS login for the SSH unlock fallback.
 - Only web links (http/https) can be tapped in answers and sources.
 - The shared log leaves out emails, keys, tokens, passwords, account names and the device's serial number, and
   never contains your content (chat answers, text read from documents, transcripts): only its size.
+- "Done" notifications show only "Tiiny Remote: a job is done" on the lock screen; their text appears once unlocked.
+- Cancelling a download asks first and never deletes an installed model.
 - The Tiiny only speaks plain HTTP, so use the app on your home network or through WireGuard.
 - Unofficial: the Tiiny endpoints come from community notes and may change with firmware updates.

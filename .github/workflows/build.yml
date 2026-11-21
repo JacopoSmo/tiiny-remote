@@ -33,7 +33,7 @@ jobs:
           echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
 
       - name: Version number
-        run: echo "APP_VERSION=3.0.$(( ${{ github.run_number }} - 37 ))" >> "$GITHUB_ENV"
+        run: echo "APP_VERSION=3.1.$(( ${{ github.run_number }} - 43 ))" >> "$GITHUB_ENV"
 
       - name: Build the APK
         env:
@@ -48,5 +48,6 @@ jobs:
         with:
           tag_name: v${{ env.APP_VERSION }}
           name: Tiiny Remote ${{ env.APP_VERSION }}
+          make_latest: "true"
           body: Download the .apk below on your phone and open it to install or update.
           files: TiinyRemote-*.apk
