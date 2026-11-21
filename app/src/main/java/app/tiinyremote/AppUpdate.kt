@@ -52,7 +52,7 @@ object AppUpdate {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000
         c.readTimeout = 20_000
-        c.setRequestProperty("Accept", "application/vnd.github+json")
+        if (url.startsWith("https://api.github.com/")) c.setRequestProperty("Accept", "application/vnd.github+json") // the feed is XML
         c.setRequestProperty("User-Agent", "TiinyRemote")
         try {
             if (c.responseCode !in 200..299) {
