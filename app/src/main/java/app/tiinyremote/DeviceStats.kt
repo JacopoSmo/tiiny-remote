@@ -64,6 +64,23 @@ object Stats {
     @Volatile
     private var dashboardSeen = false
 
+    /**
+     * The time ("20:37") of an NPU fault the Tiiny reports from the last [minutes] minutes, or null: asked when a chat
+     * answer broke off, to tell a fault on the Tiiny from a network problem. Quick (5 s) and silent in the log.
+     */
+    fun recentFault(c: DeviceClient, minutes: Int = 15): String? = try {
+        val r = c.request("GET", "/api/v1/npu/status", null, 5, log = false)
+        val npu = if (r.ok) r.json().optJSONObject("npu") else null
+        val faulted = npu != null && (npu.optJSONObject("reason") ?: npu.optJSONObject("failure")) != null
+        val at = npu?.num("started_at")?.let { (it * 1000).toLong() }
+        if (faulted && at != null && System.currentTimeMillis() - at in 0..minutes * 60_000L) {
+            java.time.Instant.ofEpochMilli(at).atZone(java.time.ZoneId.systemDefault())
+                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.ENGLISH))
+        } else null
+    } catch (e: Exception) {
+        null
+    }
+
     fun read(settings: AppSettings): DeviceStats {
         var s = DeviceStats()
         val c = DeviceClient(settings.tiinyUrl, settings.apiKey)

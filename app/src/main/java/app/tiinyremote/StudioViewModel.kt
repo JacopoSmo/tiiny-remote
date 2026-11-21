@@ -1367,11 +1367,16 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     Notifier.done(getApplication(), "Answered: $title", answer.ifBlank { "The answer is ready." })
                 }
             } catch (e: Exception) {
+                // An answer that broke off can be the Tiiny's NPU restarting after a fault, not the network: then say so.
+                val fault = if (chatStop.get()) null else withContext(Dispatchers.IO) { Stats.recentFault(client()) }
+                val why = "Error: ${e.message}" + (fault?.let {
+                    "\n\nThe Tiiny reported an NPU fault at $it and restarted its NPU. Send your question again."
+                } ?: "")
                 upd(id) { list ->
                     val last = list.lastOrNull() ?: return@upd list
-                    list.dropLast(1) + last.copy(text = last.text + (if (last.text.isEmpty()) "" else "\n\n") + "Error: ${e.message}")
+                    list.dropLast(1) + last.copy(text = last.text + (if (last.text.isEmpty()) "" else "\n\n") + why)
                 }
-                Notifier.done(getApplication(), "The chat answer failed", e.message ?: "Something went wrong.")
+                Notifier.done(getApplication(), "The chat answer failed", if (fault != null) "NPU fault on the Tiiny at $fault: send your question again." else e.message ?: "Something went wrong.")
             } finally {
                 setStatus(id, "")
                 _busyChats.update { it - id }
