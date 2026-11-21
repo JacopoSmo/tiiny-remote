@@ -481,11 +481,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             // WireGuard is asleep: wake it by opening it, ask once more, then come back here.
             if (!done) {
-                log("  Opening WireGuard to wake it up, then asking once more…")
+                // Seen: a just-woken WireGuard ignored the first request after opening and took the next one. So ask
+                // up to three times over about 25 seconds before giving up.
+                log("  Opening WireGuard to wake it up, then asking again…")
                 Vpn.openApp(app)
                 delay(2_000)
-                Vpn.setTunnel(app, st.wgTunnel, up)
-                done = waitForVpn(up, seconds = 8)
+                for (again in 1..3) {
+                    Vpn.setTunnel(app, st.wgTunnel, up)
+                    done = waitForVpn(up, seconds = 8)
+                    if (done) break
+                    if (again < 3) log("  WireGuard is open but hasn't switched yet, asking again…")
+                }
                 if (reason != null) Vpn.backToApp(app)
             }
             _state.update { it.copy(vpn = it.vpn.copy(switching = false)) }
