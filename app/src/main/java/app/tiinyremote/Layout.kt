@@ -274,7 +274,8 @@ fun BtnLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector
     val gap = if (showWord) Modifier.padding(end = 6.dp) else Modifier
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.semantics(mergeDescendants = true) { contentDescription = text },
+        // The word for TalkBack when only the sign shows (when the word shows, it's read already).
+        modifier = if (showWord) Modifier else Modifier.semantics(mergeDescendants = true) { contentDescription = text },
     ) {
         if (showSign) {
             if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, modifier = gap.size(18.dp))

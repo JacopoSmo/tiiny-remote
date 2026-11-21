@@ -576,12 +576,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun cancelDownload(d: Download) {
+        // Cancelling deletes the model on the Tiiny. For a model that's installed (an update being fetched, or a
+        // list that got it wrong), that would delete the installed copy too: pause instead and say why.
+        val installed = _state.value.models.firstOrNull { it.id == d.id }
+        if (installed != null) {
+            toast("${installed.name} is installed: cancelling would delete it. Pausing instead; to remove it, use the bin on its card.")
+            ApiLog.add("Cancel refused for ${d.id}: it's installed (status ${installed.status}); paused instead", "Models")
+            if (!d.paused) pauseDownload(d)
+            return
+        }
         cancelledDownloads.add(d.id)
         modelAction("Cancel download", d.id, "Cancelled ${d.name}") { this.delete(d.id) }
     }
     fun deleteModel(m: ModelInfo) = modelAction("Delete", m.id, "Deleted ${m.name} from the Tiiny") { this.delete(m.id) }
 
-    /** Runs beside the polling: follows downloads every 5 s while there are any (or just after one was started). */
     init {
         // With "Keep working in the background" on, downloads are still followed while the app is away (the loop
         // below runs only while it's on screen), so the finish is noticed and notified.
@@ -594,6 +602,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Runs beside the polling: follows downloads every 5 s while there are any (or just after one was started). */
     suspend fun downloadLoop() {
         while (true) {
             val s = _state.value

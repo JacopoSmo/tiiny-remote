@@ -11,7 +11,7 @@ class TiinyException(val kind: Kind, message: String) : Exception(message) {
 }
 
 private val moeName = Regex("(?i)-A(\\d+(?:\\.\\d+)?)B(?![a-z])")
-private val moeDesc = Regex("(?i)mixture[- ]of[- ]experts|\\bMoE\\b")
+private val moeDesc = Regex("(?i:mixture[- ]of[- ]experts)|\\bMoE\\b") // "MoE" as written, not any "moe"
 
 data class ModelInfo(
     val id: String,
@@ -105,6 +105,12 @@ data class StoreModel(
     val versionLabel: String,
     val contextWindow: Int?,
 )
+
+/** States of an installed model, never a download (whatever list they appear in). */
+private val INSTALLED_STATES = setOf("downloaded", "running", "loading", "starting", "stopping", "stopped", "ready", "loaded", "idle", "busy")
+
+/** Words in a download's state: downloading, paused, queued, pending, waiting. */
+private val DOWNLOAD_STATE = Regex("download|pause|queue|pend|wait")
 
 /** A model the Tiiny is downloading (or has paused): status as the Tiiny says it, progress in %. */
 data class Download(val id: String, val name: String, val status: String, val progress: Double?) {
@@ -475,14 +481,20 @@ class TiinyApi(url: String, private val key: String) {
         val data = o.optJSONArray("data") ?: JSONArray()
         return (0 until data.length()).mapNotNull { i ->
             val m = data.optJSONObject(i) ?: return@mapNotNull null
-            val st = m.optString("status")
-            if (st == "downloaded" || st.isBlank() || st == "null") return@mapNotNull null
+            val st = m.optString("status").trim()
+            val state = st.lowercase()
+            // Only real downloads. An installed model has its own states here too ("running" while loaded): taking
+            // those for downloads put loaded models in the list, and "Cancel" deleted them from the Tiiny.
+            if (state.isBlank() || state == "null" || state in INSTALLED_STATES) return@mapNotNull null
+            val progress = m.optDouble("progress").takeIf { !it.isNaN() }
+            if (!DOWNLOAD_STATE.containsMatchIn(state) && (progress == null || progress >= 100)) return@mapNotNull null
             val id = m.optString("id").ifBlank { m.optString("model_id") }
+            if (id.isBlank() || id == "null") return@mapNotNull null
             Download(
                 id,
                 m.optString("display_name").takeIf { it.isNotBlank() && it != "null" } ?: id.substringAfterLast('/'),
                 st,
-                m.optDouble("progress").takeIf { !it.isNaN() },
+                progress,
             )
         }
     }

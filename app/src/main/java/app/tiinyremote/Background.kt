@@ -39,6 +39,12 @@ object Background {
         apply(ctx.applicationContext, now)
     }
 
+    /** The service ended (stopped, or Android ended it): the next job starts it again. */
+    @Synchronized
+    fun serviceGone() {
+        running = false
+    }
+
     /** After the setting changed: start or stop the service to match. */
     fun refresh(ctx: Context) = apply(ctx.applicationContext, synchronized(this) { current() })
 
@@ -98,6 +104,17 @@ class WorkService : Service() {
         }
         return START_NOT_STICKY
     }
+
+    /** Android 15 allows this kind of service 6 hours a day; when they're used up it must stop at once. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        ApiLog.add("Android ended background work (its daily limit for it is used up); the app keeps working while open")
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        Background.serviceGone()
+        super.onDestroy()
+    }
 }
 
 /** Notifications: the quiet "working" one, and "done" ones (Settings → "Notify when a job is done"). */
@@ -153,6 +170,15 @@ object Notifier {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
             .setContentIntent(openApp(app))
+            // On the lock screen only "Tiiny Remote: done": the text (a chat answer, for one) shows once unlocked.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(app, DONE)
+                    .setSmallIcon(R.drawable.ic_stat_tiiny)
+                    .setContentTitle("Tiiny Remote")
+                    .setContentText("A job is done")
+                    .build(),
+            )
             .build()
         app.getSystemService(NotificationManager::class.java).notify(ids.incrementAndGet(), n)
     }

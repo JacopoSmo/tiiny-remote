@@ -97,11 +97,8 @@ object Tools {
 
     /**
      * How a chat model thinks, from its /v1/models entry: "switch" (enable_thinking on or off), "always"
-     * (reasons whatever it's sent, like gpt-oss: only the effort can change) or "none".
+     * (reasons whatever it's sent, like gpt-oss: only the effort can change) or "none". Looked up once per model.
      */
-    /** What thinkingMode found per model, so helpers called several times at once don't each ask again. */
-    private val thinkingModes = java.util.concurrent.ConcurrentHashMap<String, String>()
-
     fun thinkingMode(c: DeviceClient, model: String): String {
         thinkingModes[c.base + " " + model]?.let { return it }
         val data = try {
@@ -123,6 +120,9 @@ object Tools {
         if (t != null) thinkingModes[c.base + " " + model] = mode // only what the Tiiny actually said is kept
         return mode
     }
+
+    /** What thinkingMode found per model, so helpers called several times at once don't each ask again. */
+    private val thinkingModes = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     // ---------------- images ----------------
 
@@ -535,11 +535,15 @@ object Tools {
 
     /** One short answer from a chat model, with thinking off where it can be switched off. */
     fun chatOnce(c: DeviceClient, model: String, system: String, user: String, maxTokens: Int): String {
-        val body = JSONObject().put("model", model).put("max_tokens", maxTokens).put("stream", false)
+        val mode = thinkingMode(c, model)
+        // A model that always thinks (gpt-oss) spends tokens on that first, from the same budget: without room for
+        // it, a short answer (a chat title) came back empty.
+        val budget = if (mode == "always") maxTokens + 1024 else maxTokens
+        val body = JSONObject().put("model", model).put("max_tokens", budget).put("stream", false)
             .put("messages", JSONArray()
                 .put(JSONObject().put("role", "system").put("content", system))
                 .put(JSONObject().put("role", "user").put("content", user)))
-        when (thinkingMode(c, model)) {
+        when (mode) {
             "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
             "always" -> body.put("reasoning_effort", "low")
         }

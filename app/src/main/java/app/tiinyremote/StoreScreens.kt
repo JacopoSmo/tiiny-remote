@@ -48,6 +48,17 @@ private val ORANGE = Color(0xFFE65100)
 @Composable
 internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
     if (s.downloads.isEmpty()) return
+    // Cancelling deletes what's downloaded so far on the Tiiny: asked first, never on one tap.
+    var cancel by remember { mutableStateOf<Download?>(null) }
+    cancel?.let { d ->
+        ScaledAlertDialog(
+            onDismissRequest = { cancel = null },
+            title = { Text("Cancel downloading ${d.name}?") },
+            text = { Text("The Tiiny deletes what it has downloaded of this model so far.") },
+            confirmButton = { TextButton(onClick = { vm.cancelDownload(d); cancel = null }) { Text("Cancel download", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { cancel = null }) { Text("Keep downloading") } },
+        )
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Downloading on the Tiiny", style = MaterialTheme.typography.titleSmall)
@@ -69,7 +80,7 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
                         if (d.paused) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Resume", Icons.Filled.PlayArrow) }
                         else TextButton(onClick = { vm.pauseDownload(d) }) { BtnLabel("Pause", symbol = "❚❚") }
                         Spacer(Modifier.weight(1f))
-                        DangerButton("Cancel", onClick = { vm.cancelDownload(d) }, icon = Icons.Filled.Close)
+                        DangerButton("Cancel", onClick = { cancel = d }, icon = Icons.Filled.Close)
                     }
                 }
             }
