@@ -51,6 +51,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.LinearProgressIndicator
@@ -1258,6 +1260,9 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     fun setMode(m: String) { chatMode = m; st.setSetting("chat.mode", m) }
     fun toggleSuggest() { suggest = !suggest; st.setSetting("chat.suggest", if (suggest) "1" else "0") }
     val suggestions by st.suggestions.collectAsState()
+    val helperBusy by st.helper.collectAsState()
+    var quick by remember { mutableStateOf<Pair<String, String>?>(null) } // a summary or translation: title to text
+    var undoDraft by remember { mutableStateOf<String?>(null) } // the message before the last ✎ rewrite
     var canMake by rememberSaveable { mutableStateOf(true) }
     var web by rememberSaveable { mutableStateOf(st.setting("chat.web", "0") == "1") }
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
@@ -1313,6 +1318,11 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                                 )
                                 DropdownMenuItem(text = { Text((if (suggest) "☑ " else "☐ ") + "Suggestions") }, onClick = { toggleSuggest() })
                                 DropdownMenuItem(text = { Text("Mode: $modeLabel  ▸") }, onClick = { sub = "mode" })
+                                DropdownMenuItem(
+                                    text = { Text("Summarise this chat") },
+                                    enabled = msgs.isNotEmpty() && !busy && helperBusy == null,
+                                    onClick = { options = false; st.summariseChat(s.models) { quick = "Summary of this chat" to it } },
+                                )
                                 DropdownMenuItem(text = { Text("New chat") }, enabled = msgs.isNotEmpty(), onClick = { st.newChat(); options = false })
                             }
                         }
@@ -1350,6 +1360,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 }
             }
             Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = { st.summariseChat(s.models) { quick = "Summary of this chat" to it } },
+                enabled = msgs.isNotEmpty() && !busy && helperBusy == null,
+            ) { Text("Summarise") }
             TextButton(onClick = { st.newChat() }, enabled = msgs.isNotEmpty()) { Text("New chat") }
         }
         val hint = when {
@@ -1396,7 +1410,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
             }
-            for ((i, m) in msgs.withIndex()) ChatBubble(m, live = busy && i == msgs.lastIndex, st = st)
+            for ((i, m) in msgs.withIndex()) {
+                val live = busy && i == msgs.lastIndex
+                ChatBubble(m, live = live, st = st, onTranslate = if (live || helperBusy != null) null else { lang ->
+                    st.translateText(m.text, lang, s.models) { quick = "Translation ($lang)" to it }
+                })
+            }
             val ideas = suggestions[current].orEmpty()
             if (suggest && !busy && ideas.isNotEmpty()) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1416,7 +1435,16 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty()) && !busy
         fun doSend() {
             sendText(input)
+            undoDraft = null
         }
+        helperBusy?.let { what ->
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        quick?.let { (title, text) -> QuickResult(title, text) { quick = null } }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             OutlinedTextField(
                 value = input,
@@ -1433,7 +1461,26 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     },
                 maxLines = if (ui.compact) 3 else 5,
             )
-            Spacer(Modifier.width(8.dp))
+            // ✎: the helper (or the chat model) shortens or rewords what's typed; Undo puts the original back.
+            var draftMenu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(
+                    onClick = { draftMenu = true },
+                    enabled = (input.isNotBlank() || undoDraft != null) && helperBusy == null && model?.running == true,
+                ) { Icon(androidx.compose.material.icons.Icons.Filled.Edit, contentDescription = "Improve my message") }
+                ScaledDropdownMenu(expanded = draftMenu, onDismissRequest = { draftMenu = false }) {
+                    for ((how, _) in DRAFT_ACTIONS) {
+                        DropdownMenuItem(text = { Text(how) }, enabled = input.isNotBlank(), onClick = {
+                            draftMenu = false
+                            val before = input
+                            st.rewriteDraft(before, how, s.models) { out -> undoDraft = before; input = out }
+                        })
+                    }
+                    undoDraft?.let { old ->
+                        DropdownMenuItem(text = { Text("Undo: back to my text") }, onClick = { draftMenu = false; input = old; undoDraft = null })
+                    }
+                }
+            }
             if (busy) {
                 OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
             } else {
@@ -1444,9 +1491,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 }
 
 @Composable
-private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel) {
+private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, onTranslate: ((String) -> Unit)? = null) {
     val mine = m.role == "user"
     var showThinking by remember { mutableStateOf(false) }
+    var langs by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Card(
             colors = CardDefaults.cardColors(
@@ -1479,6 +1527,16 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel) {
                                 if (src.url.startsWith("https://", true) || src.url.startsWith("http://", true)) runCatching { uri.openUri(src.url) }
                             },
                         )
+                    }
+                }
+                if (!mine && onTranslate != null && m.text.isNotBlank() && !m.text.startsWith("Error:")) {
+                    Box {
+                        TextButton(onClick = { langs = true }) { Text("Translate ▾", style = MaterialTheme.typography.labelMedium) }
+                        ScaledDropdownMenu(expanded = langs, onDismissRequest = { langs = false }) {
+                            for (lang in TRANSLATE_LANGUAGES) {
+                                DropdownMenuItem(text = { Text(lang) }, onClick = { langs = false; onTranslate(lang) })
+                            }
+                        }
                     }
                 }
                 if (live && m.status.isNotBlank()) {
@@ -1551,4 +1609,34 @@ private fun ModeChoices(selected: String, onPick: (String) -> Unit) {
             onClick = { onPick(key) },
         )
     }
+}
+
+/** A summary or translation from the helper, to read, copy or share. */
+@Composable
+private fun QuickResult(title: String, text: String, onClose: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
+        title = { ClosableTitle(onClose) { Text(title) } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                SelectionContainer { MarkdownText(text) }
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = { clipboard.setText(AnnotatedString(text)) }) { BtnLabel("Copy", symbol = "⧉") }
+                TextButton(onClick = {
+                    runCatching {
+                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, text)
+                        ctx.startActivity(android.content.Intent.createChooser(send, title))
+                    }
+                }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
+            }
+        },
+    )
 }

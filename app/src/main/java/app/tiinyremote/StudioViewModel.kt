@@ -120,6 +120,32 @@ internal fun autoDepth(q: String): String {
     }
 }
 
+private const val SUMMARY_SYSTEM = "Summarise this conversation for the user, in the user's language: first one or two " +
+    "sentences on what it was about, then the key points, answers and decisions as short bullet points, then any open " +
+    "questions or next steps. Keep names, figures and dates exact. Use Markdown. No preamble."
+
+private fun translateSystem(language: String) = "Translate the user's text into $language. Keep the meaning, tone and " +
+    "formatting (Markdown, lists, code blocks, links) exactly; don't translate code, names or links. Reply with the " +
+    "translation only."
+
+/** The draft rewriters under the chat's ✎ button: their label and what the model is told. */
+val DRAFT_ACTIONS = listOf(
+    "Shorten" to "Make this message shorter and clearer. Keep every point that matters and the same language.",
+    "Reword" to "Reword this message so it reads better: clearer and more natural. Same meaning, same language, similar length.",
+    "Fix spelling and grammar" to "Correct spelling, grammar and punctuation in this message. Change nothing else; same language.",
+    "More formal" to "Rewrite this message in a more formal, professional tone. Same meaning, same language.",
+    "Friendlier" to "Rewrite this message in a warmer, friendlier tone. Same meaning, same language.",
+)
+
+/** Languages offered for translating an answer (named in English for the model). */
+val TRANSLATE_LANGUAGES = listOf(
+    "English", "German", "French", "Italian", "Spanish", "Portuguese", "Dutch", "Polish", "Czech", "Chinese", "Japanese",
+)
+
+private const val DEPTH_SYSTEM = "Decide how much a careful assistant should think before answering this message. Reply " +
+    "with one word: LOW for greetings, simple facts and small talk; MEDIUM for ordinary questions and explanations; " +
+    "HIGH for maths, code, logic, analysis, comparisons, planning or anything tricky."
+
 private const val SUGGEST_SYSTEM = "Suggest exactly 3 short follow-up messages the user might send next in this conversation, " +
     "written as the user would write them, in the user's language. Each under 12 words, specific to what was just " +
     "discussed, and different from each other. One per line: no numbering, no quotes, nothing else."
@@ -651,6 +677,32 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200)
         }, onDone)
 
+    /** The current chat summarised by the helper (or the chat model), for a dialog. */
+    fun summariseChat(models: List<ModelInfo>, onDone: (String) -> Unit) {
+        val msgs = _all.value[_currentChat.value].orEmpty().filter { it.text.isNotBlank() }
+        if (msgs.isEmpty()) return
+        val transcript = msgs.joinToString("\n\n") { m ->
+            (if (m.role == "user") "User: " else "Assistant: ") + m.text.take(4000) + (if (m.image != null) " [picture]" else "")
+        }.takeLast(60_000)
+        helperRun("Summarising the chat…", "chat", models, { it.isChat && it.running }, { c, m ->
+            Tools.chatOnce(c, m, SUMMARY_SYSTEM, transcript, 1200)
+        }, onDone)
+    }
+
+    /** An answer translated by the helper (or the chat model). */
+    fun translateText(text: String, language: String, models: List<ModelInfo>, onDone: (String) -> Unit) =
+        helperRun("Translating into $language…", "chat", models, { it.isChat && it.running }, { c, m ->
+            Tools.chatOnce(c, m, translateSystem(language), text.take(16_000), 4000)
+        }, onDone)
+
+    /** The message being written, shortened or reworded (DRAFT_ACTIONS) by the helper (or the chat model). */
+    fun rewriteDraft(text: String, how: String, models: List<ModelInfo>, onDone: (String) -> Unit) {
+        val instruction = DRAFT_ACTIONS.firstOrNull { it.first == how }?.second ?: return
+        helperRun("$how…", "chat", models, { it.isChat && it.running }, { c, m ->
+            Tools.chatOnce(c, m, "$instruction Reply with the rewritten message only: no preamble, no quotes.", text.trim().take(8000), 1500)
+        }, onDone)
+    }
+
     // ---------- "Edit this": a made picture goes to the Edit tool ----------
 
     private val _openTool = MutableStateFlow<String?>(null)
@@ -1174,7 +1226,24 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     // The depth actually used: Auto picks one from the question; gpt-oss can't stop thinking, so Off is Low there.
                     val level = when {
                         mode == "none" -> "off"
-                        depth == "auto" -> autoDepth(question).also { ApiLog.add("Thinking on Auto: ${DEPTH_LABELS[it]} for this question", "Chat") }
+                        depth == "auto" -> {
+                            // With the helper asked (Settings), it reads the question; without, or when it fails, the app's own rule decides.
+                            val asked = if (helper != null && cfg.autoAsksHelper && question.isNotBlank()) try {
+                                Tools.chatOnce(c, helper, DEPTH_SYSTEM, question.take(2000), 5).uppercase().let { a ->
+                                    when {
+                                        "HIGH" in a -> "high"
+                                        "MEDIUM" in a -> "medium"
+                                        "LOW" in a -> "low"
+                                        else -> null
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                null
+                            } else null
+                            (asked ?: autoDepth(question)).also {
+                                ApiLog.add("Thinking on Auto: ${DEPTH_LABELS[it]} for this question" + if (asked != null) " (the helper's choice)" else "", "Chat")
+                            }
+                        }
                         depth == "off" && mode == "always" -> "low"
                         else -> depth
                     }

@@ -1199,7 +1199,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1409,6 +1409,19 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Auto thinking asks the helper", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "With the chat's Thinking on Auto, the helper reads each question and chooses Low, Medium or High. " +
+                        "Smarter than the app's own rule, but every answer starts about 2 seconds later. Off: the app " +
+                        "decides at once from the question's words and length.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = cur.autoAsksHelper, onCheckedChange = { vm.setDisplay(cur.copy(autoAsksHelper = it)) })
+        }
         val speed by st.speed.collectAsState()
         val small = chatModels.firstOrNull { it.id == helper && it.running }
         val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
@@ -1653,10 +1666,80 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 if (it) askIfNeeded()
             })
         }
-        Text(
-            "Tiiny Remote $version · secrets are stored encrypted on this phone",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        var about by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Tiiny Remote $version · secrets are stored encrypted on this phone",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { about = true }) {
+                Icon(Icons.Filled.Info, contentDescription = "About this app", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (about) AboutDialog(version) { about = false }
     }
 }
+
+private const val REPO = "https://github.com/JacopoSmo/tiiny-remote"
+
+/** The ⓘ beside the version: what the app is, where it lives, what it sends where, and what it's built with. */
+@Composable
+private fun AboutDialog(version: String, onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val exp = AppUpdate.experimental(ctx)
+    val device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
+    val info = "Tiiny Remote $version${if (exp) " (experimental)" else ""} · ${ctx.packageName} · $device"
+    fun open(url: String) { runCatching { uri.openUri(url) } }
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
+        title = { ClosableTitle(onClose) { Text("About Tiiny Remote") } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                AboutBody("Controls your Tiiny AI Pocket Lab from your phone: models, chat with tools and web search, " +
+                    "pictures, speech, music, video and 3D, status, and unlocking after a restart.")
+                AboutHead("Version")
+                AboutBody("$version${if (exp) " · experimental channel (separate app, newest features first)" else ""}\n${ctx.packageName}\n$device")
+                TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(info)) }) {
+                    BtnLabel("Copy for a bug report", symbol = "⧉")
+                }
+                AboutHead("Links")
+                AboutLink("Source code on GitHub") { open(REPO) }
+                AboutLink("All versions and what's new") { open("$REPO/releases") }
+                AboutLink("Report a problem or suggest an idea") { open("$REPO/issues") }
+                AboutHead("Your data")
+                AboutBody("• Talks only to your Tiiny (and your NAS, if you unlock over SSH), over your Wi-Fi or your WireGuard tunnel. No account, no ads, no tracking, no analytics.\n" +
+                    "• Web search, when you turn it on, goes from the phone to the search service you chose (SearXNG, Tavily, Bing, DuckDuckGo or Wikipedia).\n" +
+                    "• The update check asks GitHub for the newest version; nothing about you is sent.\n" +
+                    "• Passwords and keys are stored encrypted on this phone. Chats and results stay on the phone; the log hides keys, e-mail addresses and device IDs.")
+                AboutHead("Good to know")
+                AboutBody("• Not made by or affiliated with Tiiny AI. Tiiny and TiinyOS are theirs.\n" +
+                    "• Installed from GitHub, not Google Play: updates come through Settings → App updates.\n" +
+                    "• AI answers can be wrong. Check what matters, especially facts, figures and medical, legal or financial advice.")
+                AboutHead("Built with")
+                AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0) and JSch (BSD) for SSH. " +
+                    "Made by JacopoSmo, written with Claude (Anthropic).")
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+@Composable
+private fun AboutHead(t: String) = Text(t, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+
+@Composable
+private fun AboutBody(t: String) = Text(t, style = MaterialTheme.typography.bodyMedium)
+
+@Composable
+private fun AboutLink(label: String, onClick: () -> Unit) = Text(
+    label,
+    style = MaterialTheme.typography.bodyMedium,
+    color = MaterialTheme.colorScheme.primary,
+    modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
+)
