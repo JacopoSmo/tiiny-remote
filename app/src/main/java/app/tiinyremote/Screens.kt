@@ -1235,12 +1235,12 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("In the background", style = MaterialTheme.typography.titleMedium)
-        val ctx = LocalContext.current
+        val bgCtx = LocalContext.current
         // Android 13+ asks before an app may show notifications: asked when you turn either option on.
         val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         fun askIfNeeded() {
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
-                androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                androidx.core.content.ContextCompat.checkSelfPermission(bgCtx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
             ) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1256,7 +1256,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Switch(checked = cur.keepRunning, onCheckedChange = {
                 vm.setDisplay(cur.copy(keepRunning = it))
                 if (it) askIfNeeded()
-                Background.refresh(ctx)
+                Background.refresh(bgCtx)
             })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
