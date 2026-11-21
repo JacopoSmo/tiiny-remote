@@ -1272,7 +1272,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     val scroll = rememberScrollState()
     var lastCount by remember { mutableStateOf(0) }
-    LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length) {
+    val ideasNow = st.suggestions.collectAsState().value[st.currentChat.collectAsState().value]
+    LaunchedEffect(msgs.size, msgs.lastOrNull()?.text?.length, ideasNow) {
         // A new message always shows; a streaming answer follows only while you're near the end, so reading higher up stays put.
         val near = scroll.maxValue - scroll.value < scroll.viewportSize / 2 + 200
         if (msgs.size != lastCount || near) scroll.animateScrollTo(scroll.maxValue)
@@ -1293,10 +1294,11 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) { model = ModelPicker("chat", { it.isChat }, s, vm, st) }
                 val thinksNow = model?.thinks == true
+                val shownDepth = if (model?.alwaysThinks == true && depth == "off") "low" else depth
                 Box {
                     TextButton(onClick = { options = true }) {
                         Text(listOfNotNull(
-                            if (thinksNow && depth != "off") sign("Thinking") else null,
+                            if (thinksNow && shownDepth != "off") sign("Thinking") else null,
                             if (canMake) sign("Can make things") else null,
                             if (web && hasSearx) sign("Web search") else null,
                             if (suggest) sign("Suggestions") else null,
@@ -1315,7 +1317,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                             }
                             else -> {
                                 DropdownMenuItem(
-                                    text = { Text("Thinking: " + (if (thinksNow) DEPTH_LABELS[depth] else "—") + "  ▸") },
+                                    text = { Text("Thinking: " + (if (thinksNow) DEPTH_LABELS[shownDepth] else "—") + "  ▸") },
                                     enabled = thinksNow,
                                     onClick = { sub = "depth" },
                                 )
@@ -1345,11 +1347,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val makes = model?.makesThings == true
         if (!ui.compact) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
             Box {
+                val shownDepth = if (model?.alwaysThinks == true && depth == "off") "low" else depth
                 FilterChip(
-                    selected = thinks && depth != "off",
+                    selected = thinks && shownDepth != "off",
                     onClick = { sub = "depth" },
                     enabled = thinks,
-                    label = { Text("Thinking: ${if (thinks) DEPTH_LABELS[depth] else "—"} ▾") },
+                    label = { Text("Thinking: ${if (thinks) DEPTH_LABELS[shownDepth] else "—"} ▾") },
                 )
                 ScaledDropdownMenu(expanded = sub == "depth", onDismissRequest = { sub = null }) {
                     DepthSlider(depth, model?.alwaysThinks == true) { setDepth(it) }
@@ -1397,12 +1400,17 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         if (shownHint != null && (!ui.compact || msgs.isEmpty())) {
             Text(shownHint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        fun sendText(text: String) {
+        // A tapped suggestion goes alone: what's being typed and a picked picture stay for the next message.
+        fun sendText(text: String, typed: Boolean) {
             val m = model ?: return
             if (busy) return
-            st.send(m.id, text, image.firstOrNull()?.dataUri, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models)
-            input = ""
-            image = emptyList()
+            val pic = if (typed) image.firstOrNull()?.dataUri else null
+            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models)
+            if (typed) {
+                input = ""
+                image = emptyList()
+                undoDraft = null
+            }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
         Column(
@@ -1430,7 +1438,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (idea in ideas) {
                         SuggestionChip(
-                            onClick = { if (model?.running == true) sendText(idea) },
+                            onClick = { if (model?.running == true) sendText(idea, typed = false) },
                             label = { Text(idea, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
                             icon = { Text(sign("Suggestions")) },
                         )
@@ -1453,10 +1461,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             ImagePickerRow(image, 1, "Add a picture") { image = it }
         }
         val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty()) && !busy
-        fun doSend() {
-            sendText(input)
-            undoDraft = null
-        }
+        fun doSend() = sendText(input, typed = true)
         helperBusy?.let { what ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                 CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
@@ -1493,7 +1498,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         DropdownMenuItem(text = { Text(how) }, enabled = input.isNotBlank(), onClick = {
                             draftMenu = false
                             val before = input
-                            st.rewriteDraft(before, how, s.models) { out -> undoDraft = before; input = out }
+                            // Only if the message wasn't changed meanwhile: typing on mustn't be overwritten.
+                            st.rewriteDraft(before, how, s.models) { out -> if (input == before) { undoDraft = before; input = out } }
                         })
                     }
                     undoDraft?.let { old ->
@@ -1573,7 +1579,8 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, onTransla
 
 /** The thinking-depth slider: Off, Auto, Low, Medium, High, Max. A model that always thinks (gpt-oss) can't go to Off. */
 @Composable
-private fun DepthSlider(depth: String, alwaysThinks: Boolean, onChange: (String) -> Unit) {
+private fun DepthSlider(stored: String, alwaysThinks: Boolean, onChange: (String) -> Unit) {
+    val depth = if (alwaysThinks && stored == "off") "low" else stored
     val i = DEPTHS.indexOf(depth).coerceAtLeast(0)
     Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text("Thinking: ${DEPTH_LABELS[depth]}", style = MaterialTheme.typography.titleSmall)

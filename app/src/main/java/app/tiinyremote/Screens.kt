@@ -1160,9 +1160,9 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                     "1. How fast each model writes alone. This decides who reads web pages. It barely changes " +
                         "between runs (a few percent), and the speeds are remembered.\n\n" +
                         "2. How much sooner two jobs finish when both models work at the same time instead of one after " +
-                        "the other. This tells whether the helper can name a chat while the chat model answers. It " +
-                        "varies a lot between runs (the same pair measured 7% and 18%). Any gain means the title costs " +
-                        "nothing, so this is done unless the test finds it slower. From 10% the test calls it \"worth it\". " +
+                        "the other. It varies a lot between runs (the same pair measured 7% and 18%). It shows that the " +
+                        "helper can name a chat and suggest follow-ups beside the chat model at no cost: so far every pair " +
+                        "came out faster together. From 10% the test calls it \"worth it\". " +
                         "The same model twice brings nothing: the Tiiny takes a model's requests in turn.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -1715,7 +1715,7 @@ private fun AboutDialog(version: String, onClose: () -> Unit) {
                 AboutLink("Licence: MIT (free to use, change and share; no warranty)") { open("$REPO/blob/main/LICENSE") }
                 AboutHead("Your data")
                 AboutBody("• Talks only to your Tiiny (and your NAS, if you unlock over SSH), over your Wi-Fi or your WireGuard tunnel. No account, no ads, no tracking, no analytics.\n" +
-                    "• Web search, when you turn it on, goes from the phone to the search service you chose (SearXNG, Tavily, Bing, DuckDuckGo or Wikipedia).\n" +
+                    "• Web search, when you turn it on, goes from the phone to the search service you chose (SearXNG, Tavily, Bing, DuckDuckGo or Wikipedia), and the pages the model opens are fetched by the phone.\n" +
                     "• The update check asks GitHub for the newest version; nothing about you is sent.\n" +
                     "• Passwords and keys are stored encrypted on this phone. Chats and results stay on the phone; the log hides keys, e-mail addresses and device IDs.")
                 AboutHead("Good to know")

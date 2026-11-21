@@ -544,6 +544,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         condensed.remove(id)
         chatDisk.execute { chatFile(id).delete() }
         lastImages.remove(id)
+        _suggestions.update { it - id }
         _chatList.update { l -> l.filter { it.id != id } }
         if (_currentChat.value == id) {
             val next = _chatList.value.firstOrNull()?.id
@@ -692,7 +693,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     /** An answer translated by the helper (or the chat model). */
     fun translateText(text: String, language: String, models: List<ModelInfo>, onDone: (String) -> Unit) =
         helperRun("Translating into $language…", "chat", models, { it.isChat && it.running }, { c, m ->
-            Tools.chatOnce(c, m, translateSystem(language), text.take(16_000), 4000)
+            Tools.chatOnce(c, m, translateSystem(language), text.take(16_000), 6000)
         }, onDone)
 
     /** The message being written, shortened or reworded (DRAFT_ACTIONS) by the helper (or the chat model). */
@@ -1057,8 +1058,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
                     prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
                     fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
-                    fun spread(l: List<Double>, unit: String) =
-                        if (l.size > 1) " (${f(l.min())}–${f(l.max())}$unit)" else ""
+                    fun spread(l: List<Double>) = if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else ""
                     fun pct(v: Double) = "${Math.round(v)}%"
                     fun gainSpread(l: List<Double>) =
                         if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else ""
@@ -1080,7 +1080,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
                             "${big.name} reads web pages itself."
                     (if (n > 1) "Average of $n runs. " else "") +
-                        "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigRates, "")}, ${small.name} ${f(smallRate)} tok/s${spread(smallRates, "")}.\n" +
+                        "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigRates)}, ${small.name} ${f(smallRate)} tok/s${spread(smallRates)}.\n" +
                         "Both models at once: ${verdict(bothGains)}.\n" +
                         "${small.name} twice at once: ${verdict(helperGains)}.\n" +
                         pages
@@ -1099,8 +1099,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Whether the helper should condense pages for this chat model: only when the speed test measured it clearly
-     * faster (by 25%): condensing can lose details and adds a step. A helper as fast as the chat model would only add waiting; the chat model then reads the pages
-     * itself. Before any speed test, pages are condensed.
+     * faster (PAGE_RULE, 25%), because condensing can lose details and adds a step. Otherwise the chat model reads the
+     * pages itself. Before any speed test, pages are condensed.
      */
     private fun helperCondensesPages(helper: String, chatModel: String): Boolean {
         val h = prefs.getFloat("speed_$helper", 0f)
@@ -1156,7 +1156,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (answer.isBlank() || answer.startsWith("Error:")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val raw = Tools.chatOnce(c, who, SUGGEST_SYSTEM, "User: ${question.take(1500)}\n\nAssistant: ${answer.takeLast(4000)}", 100)
+                val raw = Tools.chatOnce(c, who, SUGGEST_SYSTEM, "User: ${question.take(1500)}\n\nAssistant: ${answer.takeLast(4000)}", 100, timeoutSec = 120)
                 val list = raw.lines()
                     .map { it.trim().replace(Regex("^([-*•]|\\d+[.)])\\s*"), "").trim('"', '“', '”', '*').trim() }
                     .filter { it.length in 2..120 }
@@ -1175,7 +1175,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Sends a message. With canMake on, the model may call tools (images, edits, speech, loops, songs); a tool's model
      * is loaded for it, unloading others if needed, and the chat model is loaded back afterwards. With a fast helper
-     * model loaded beside it, the helper names the chat, condenses long chats, and condenses pages when it's clearly faster.
+     * model loaded beside it, the helper names the chat, suggests follow-ups, condenses long chats, and condenses pages
+     * when it's clearly faster. [depth] is the Thinking slider, [chatMode] Normal, Socratic or Student.
      */
     fun send(
         model: String, text: String, image: String?, depth: String, chatMode: String, canMake: Boolean, web: Boolean,
@@ -1203,24 +1204,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         ApiLog.add("Pages go to the chat model directly: by the speed test, the helper isn't clearly faster than it", "Chat")
                     }
                     val shown = history.filter { !(it.role == "assistant" && it.text.isBlank()) }
-                    // A new chat is named by the helper from its first question, while the chat model answers: the speed
-                    // test showed two different models working at once finish sooner than one after the other.
-                    if (helper != null && shown.count { it.role == "user" } == 1 && question.isNotBlank() &&
-                        customTitles[id] == null && autoTitles[id] == null
-                    ) {
-                        viewModelScope.launch(Dispatchers.IO) {
-                            try {
-                                val t = Tools.chatOnce(c, helper, TITLE_SYSTEM, "User: ${question.take(1500)}", 30)
-                                    .lines().first().trim().trim('"', '“', '”', '*', '#', ' ').trimEnd('.').take(48)
-                                if (t.isNotBlank() && _all.value.containsKey(id) && customTitles[id] == null) {
-                                    autoTitles[id] = t
-                                    saveChat(id)
-                                }
-                            } catch (e: Exception) {
-                                ApiLog.add("The helper couldn't name the chat (${e.message})", "Chat")
-                            }
-                        }
-                    }
                     val convo = JSONArray()
                     val mode = Tools.thinkingMode(c, model)
                     // The depth actually used: Auto picks one from the question; gpt-oss can't stop thinking, so Off is Low there.
@@ -1229,7 +1212,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         depth == "auto" -> {
                             // With the helper asked (Settings), it reads the question; without, or when it fails, the app's own rule decides.
                             val asked = if (helper != null && cfg.autoAsksHelper && question.isNotBlank()) try {
-                                Tools.chatOnce(c, helper, DEPTH_SYSTEM, question.take(2000), 5).uppercase().let { a ->
+                                // At most 10 s: a helper that thinks long first mustn't hold up the answer.
+                                Tools.chatOnce(c, helper, DEPTH_SYSTEM, question.take(2000), 5, timeoutSec = 10).uppercase().let { a ->
                                     when {
                                         "HIGH" in a -> "high"
                                         "MEDIUM" in a -> "medium"
@@ -1246,6 +1230,25 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         depth == "off" && mode == "always" -> "low"
                         else -> depth
+                    }
+                    // A new chat is named by the helper from its first question, while the chat model answers: the speed
+                    // test showed two different models working at once finish sooner than one after the other. (Asked
+                    // after the depth question, which would otherwise wait behind it.)
+                    if (helper != null && shown.count { it.role == "user" } == 1 && question.isNotBlank() &&
+                        customTitles[id] == null && autoTitles[id] == null
+                    ) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            try {
+                                val t = Tools.chatOnce(c, helper, TITLE_SYSTEM, "User: ${question.take(1500)}", 30)
+                                    .lines().first().trim().trim('"', '“', '”', '*', '#', ' ').trimEnd('.').take(48)
+                                if (t.isNotBlank() && _all.value.containsKey(id) && customTitles[id] == null) {
+                                    autoTitles[id] = t
+                                    saveChat(id)
+                                }
+                            } catch (e: Exception) {
+                                ApiLog.add("The helper couldn't name the chat (${e.message})", "Chat")
+                            }
+                        }
                     }
                     var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
                         (if (mode == "switch" || level == "max") depthPrompt(level) else "") +
@@ -1295,11 +1298,14 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 list.dropLast(1) + last.copy(text = last.text + content, reasoning = last.reasoning + reasoning)
                             }
                         }
+                        val before = _all.value[id]?.lastOrNull()?.let { it.text.length + it.reasoning.length }
                         val done = try {
                             c.streamChat(body(), onText, { chatStop.get() })
                         } catch (e: MediaException) {
-                            // The model's context can be too small for the bigger budget of High and Max: the usual one then.
-                            if (maxTokens <= 4096 || !Regex("(?i)context|max_tokens|maximum|too long|too large").containsMatchIn(e.message ?: "")) throw e
+                            // The model's context can be too small for the bigger budget of High and Max: the usual one
+                            // then. Only when the Tiiny refused before writing anything, or the retry would repeat text.
+                            val wrote = _all.value[id]?.lastOrNull()?.let { it.text.length + it.reasoning.length } != before
+                            if (wrote || maxTokens <= 4096 || !Regex("(?i)context|max_tokens|maximum|too long|too large").containsMatchIn(e.message ?: "")) throw e
                             ApiLog.add("No room for $maxTokens tokens with this model; answering with 4096", "Chat")
                             maxTokens = 4096
                             c.streamChat(body(), onText, { chatStop.get() })

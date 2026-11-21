@@ -534,7 +534,7 @@ object Tools {
     // ---------------- helpers: a chat model writes tags or lyrics ----------------
 
     /** One short answer from a chat model, with thinking off where it can be switched off. */
-    fun chatOnce(c: DeviceClient, model: String, system: String, user: String, maxTokens: Int): String {
+    fun chatOnce(c: DeviceClient, model: String, system: String, user: String, maxTokens: Int, timeoutSec: Int = 600): String {
         val mode = thinkingMode(c, model)
         // A model that always thinks (gpt-oss) spends tokens on that first, from the same budget: without room for
         // it, a short answer (a chat title) came back empty.
@@ -547,7 +547,7 @@ object Tools {
             "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
             "always" -> body.put("reasoning_effort", "low")
         }
-        val r = c.request("POST", "/v1/chat/completions", body, 600)
+        val r = c.request("POST", "/v1/chat/completions", body, timeoutSec)
         if (!r.ok) throw MediaException(r.error())
         val text = r.json().optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content") ?: ""
         val out = text.replace(Regex("(?s)<think>.*?</think>"), "").trim()
