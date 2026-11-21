@@ -1584,21 +1584,11 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
         }
         fun updateNow(r: AppRelease) {
-            if (!AppUpdate.canInstall(ctx)) {
-                updNote = "Allow Tiiny Remote to install updates (the screen that opens), then tap Update app again."
-                AppUpdate.openInstallPermission(ctx)
-                return
-            }
-            updBusy = "Downloading ${r.version}…"
-            updScope.launch {
-                val f = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    runCatching { AppUpdate.download(ctx, r) { p -> updBusy = "Downloading ${r.version}: $p%" } }
-                }
-                updBusy = null
-                f.onSuccess {
-                    updNote = "Android's installer opens: confirm to update. Your settings stay."
-                    AppUpdate.install(ctx, it)
-                }.onFailure { updNote = "The download didn't work: ${it.message}" }
+            updNote = "Your browser downloads Tiiny Remote ${r.version}: open the downloaded file to install it. Your settings stay."
+            try {
+                AppUpdate.openDownload(ctx, r)
+            } catch (e: Exception) {
+                updNote = "Couldn't open the browser: ${e.message}"
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

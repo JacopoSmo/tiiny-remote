@@ -3,8 +3,6 @@ package app.tiinyremote
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
-import androidx.core.content.FileProvider
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -14,7 +12,6 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -24,8 +21,8 @@ data class AppRelease(val version: String, val apkUrl: String, val pageUrl: Stri
 
 /**
  * Updates of the app itself, from this repository's GitHub Releases: the normal app follows the release marked
- * Latest, "Tiiny Remote Exp" the newest experimental pre-release. Android installs an update only if it's signed
- * with the same key as the installed app, so a tampered download can't be installed over it.
+ * Latest, "Tiiny Remote Exp" the newest experimental pre-release. The browser downloads the update and Android
+ * installs it only if it's signed with the same key as the installed app.
  */
 object AppUpdate {
     private const val REPO = "JacopoSmo/tiiny-remote"
@@ -100,58 +97,12 @@ object AppUpdate {
     fun known(ctx: Context): String? = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("available", "")
         ?.takeIf { it.isNotBlank() && newer(it, installed(ctx)) }
 
-    /** Downloads the .apk into the app's cache (at most 300 MB), reporting the percent done. */
-    fun download(ctx: Context, r: AppRelease, progress: (Int) -> Unit): File {
-        val dir = File(ctx.cacheDir, "updates").apply { mkdirs() }
-        dir.listFiles()?.forEach { it.delete() } // an older download is no use any more
-        val out = File(dir, "TiinyRemote-${r.version.replace(Regex("[^0-9A-Za-z.-]"), "_")}.apk")
-        val tmp = File(dir, out.name + ".part")
-        val c = URL(r.apkUrl).openConnection() as HttpURLConnection // GitHub redirects to its file host (https)
-        c.connectTimeout = 15_000
-        c.readTimeout = 60_000
-        c.setRequestProperty("User-Agent", "TiinyRemote")
-        try {
-            if (c.responseCode !in 200..299) throw IllegalStateException("The download answered HTTP ${c.responseCode}")
-            val total = c.contentLengthLong.takeIf { it > 0 } ?: r.sizeBytes
-            var done = 0L
-            c.inputStream.use { input ->
-                tmp.outputStream().use { o ->
-                    val buf = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buf)
-                        if (n < 0) break
-                        done += n
-                        if (done > 300L * 1024 * 1024) throw IllegalStateException("The download is far bigger than the app: stopped.")
-                        o.write(buf, 0, n)
-                        if (total > 0) progress((done * 100 / total).toInt().coerceIn(0, 100))
-                    }
-                }
-            }
-        } finally {
-            c.disconnect()
-        }
-        if (!tmp.renameTo(out)) throw IllegalStateException("Couldn't save the download.")
-        return out
-    }
-
-    /** Android asks once whether Tiiny Remote may install apps; until then this opens that setting. */
-    fun canInstall(ctx: Context) = Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ctx.packageManager.canRequestPackageInstalls()
-
-    fun openInstallPermission(ctx: Context) {
-        ctx.startActivity(
-            Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-    }
-
-    /** Hands the downloaded .apk to Android's installer, which shows what it installs and asks you. */
-    fun install(ctx: Context, apk: File) {
-        val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", apk)
-        ctx.startActivity(
-            Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+    /**
+     * Opens the release's .apk in the browser, which downloads it; you install it by opening the download. The app
+     * doesn't install apps itself: that permission makes Play Protect warn about the app.
+     */
+    fun openDownload(ctx: Context, r: AppRelease) {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(r.apkUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     /** Settings → "Check for updates once a day": a daily check while there's internet, or none. */
