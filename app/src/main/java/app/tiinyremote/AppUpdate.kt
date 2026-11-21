@@ -55,15 +55,44 @@ object AppUpdate {
         c.setRequestProperty("Accept", "application/vnd.github+json")
         c.setRequestProperty("User-Agent", "TiinyRemote")
         try {
-            if (c.responseCode !in 200..299) throw IllegalStateException("GitHub answered HTTP ${c.responseCode}")
+            if (c.responseCode !in 200..299) {
+                // GitHub says why (e.g. "API rate limit exceeded"): keep its reason, not just the number.
+                val why = try {
+                    JSONObject(c.errorStream?.use { it.readBytes().toString(Charsets.UTF_8) } ?: "").optString("message")
+                } catch (e: Exception) {
+                    ""
+                }
+                throw IllegalStateException("GitHub answered HTTP ${c.responseCode}" + if (why.isNotBlank()) ": ${why.take(120)}" else "")
+            }
             return c.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
         } finally {
             c.disconnect()
         }
     }
 
-    /** The newest release for this app's channel, or null if there's none. */
-    fun latest(ctx: Context): AppRelease? {
+    /**
+     * The newest release for this app's channel, or null if there's none. Asks GitHub's API first; if that refuses
+     * (it allows 60 requests an hour per internet address, often shared with others), reads the public releases feed.
+     */
+    fun latest(ctx: Context): AppRelease? = try {
+        fromApi(ctx)
+    } catch (e: Exception) {
+        ApiLog.add("Update check: GitHub's API refused (${e.message}); using the releases feed instead")
+        fromFeed(ctx)
+    }
+
+    /** From github.com/…/releases.atom: the newest tag of this channel, and its .apk by the name the builds give it. */
+    private fun fromFeed(ctx: Context): AppRelease? {
+        val exp = experimental(ctx)
+        val feed = get("https://github.com/$REPO/releases.atom")
+        val tags = Regex("https://github\\.com/$REPO/releases/tag/([A-Za-z0-9._-]+)").findAll(feed).map { it.groupValues[1] }.distinct()
+        val tag = tags.firstOrNull { if (exp) it.startsWith("exp-") else it.startsWith("v") } ?: return null
+        val version = tag.removePrefix("exp-").removePrefix("v")
+        val apk = (if (exp) "TiinyRemoteExp-" else "TiinyRemote-") + version + ".apk"
+        return AppRelease(version, "https://github.com/$REPO/releases/download/$tag/$apk", "https://github.com/$REPO/releases/tag/$tag", 0)
+    }
+
+    private fun fromApi(ctx: Context): AppRelease? {
         val exp = experimental(ctx)
         val list = if (exp) JSONArray(get("https://api.github.com/repos/$REPO/releases?per_page=30"))
         else JSONArray().put(JSONObject(get("https://api.github.com/repos/$REPO/releases/latest")))
