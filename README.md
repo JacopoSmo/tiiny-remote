@@ -20,6 +20,10 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
   songs, video, 3D models, text embedding, reranking and classification, laid out like Tiiny Studio. Results are
   kept under Creations and can be saved to the phone or shared.
 - **Unlock:** after a restart the app unlocks the Tiiny with its password (or through the NAS over SSH).
+- **Tiiny power:** Restart and Power off from Settings (to switch it on again, press the Tiiny's power button).
+  NPU faults the Tiiny reports (e.g. a PCIe transfer timeout) are logged and shown in the status panel.
+- **App updates:** Check for updates and Update app in Settings (the browser downloads the new version; open it to
+  install), plus an optional daily check with a notification.
 - **VPN:** one-tap and automatic WireGuard switching (on away from home, off at home).
 - **Activity:** one colour-coded log with filters and Share (secrets removed).
 - **Display:** a compact layout for square screens (e.g. Unihertz Titan 2), sizes (menus and dialogs included),
@@ -52,7 +56,8 @@ and the NAS login for the SSH unlock fallback.
 - Pages the chat opens can only be on the public internet, never on your home network, and only addresses from
   the chat's own search results or that you typed: a web page can't make the model send your chat elsewhere.
 - Only web links (http/https) can be tapped in answers and sources.
-- The shared log leaves out emails, keys, tokens, passwords, account names and the device's serial number, and
+- The shared log leaves out emails, keys, tokens, passwords, account names, and what identifies the device (serial
+  number, device ID, its name, MAC addresses), and
   never contains your content (chat answers, text read from documents, transcripts): only its size.
 - "Done" notifications show only "Tiiny Remote: a job is done" on the lock screen; their text appears once unlocked.
 - Cancelling a download asks first and never deletes an installed model.
