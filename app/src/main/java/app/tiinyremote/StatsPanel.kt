@@ -154,7 +154,7 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
                     shadowElevation = 8.dp,
                     modifier = Modifier.width(width).heightIn(max = (conf.screenHeightDp * 0.85f).dp),
                 ) {
-                    StatsPanel(s, vm, st, studio, close)
+                    AppScale { StatsPanel(s, vm, st, studio, close) }
                 }
             }
         }

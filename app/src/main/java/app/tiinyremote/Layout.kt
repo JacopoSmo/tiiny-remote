@@ -97,6 +97,53 @@ fun tags(words: List<String>): String =
 
 val LocalUi = compositionLocalOf { UiPrefs() }
 
+/**
+ * The app's own scale (Settings → Size of everything, Text size). Android draws dialogs, menus and pop-ups in windows
+ * of their own at its default scale, so they get it handed on through these wrappers.
+ */
+val LocalAppDensity = compositionLocalOf<androidx.compose.ui.unit.Density?> { null }
+
+/** Applies the app's scale inside a dialog, menu or pop-up. */
+@Composable
+fun AppScale(content: @Composable () -> Unit) {
+    val d = LocalAppDensity.current
+    if (d == null) content() else androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides d, content = content)
+}
+
+/** AlertDialog at the app's scale. */
+@Composable
+fun ScaledAlertDialog(
+    onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissButton: (@Composable () -> Unit)? = null,
+    icon: (@Composable () -> Unit)? = null,
+    title: (@Composable () -> Unit)? = null,
+    text: (@Composable () -> Unit)? = null,
+    properties: DialogProperties = DialogProperties(),
+) = androidx.compose.material3.AlertDialog(
+    onDismissRequest = onDismissRequest,
+    confirmButton = { AppScale(confirmButton) },
+    modifier = modifier,
+    dismissButton = dismissButton?.let { b -> { AppScale(b) } },
+    icon = icon?.let { i -> { AppScale(i) } },
+    title = title?.let { t -> { AppScale(t) } },
+    text = text?.let { t -> { AppScale(t) } },
+    properties = properties,
+)
+
+/** DropdownMenu at the app's scale. */
+@Composable
+fun ScaledDropdownMenu(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) = androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, modifier = modifier) {
+    val scope = this
+    AppScale { scope.content() }
+}
+
 /** Screen layouts the user can pick in Settings → Display. */
 val LAYOUTS = listOf(
     "auto" to "Auto (from the screen's shape)",

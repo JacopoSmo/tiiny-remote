@@ -185,7 +185,7 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Se
     info?.let { m -> StoreInfoDialog(m) { info = null } }
     confirm?.let { m ->
         val tight = freeGb != null && m.sizeBytes / 1e9 > freeGb - 5
-        AlertDialog(
+        ScaledAlertDialog(
             onDismissRequest = { confirm = null },
             title = { Text("Download ${m.name}?") },
             text = {
@@ -204,7 +204,7 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Se
 /** "About this model" for a store model. */
 @Composable
 private fun StoreInfoDialog(m: StoreModel, onClose: () -> Unit) {
-    AlertDialog(
+    ScaledAlertDialog(
         onDismissRequest = onClose,
         title = { Text(m.name) },
         text = {

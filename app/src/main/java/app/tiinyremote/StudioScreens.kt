@@ -345,7 +345,7 @@ private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open:
  */
 @Composable
 private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String, onDismiss: () -> Unit, onPick: (ModelInfo) -> Unit) {
-    DropdownMenu(
+    ScaledDropdownMenu(
         expanded = open,
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(min = 220.dp, max = 330.dp).heightIn(max = 460.dp),
@@ -1275,15 +1275,15 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                             if (web && hasSearx) sign("Web search") else null,
                         ).joinToString("").ifEmpty { "⋯" } + " ▾")
                     }
-                    DropdownMenu(expanded = options, onDismissRequest = { options = false }) {
+                    ScaledDropdownMenu(expanded = options, onDismissRequest = { options = false }) {
                         DropdownMenuItem(
-                            text = { Text((if (model?.thinks == true && thinking) "☑ " else "☐ ") + tag("Thinking").let { if (model?.alwaysThinks == true) it.replace("Thinking", "Think more") else it }) },
+                            text = { Text((if (model?.thinks == true && thinking) "☑ " else "☐ ") + if (model?.alwaysThinks == true) "Think more" else "Thinking") },
                             enabled = model?.thinks == true,
                             onClick = { thinking = !thinking },
                         )
-                        DropdownMenuItem(text = { Text((if (canMake) "☑ " else "☐ ") + tag("Can make things")) }, onClick = { canMake = !canMake })
+                        DropdownMenuItem(text = { Text((if (canMake) "☑ " else "☐ ") + "Can make things") }, onClick = { canMake = !canMake })
                         DropdownMenuItem(
-                            text = { Text((if (web && hasSearx) "☑ " else "☐ ") + tag("Web search")) },
+                            text = { Text((if (web && hasSearx) "☑ " else "☐ ") + "Web search") },
                             enabled = hasSearx,
                             onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") },
                         )
@@ -1301,12 +1301,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 selected = thinks && thinking,
                 onClick = { thinking = !thinking },
                 enabled = thinks,
-                label = { Text(tag("Thinking").let { if (model?.alwaysThinks == true) it.replace("Thinking", "Thinking: ${if (thinking) "more" else "less"}") else it }) },
+                label = { Text(if (model?.alwaysThinks == true) "Thinking: ${if (thinking) "more" else "less"}" else "Thinking") },
             )
             Spacer(Modifier.width(8.dp))
-            FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text(tag("Can make things")) })
+            FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text("Can make things") })
             Spacer(Modifier.width(8.dp))
-            FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { Text(tag("Web search")) })
+            FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { Text("Web search") })
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = { st.newChat() }, enabled = msgs.isNotEmpty()) { Text("New chat") }
         }

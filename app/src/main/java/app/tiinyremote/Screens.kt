@@ -256,8 +256,10 @@ fun AppRoot(vm: MainViewModel) {
         scope.launch { drawer.close() }
     }
 
+    val appDensity = Density(base.density * uiScale, base.fontScale * textScale)
     CompositionLocalProvider(
-        LocalDensity provides Density(base.density * uiScale, base.fontScale * textScale),
+        LocalDensity provides appDensity,
+        LocalAppDensity provides appDensity,
         LocalUi provides UiPrefs(compact = compact, enterSends = s.settings.enterSends, labels = s.settings.labels),
     ) {
         ModalNavigationDrawer(
@@ -299,7 +301,7 @@ fun AppRoot(vm: MainViewModel) {
                                     onClick = { st.selectChat(c.id); go(2) },
                                     modifier = Modifier.padding(horizontal = 8.dp),
                                 )
-                                DropdownMenu(expanded = chatMenu?.id == c.id, onDismissRequest = { chatMenu = null }) {
+                                ScaledDropdownMenu(expanded = chatMenu?.id == c.id, onDismissRequest = { chatMenu = null }) {
                                     DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Edit, null) }, onClick = { renaming = c; chatMenu = null })
                                     DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { st.deleteChat(c.id); chatMenu = null })
                                 }
@@ -373,7 +375,7 @@ fun AppRoot(vm: MainViewModel) {
 
     renaming?.let { c ->
         var name by remember(c.id) { mutableStateOf(c.title) }
-        AlertDialog(
+        ScaledAlertDialog(
             onDismissRequest = { renaming = null },
             title = { Text("Rename chat") },
             text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true) },
@@ -385,7 +387,7 @@ fun AppRoot(vm: MainViewModel) {
     s.swap?.let { sw ->
         val victim = sw.plan.candidateName ?: "another model"
         val victimNpu = sw.plan.candidateNpu?.let { " (${pct(it)})" } ?: ""
-        AlertDialog(
+        ScaledAlertDialog(
             onDismissRequest = { vm.cancelSwap() },
             title = { Text("Not enough NPU room") },
             text = {
@@ -577,7 +579,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                             onClick = { typesOpen = true },
                             label = { Text(if (typeSel.isEmpty()) "Types ▾" else "Types ${typeSel.size} ▾") },
                         )
-                        DropdownMenu(expanded = typesOpen, onDismissRequest = { typesOpen = false }, modifier = Modifier.heightIn(max = 460.dp)) {
+                        ScaledDropdownMenu(expanded = typesOpen, onDismissRequest = { typesOpen = false }, modifier = Modifier.heightIn(max = 460.dp)) {
                             DropdownMenuItem(
                                 text = { Text((if (typeSel.isEmpty()) "● " else "○ ") + "All types") },
                                 onClick = { typeSel = emptySet(); prefs.edit().putStringSet("types", typeSel).apply() },
@@ -653,7 +655,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                         )
                         Box {
                             TextButton(onClick = { sortOpen = true }) { Text("Sort: ${SORTS.first { it.first == sort }.second} ▾") }
-                            DropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
+                            ScaledDropdownMenu(expanded = sortOpen, onDismissRequest = { sortOpen = false }) {
                                 for ((k, l) in SORTS) DropdownMenuItem(
                                     text = { Text((if (k == sort) "● " else "○ ") + l) },
                                     onClick = {
@@ -696,7 +698,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
         }
     }
     deleteM?.let { m ->
-        AlertDialog(
+        ScaledAlertDialog(
             onDismissRequest = { deleteM = null },
             title = { Text("Delete ${m.name}?") },
             text = {
@@ -712,7 +714,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
     info?.let { m -> ModelInfoDialog(m) { info = null } }
     renameM?.let { m ->
         var name by remember(m.id) { mutableStateOf(m.name) }
-        AlertDialog(
+        ScaledAlertDialog(
             onDismissRequest = { renameM = null },
             title = { Text("Rename model") },
             text = {
@@ -755,7 +757,7 @@ fun MoeBadge() {
 @Composable
 private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
     val full = m.fullName.ifBlank { m.name }
-    AlertDialog(
+    ScaledAlertDialog(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
@@ -1046,7 +1048,7 @@ private fun SettingDropdown(label: String, options: List<Pair<String, String>>, 
         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
             Text("$label: ${options.firstOrNull { it.first == selected }?.second ?: selected}  ▾", maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        ScaledDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             for ((v, l) in options) DropdownMenuItem(text = { Text(l) }, onClick = { onSelect(v); open = false })
         }
     }
@@ -1071,7 +1073,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         Icons.Filled.Lock to "Unlock the Tiiny",
         Icons.Filled.Settings to "Open Settings",
     )
-    AlertDialog(
+    ScaledAlertDialog(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
@@ -1120,7 +1122,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
 /** The ⓘ beside the speed test: dense vs. mixture-of-experts models, and which to use for what. */
 @Composable
 private fun ModelChoiceInfo(onClose: () -> Unit) {
-    AlertDialog(
+    ScaledAlertDialog(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),

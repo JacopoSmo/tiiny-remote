@@ -110,7 +110,7 @@ private fun Dropdown(label: String, options: List<Pair<String, String>>, selecte
         OutlinedButton(onClick = { open = true }) {
             Text("$label: ${options.firstOrNull { it.first == selected }?.second ?: selected.ifBlank { "Auto" }}  ▾")
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        ScaledDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             for ((v, l) in options) DropdownMenuItem(text = { Text(l) }, onClick = { onSelect(v); open = false })
         }
     }
