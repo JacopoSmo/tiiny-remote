@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Lets the app switch WireGuard tunnels on and off (granted by you, once). -->
     <uses-permission android:name="com.wireguard.android.permission.CONTROL_TUNNELS" />
+    <!-- Optional (Settings): keep working while the app is in the background, and say when a job is done. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <package android:name="com.wireguard.android" />
@@ -30,6 +34,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Runs only while a job, chat answer or download is going on, and only if you turned it on in Settings. -->
+        <service
+            android:name=".WorkService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

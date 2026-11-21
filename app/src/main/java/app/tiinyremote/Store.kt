@@ -42,6 +42,10 @@ data class AppSettings(
     val enterSends: Boolean = true,
     /** A small, fast chat model kept loaded beside the main one: summarises pages, names and condenses chats, runs the helpers. */
     val helperModel: String = "",
+    /** Keep working while the app is in the background (a foreground service while a job runs). */
+    val keepRunning: Boolean = false,
+    /** A notification when a job, chat answer, speed test or download finishes while the app isn't on screen. */
+    val notifyDone: Boolean = false,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -75,6 +79,8 @@ class Store(context: Context) {
         textScale = prefs.getString("text_scale", "1.0") ?: "1.0",
         enterSends = prefs.getBoolean("enter_sends", true),
         helperModel = prefs.getString("helper_model", "") ?: "",
+        keepRunning = prefs.getBoolean("keep_running", false),
+        notifyDone = prefs.getBoolean("notify_done", false),
     )
 
     fun save(s: AppSettings) {
@@ -99,6 +105,8 @@ class Store(context: Context) {
             .putString("text_scale", s.textScale)
             .putBoolean("enter_sends", s.enterSends)
             .putString("helper_model", s.helperModel)
+            .putBoolean("keep_running", s.keepRunning)
+            .putBoolean("notify_done", s.notifyDone)
             .apply()
     }
 

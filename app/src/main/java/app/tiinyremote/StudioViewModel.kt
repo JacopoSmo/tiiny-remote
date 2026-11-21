@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -226,12 +227,14 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val entry = withContext(Dispatchers.IO) { block(client(), store, progress, rj).also { store.add(it) } }
                 _results.value = store.all()
                 _job.value = JobUi(tool, false, "Done", 100, null, entry)
+                Notifier.done(getApplication(), "${toolTitle(tool)} is ready", "It's in Creations in Tiiny Remote.")
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 // Out of memory (a huge picture or file) ends this job, not the app.
                 val msg = if (e is OutOfMemoryError) "Not enough memory on the phone for this. Try a smaller file or size." else e.message ?: e.toString()
                 ApiLog.add("$tool failed: $msg", "Create")
                 _job.value = JobUi(tool, false, error = msg)
+                if (!cancelled.get()) Notifier.done(getApplication(), "${toolTitle(tool)} failed", msg)
             } finally {
                 deviceBusy.set(false)
             }
@@ -947,6 +950,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _speed.value = out
                 ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
+                Notifier.done(getApplication(), "Speed test finished", out)
             } catch (e: Exception) {
                 _speed.value = "Speed test failed: ${e.message}"
                 ApiLog.add("Speed test failed: ${e.message}", "Chat")
@@ -958,13 +962,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Whether the helper should condense pages for this chat model: only when the speed test measured it clearly
-     * faster (by 20%). A helper as fast as the chat model would only add waiting; the chat model then reads the pages
+     * faster (by 15%). A helper as fast as the chat model would only add waiting; the chat model then reads the pages
      * itself. Before any speed test, pages are condensed.
      */
     private fun helperCondensesPages(helper: String, chatModel: String): Boolean {
         val h = prefs.getFloat("speed_$helper", 0f)
         val m = prefs.getFloat("speed_$chatModel", 0f)
-        return h <= 0f || m <= 0f || h >= m * 1.2f
+        return h <= 0f || m <= 0f || h >= m * 1.15f
     }
 
     /** The fast helper model chosen in Settings, when it's loaded and isn't the chat model itself (never swapped in for this). */
@@ -1134,17 +1138,40 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
+                if (!chatStop.get()) {
+                    val title = _chatList.value.firstOrNull { it.id == id }?.title ?: "Chat"
+                    val answer = _all.value[id]?.lastOrNull()?.text.orEmpty().replace(Regex("\\s+"), " ").take(160)
+                    Notifier.done(getApplication(), "Answered: $title", answer.ifBlank { "The answer is ready." })
+                }
             } catch (e: Exception) {
                 upd(id) { list ->
                     val last = list.lastOrNull() ?: return@upd list
                     list.dropLast(1) + last.copy(text = last.text + (if (last.text.isEmpty()) "" else "\n\n") + "Error: ${e.message}")
                 }
+                Notifier.done(getApplication(), "The chat answer failed", e.message ?: "Something went wrong.")
             } finally {
                 setStatus(id, "")
                 _busyChats.update { it - id }
                 stops.remove(id)
                 if (_all.value.containsKey(id)) saveChat(id)
             }
+        }
+    }
+
+    // ---------- working in the background ----------
+
+    /** Tells Background what's going on here, so it can keep the app working while it's in the background. */
+    init {
+        viewModelScope.launch {
+            combine(_job, _busyChats, _speed, _helper) { job, chats, speed, helper ->
+                when {
+                    job?.running == true -> "${toolTitle(job.tool)} on the Tiiny"
+                    speed?.startsWith("Testing") == true -> "Speed test"
+                    chats.isNotEmpty() -> "Answering in the chat"
+                    helper != null -> helper
+                    else -> null
+                }
+            }.distinctUntilChanged().collect { Background.set(getApplication(), "studio", it) }
         }
     }
 }

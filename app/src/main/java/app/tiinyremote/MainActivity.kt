@@ -21,6 +21,16 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
+    override fun onStart() {
+        super.onStart()
+        Background.visible = true
+    }
+
+    override fun onStop() {
+        Background.visible = false
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Check the Tiiny only while the app is on screen; stops in the background to save battery.

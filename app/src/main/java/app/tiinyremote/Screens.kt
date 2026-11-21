@@ -18,6 +18,8 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.filled.List
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material3.Surface
@@ -356,7 +358,7 @@ fun AppRoot(vm: MainViewModel) {
                         .imePadding()
                         .fillMaxSize()
                 ) {
-                    if (s.settings.tiinyConfigured) StatsStrip(s, vm)
+                    if (s.settings.tiinyConfigured) StatsStrip(s, vm, st)
                     Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
                         0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
                         1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openChat = { goTab(2) })
@@ -494,6 +496,7 @@ private val FILTERS = listOf<Triple<String, String, (ModelInfo) -> Boolean>>(
     Triple("makes", "Makes things", { it.makesThings }),
     Triple("sees", "Sees images", { it.isChat && it.seesImages }),
     Triple("thinks", "Thinks", { it.thinks }),
+    Triple("moe", "Mixture of experts", { it.isMoE }),
 )
 
 private val SORTS = listOf("name" to "Name", "type" to "Type", "npu" to "NPU load")
@@ -729,12 +732,39 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
     }
 }
 
-/** "About this model", as in Tiiny Studio: the model's own description plus what the Tiiny says about it. */
+/** A small "MoE" tag beside a mixture-of-experts model's name. */
+@Composable
+fun MoeBadge() {
+    Text(
+        "MoE",
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onTertiaryContainer,
+        maxLines = 1,
+        modifier = Modifier
+            .padding(start = 6.dp)
+            .background(MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}
+
+/**
+ * "About this model", as in Tiiny Studio: the model's own description plus what the Tiiny says about it. As wide as
+ * the screen allows (up to 640 dp), so square and narrow screens both get a readable box, and a title that fits.
+ */
 @Composable
 private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
+    val full = m.fullName.ifBlank { m.name }
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text(m.fullName.ifBlank { m.name }) },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
+        title = {
+            Column {
+                Text(full.substringAfterLast('/'), style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if ('/' in full) Text(full.substringBeforeLast('/'), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (m.fullName.isNotBlank() && m.fullName != m.name) {
@@ -752,6 +782,8 @@ private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
                     m.input.takeIf { it.isNotBlank() }?.let { "Input" to it.replace(",", ", ") },
                     m.supported.takeIf { it.isNotEmpty() }?.let { "Supports" to it.joinToString(", ") },
                     m.abilities.takeIf { it.isNotEmpty() }?.let { "In this app" to it.joinToString(" · ") },
+                    if (m.isMoE) "Architecture" to "Mixture of experts" + (m.activeParams?.let { ": about $it active per word" } ?: "") +
+                        ", so it writes much faster than a dense model of its size" else null,
                     m.npuUsage?.let { "NPU" to "${pct(it)} of the NPU when loaded" },
                     m.loadTimeSec?.let { "Loading" to "about ${fmtSec(it)}" },
                     if (m.thinks) "Thinking" to (if (m.alwaysThinks) "always reasons (effort adjustable)" else "can be switched on and off") else null,
@@ -793,6 +825,7 @@ private fun ModelCard(
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(m.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                    if (m.isMoE) MoeBadge()
                     IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
@@ -1017,11 +1050,58 @@ private fun SettingDropdown(label: String, options: List<Pair<String, String>>, 
     }
 }
 
+/** The ⓘ beside the speed test: dense vs. mixture-of-experts models, and which to use for what. */
+@Composable
+private fun ModelChoiceInfo(onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
+        title = { Text("Which model for what?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Two kinds of chat models", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Dense, like Qwen3.8-27B: uses all its 27 billion parameters for every word. Usually more careful on " +
+                        "hard reasoning, but on the Tiiny it writes only about 10 tokens (word pieces) per second.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Mixture of experts (MoE), like the 35B-A3B models or gpt-oss-20b: holds 20–35 billion parameters " +
+                        "but uses only about 3–4 billion per word (\"A3B\" = 3 billion active). It knows about as much, " +
+                        "writes 2–2.5× faster (about 23 tokens per second on your Tiiny), but can be less thorough on long, " +
+                        "tricky reasoning. Marked \"MoE\" in Models, with a filter of its own.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text("How to use them", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "• Everyday chat, web search, summaries, quick drafts: an A3B model.\n" +
+                        "• Hard problems, careful writing, analysis you want double-checked: the dense 27B.\n" +
+                        "• Helper: a fast, small MoE like gpt-oss-20b (27% NPU). It names chats and condenses long ones. " +
+                        "It condenses web pages only when it's at least 15% faster than the chat model: yes beside the " +
+                        "27B, no beside an A3B (equally fast), which then reads the pages itself.\n" +
+                        "• Both pairs fit: A3B + gpt-oss about 75%, 27B + gpt-oss about 86% of the NPU.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text("The speed test", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Times each model alone, both at the same time, and the helper twice at once, and remembers the " +
+                        "speeds for the page decision. Run it once for each main model you pair with the helper. Two " +
+                        "different models at once usually finish 10–20% sooner; the same model twice brings nothing, " +
+                        "because the Tiiny takes its requests in turn.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
+}
+
 @Composable
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1062,6 +1142,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         textScale = cur.textScale,
         enterSends = cur.enterSends,
         helperModel = helper,
+        keepRunning = cur.keepRunning,
+        notifyDone = cur.notifyDone,
     )
 
     Column(
@@ -1152,6 +1234,48 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         searxTest?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("In the background", style = MaterialTheme.typography.titleMedium)
+        val ctx = LocalContext.current
+        // Android 13+ asks before an app may show notifications: asked when you turn either option on.
+        val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        fun askIfNeeded() {
+            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Keep working in the background", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "While a tool job, chat answer, speed test or download is going on, the app keeps working when you " +
+                        "switch away or lock the phone, with a quiet notification. It stops by itself when done.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = cur.keepRunning, onCheckedChange = {
+                vm.setDisplay(cur.copy(keepRunning = it))
+                if (it) askIfNeeded()
+                Background.refresh(ctx)
+            })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Notify when a job is done", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "A notification when a creation, chat answer, speed test or model download finishes while the app " +
+                        "isn't on screen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = cur.notifyDone, onCheckedChange = {
+                vm.setDisplay(cur.copy(notifyDone = it))
+                if (it) askIfNeeded()
+            })
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Fast helper model", style = MaterialTheme.typography.titleMedium)
         val chatModels = s.models.filter { it.isChat }
         SettingDropdown(
@@ -1162,8 +1286,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         Text(
             "A quick chat model kept loaded beside your main one. While it's loaded it names new chats (while the main model " +
                 "answers), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
-                "only when the speed test found it clearly faster than the chat model; otherwise the chat model reads them " +
-                "itself. It's never swapped in: when it isn't loaded, the chat model does everything. Save to use it.",
+                "only when the speed test found it at least 15% faster than the chat model; otherwise the chat model reads " +
+                "them itself. It's never swapped in: when it isn't loaded, the chat model does everything. Save to use it.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1171,10 +1295,18 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val small = chatModels.firstOrNull { it.id == helper && it.running }
         val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
             ?: chatModels.firstOrNull { it.running && it.id != helper }
-        OutlinedButton(
-            onClick = { if (big != null && small != null) st.speedTest(big, small) },
-            enabled = big != null && small != null && speed?.startsWith("Testing") != true,
-        ) { Text("Speed test: one at a time or both at once?") }
+        var speedInfo by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = { if (big != null && small != null) st.speedTest(big, small) },
+                enabled = big != null && small != null && speed?.startsWith("Testing") != true,
+                modifier = Modifier.weight(1f),
+            ) { Text("Speed test: one at a time or both at once?") }
+            IconButton(onClick = { speedInfo = true }) {
+                Icon(Icons.Filled.Info, contentDescription = "Which models to use, and why", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (speedInfo) ModelChoiceInfo { speedInfo = false }
         Text(
             when {
                 helper.isBlank() -> "Choose a helper first."

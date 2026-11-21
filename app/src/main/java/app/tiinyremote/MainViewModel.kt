@@ -528,6 +528,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _state.update { it.copy(downloads = now) }
+        val active = now.count { !it.paused }
+        Background.set(getApplication(), "downloads", if (active > 0) "Downloading ${if (active == 1) "a model" else "$active models"}" else null)
         val gone = before - now.map { it.id }.toSet()
         if (gone.isNotEmpty()) {
             refresh()
@@ -537,6 +539,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (finished.isEmpty()) return
             val names = finished.map { id -> _state.value.store?.firstOrNull { it.id == id }?.name ?: id.substringAfterLast('/') }
             toast("Downloaded: ${names.joinToString(", ")}")
+            Notifier.done(getApplication(), "Download finished", names.joinToString(", "))
             ApiLog.add("Download finished: ${finished.joinToString(", ")}", "Models")
         }
     }
@@ -579,6 +582,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteModel(m: ModelInfo) = modelAction("Delete", m.id, "Deleted ${m.name} from the Tiiny") { this.delete(m.id) }
 
     /** Runs beside the polling: follows downloads every 5 s while there are any (or just after one was started). */
+    init {
+        // With "Keep working in the background" on, downloads are still followed while the app is away (the loop
+        // below runs only while it's on screen), so the finish is noticed and notified.
+        viewModelScope.launch {
+            while (true) {
+                delay(15_000)
+                val s = _state.value
+                if (!Background.visible && s.settings.keepRunning && s.downloads.any { !it.paused }) readDownloads()
+            }
+        }
+    }
+
     suspend fun downloadLoop() {
         while (true) {
             val s = _state.value

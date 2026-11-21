@@ -10,6 +10,9 @@ class TiinyException(val kind: Kind, message: String) : Exception(message) {
     enum class Kind { LOCKED, UNAUTHORIZED, UNREACHABLE, NOT_FOUND, HTTP }
 }
 
+private val moeName = Regex("(?i)-A(\\d+(?:\\.\\d+)?)B(?![a-z])")
+private val moeDesc = Regex("(?i)mixture[- ]of[- ]experts|\\bMoE\\b")
+
 data class ModelInfo(
     val id: String,
     val name: String,
@@ -52,6 +55,18 @@ data class ModelInfo(
             if (makesThings) "Makes things" else null,
             if (seesImages) "Sees images" else null,
         )
+
+    /**
+     * A mixture of experts: holds many parameters but uses only a few for each word ("A3B" = about 3 billion active),
+     * so it writes much faster than a dense model of the same size. Known from the name (…-A3B, gpt-oss) or the
+     * description.
+     */
+    val isMoE: Boolean
+        get() = moeName.containsMatchIn(id) || id.contains("gpt-oss", true) || moeDesc.containsMatchIn(desc)
+
+    /** "3B" for a …-35B-A3B model, when the name says how many parameters are active per word. */
+    val activeParams: String?
+        get() = moeName.find(id)?.groupValues?.get(1)?.let { "${it}B" } ?: if (id.contains("gpt-oss", true)) "~4B" else null
 
     val isChat get() = type == "Text Generation" || type == "Image-Text-to-Text"
     val seesImages get() = type == "Image-Text-to-Text" || input.contains("Image")

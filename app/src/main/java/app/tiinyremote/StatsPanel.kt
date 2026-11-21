@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
@@ -45,11 +46,22 @@ fun loadColor(v: Double?): Color = when {
 }
 
 /**
+ * Which loaded chat model is the main one and which the fast helper (Settings): the helper is the chosen one when it's
+ * loaded beside another chat model; the main one is the chat's pick, else the other loaded chat model.
+ */
+internal fun chatRoles(s: UiState, studio: StudioViewModel): Pair<ModelInfo?, ModelInfo?> {
+    val chats = s.models.filter { it.running && it.isChat }
+    val helper = chats.firstOrNull { it.id == s.settings.helperModel }
+    val main = chats.firstOrNull { it.id == studio.pick("chat") && it != helper } ?: chats.firstOrNull { it != helper }
+    return if (main == null) helper to null else main to helper
+}
+
+/**
  * A slim strip under the top bar with the live numbers: NPU and CPU load (colour-coded), board power and the hottest
  * temperature. Tap it for the full panel.
  */
 @Composable
-fun StatsStrip(s: UiState, vm: MainViewModel) {
+fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
     val stats by vm.stats.collectAsState()
     var open by remember { mutableStateOf(false) }
     val st = stats
@@ -79,7 +91,11 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
                     fontWeight = FontWeight.Bold,
                     color = hue,
                 )
-                if (online) Text("$loaded loaded", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (online) {
+                    // With a helper chosen in Settings: whether it's at work beside a main model.
+                    val helperState = if (s.settings.helperModel.isBlank()) "" else if (chatRoles(s, studio).second != null) " · helper on" else " · helper off"
+                    Text("$loaded loaded$helperState", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
             }
             if (!online) {
                 Text("Tap for details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -113,7 +129,7 @@ fun StatsStrip(s: UiState, vm: MainViewModel) {
             Text(if (open) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false; vm.statsPanel(false) }) {
-            StatsPanel(s, vm, st)
+            StatsPanel(s, vm, st, studio)
         }
     }
 }
@@ -141,7 +157,7 @@ private fun Meter(label: String, v: Double?, modifier: Modifier, sub: String) {
 
 /** The full panel: NPU memory per loaded model, live activity, temperatures and storage. */
 @Composable
-private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
+private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: StudioViewModel) {
     val running = s.models.filter { it.running }
     val used = running.sumOf { it.npuUsage ?: 0.0 }
             Column(Modifier.width(330.dp).padding(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -173,13 +189,37 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
                         }
                         LinearProgressIndicator(progress = { (used / 100).toFloat().coerceIn(0f, 1f) }, color = loadColor(used), modifier = Modifier.fillMaxWidth())
                         if (running.isEmpty()) Text("Nothing loaded", style = MaterialTheme.typography.bodySmall)
+                        val (main, helper) = chatRoles(s, studio)
                         for (m in running) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(m.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, modifier = Modifier.weight(1f))
+                                Column(Modifier.weight(1f)) {
+                                    // The short name on one line: "org/" alone used to fill the row.
+                                    Text(m.name.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    val role = when (m) {
+                                        helper -> "Helper"
+                                        main -> if (helper != null) "Main chat model" else null
+                                        else -> null
+                                    }
+                                    if (role != null || m.isMoE) Text(
+                                        listOfNotNull(role, if (m.isMoE) "MoE" else null).joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
                                 Text(fmt(m.npuUsage, "%", 1), style = MaterialTheme.typography.labelMedium)
                                 TextButton(onClick = { vm.unload(m) }, enabled = m.id !in s.working) { BtnLabel("Unload", symbol = "■") }
                             }
                         }
+                        val chosen = s.settings.helperModel
+                        val helperLine = when {
+                            helper != null -> "Helper active: ${helper.name.substringAfterLast('/')} names chats and condenses long ones (and web pages when it's at least 15% faster)."
+                            chosen.isNotBlank() && running.any { it.id == chosen } -> "Helper loaded, but no other chat model: it works as the main model."
+                            chosen.isNotBlank() -> "Helper not active: ${s.models.firstOrNull { it.id == chosen }?.name?.substringAfterLast('/') ?: "it"} isn't loaded, so the chat model does everything."
+                            running.count { it.isChat } > 1 -> "Two chat models loaded, but no helper chosen (Settings → Fast helper model)."
+                            else -> null
+                        }
+                        if (helperLine != null) Text(helperLine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -194,13 +234,18 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
                         val mu = st?.npuMemUsedMb
                         val mt = st?.npuMemTotalMb
                         val memGb = if (mu != null && mt != null) "${Math.round(mu / 1024)} / ${Math.round(mt / 1024)} GB" else "—"
+                        // Short values in pairs, so nothing wraps or gets cut; power and temperature only when reported.
                         Row {
                             Stat("NPU memory", memGb, Modifier.weight(1f))
-                            Stat("NPU power", fmt(st?.npuPowerW, " W", 1), Modifier.weight(1f))
+                            Stat("CPU", fmt(st?.cpuPct, "%"), Modifier.weight(1f))
                         }
                         Row {
-                            Stat("Hottest sensor", fmt(st?.npuTempC, " °C"), Modifier.weight(1f), hot = (st?.npuTempC ?: 0.0) > 80)
-                            Stat("CPU / RAM", "${fmt(st?.cpuPct, "%")} / " + (st?.ramUsedGb?.let { u -> st?.ramTotalGb?.let { t -> "${gbText(u)} of ${gbText(t)} GB" } } ?: fmt(st?.memPct, "%")), Modifier.weight(1f))
+                            Stat("RAM", st?.ramUsedGb?.let { u -> st?.ramTotalGb?.let { t -> "${gbText(u)} / ${gbText(t)} GB" } } ?: fmt(st?.memPct, "%"), Modifier.weight(1f))
+                            if (st?.npuPowerW != null) Stat("NPU power", fmt(st.npuPowerW, " W", 1), Modifier.weight(1f))
+                            else Spacer(Modifier.weight(1f))
+                        }
+                        if (st?.npuTempC != null) Row {
+                            Stat("Hottest sensor", fmt(st.npuTempC, " °C"), Modifier.weight(1f), hot = st.npuTempC > 80)
                         }
                         val temps = st?.temps.orEmpty()
                         if (temps.isNotEmpty()) {
@@ -230,7 +275,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?) {
                             when {
                                 st == null -> "Reading…"
                                 st.dashboard -> "Live from the on-device dashboard (port 9109) · every 3 s"
-                                else -> "This TiinyOS (0.1.39) doesn't report power or temperature, so they're hidden. NPU memory shows while a model is loaded."
+                                else -> "This TiinyOS doesn't report power or temperature, so they're hidden. NPU memory shows while a model is loaded."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -253,6 +298,8 @@ private fun Stat(label: String, value: String, modifier: Modifier, hot: Boolean 
             value,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
         )
     }
