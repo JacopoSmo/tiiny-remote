@@ -183,9 +183,10 @@ object ApiLog {
         else -> "Device"
     }
 
-    fun add(line: String, type: String? = null) {
+    /** [isProblem] decides the ⚠ when the caller knows better than the wording (e.g. "0 errors" isn't one). */
+    fun add(line: String, type: String? = null, isProblem: Boolean? = null) {
         val text = redact(line)
-        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, problem.containsMatchIn(text), clock.format(java.time.LocalTime.now()))
+        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, isProblem ?: problem.containsMatchIn(text), clock.format(java.time.LocalTime.now()))
         synchronized(this) { _entries.value = (listOf(e) + _entries.value).take(400) }
     }
 

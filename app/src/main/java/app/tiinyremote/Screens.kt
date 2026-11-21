@@ -996,15 +996,15 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
+            // The Tiiny's own request statistics, added to the log as one entry.
+            TextButton(onClick = { vm.logTiinyStats() }, enabled = s.device == DeviceState.ONLINE) { BtnLabel("Tiiny stats", symbol = "📊") }
             TextButton(onClick = { shareLog(ctx, s, shown.takeIf { it.isNotEmpty() }, problems) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
             DangerButton("Clear", onClick = { vm.clearLog() }, icon = androidx.compose.material.icons.Icons.Filled.Clear)
         }
-        if (pickedEntries.isEmpty()) TextButton(onClick = { vm.logTiinyStats() }, enabled = s.device == DeviceState.ONLINE) {
-            BtnLabel("Add the Tiiny's request statistics", symbol = "📊")
-        }
         Text(
             if (pickedEntries.isNotEmpty()) "Tap entries to add or remove them. Share and Copy send only the chosen ones."
-            else "Share sends what's shown, without keys, passwords or email addresses. Long-press an entry to choose just some.",
+            else "Share sends what's shown, without keys, passwords or email addresses. Long-press an entry to choose just some. " +
+                "Tiiny stats adds what the Tiiny itself counted.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

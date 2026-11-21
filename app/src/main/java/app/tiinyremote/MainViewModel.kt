@@ -383,8 +383,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun logTiinyStats() {
         viewModelScope.launch {
             try {
-                val text = withContext(Dispatchers.IO) { TiinyInfo.requestStats(settings) }
-                ApiLog.add(text, "Device")
+                val (text, failures) = withContext(Dispatchers.IO) { TiinyInfo.requestStats(settings) }
+                ApiLog.add(text, "Device", isProblem = failures)
             } catch (e: Exception) {
                 ApiLog.add("Couldn't read the Tiiny's request statistics: ${e.message}", "Device")
             }

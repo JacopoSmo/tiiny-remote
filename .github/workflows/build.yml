@@ -49,5 +49,5 @@ jobs:
           tag_name: v${{ env.APP_VERSION }}
           name: Tiiny Remote ${{ env.APP_VERSION }}
           make_latest: "true"
-          body: Download the .apk below on your phone and open it to install or update.
+          body_path: RELEASE_NOTES.md
           files: TiinyRemote-*.apk

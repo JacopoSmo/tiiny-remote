@@ -245,7 +245,7 @@ object TiinyInfo {
      * The Tiiny's own statistics of the requests it served (/api/v1/sys/performance), as one readable text: totals, the
      * endpoints that had errors (with their HTTP codes), and the slowest. For finding what failed around a fault.
      */
-    fun requestStats(settings: AppSettings): String {
+    fun requestStats(settings: AppSettings): Pair<String, Boolean> {
         val c = DeviceClient(settings.tiinyUrl, settings.apiKey)
         val r = c.request("GET", "/api/v1/sys/performance?limit=200&sort_by=error_count", null, 10, log = false)
         if (!r.ok) throw MediaException(if (r.code == 404) "This TiinyOS has no request statistics." else r.error())
@@ -258,21 +258,31 @@ object TiinyInfo {
             val codes = e.optJSONObject("status_code_counts")?.let { cc ->
                 cc.keys().asSequence().filter { !it.startsWith("2") }.joinToString(", ") { "HTTP $it ×${cc.optInt(it)}" }
             }.orEmpty()
-            val last = e.optString("last_seen_at").takeIf { it.isNotBlank() && it != "null" }?.let { " · last $it" } ?: ""
+            // "2026-11-21T21:26:11.5+00:00" (UTC) → "22:26:11" in the phone's time zone.
+            val last = e.optString("last_seen_at").takeIf { it.isNotBlank() && it != "null" }?.let { t ->
+                " · last " + try {
+                    java.time.OffsetDateTime.parse(t).atZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm:ss", java.util.Locale.ENGLISH))
+                } catch (x: Exception) {
+                    t
+                }
+            } ?: ""
             return "${e.optString("method")} ${e.optString("path")}: ${e.optInt("count")}×" +
-                (if (e.optInt("error_count") > 0) ", ${e.optInt("error_count")} errors" + (if (codes.isNotBlank()) " ($codes)" else "") else "") +
+                (if (e.optInt("error_count") > 0) ", ${e.optInt("error_count")} failed" + (if (codes.isNotBlank()) " ($codes)" else "") else "") +
                 " · typical ${ms(e.optDouble("p50_ms"))}, slowest ${ms(e.optDouble("max_ms"))}$last"
         }
         val withErrors = list.filter { it.optInt("error_count") > 0 }.take(10)
         val slowest = list.sortedByDescending { it.optDouble("p95_ms") }.filter { it !in withErrors }.take(3)
+        val errors = sum.optInt("total_errors")
         return buildString {
-            append("The Tiiny's request statistics (last ${o.optInt("sample_size")} requests): ")
-            append("${sum.optInt("total_requests")} requests, ${sum.optInt("total_errors")} errors")
+            // It counts only what its system service answers itself (status, settings…), not chats or models.
+            append("The Tiiny's request statistics for its system service (status, device info, settings; chats and models aren't counted there): ")
+            append("${sum.optInt("total_requests")} requests, ")
             val total = sum.optInt("total_requests")
-            if (total > 0) append(String.format(java.util.Locale.ROOT, " (%.1f%%)", sum.optInt("total_errors") * 100.0 / total))
+            append(if (errors == 0) "none failed" else "$errors failed" + if (total > 0) String.format(java.util.Locale.ROOT, " (%.1f%%)", errors * 100.0 / total) else "")
             append(".")
-            if (withErrors.isNotEmpty()) append("\nWith errors:\n").append(withErrors.joinToString("\n") { "• " + line(it) })
+            if (withErrors.isNotEmpty()) append("\nFailed requests:\n").append(withErrors.joinToString("\n") { "• " + line(it) })
             if (slowest.isNotEmpty()) append("\nSlowest:\n").append(slowest.joinToString("\n") { "• " + line(it) })
-        }
+        } to (errors > 0)
     }
 }
