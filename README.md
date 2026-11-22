@@ -70,4 +70,4 @@ and the NAS login for the SSH unlock fallback.
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE): free to use, change and share, with no warranty. Not affiliated with Tiiny AI.
+MIT, see [LICENSE](LICENSE): free to use, change and share, with no warranty. An unofficial app for the Tiiny, supported by Tiiny.

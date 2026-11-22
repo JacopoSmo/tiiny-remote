@@ -138,7 +138,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     npuUsed = cat.npuUsed,
                 )
             }
-            autoVpn(reachable = true)
+            if (Background.visible) autoVpn(reachable = true) // switching opens WireGuard: only with the app on screen
+            connectedNote()
         } catch (e: TiinyException) {
             val ds = when (e.kind) {
                 TiinyException.Kind.LOCKED -> DeviceState.LOCKED
@@ -147,9 +148,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 TiinyException.Kind.NOT_FOUND, TiinyException.Kind.HTTP -> DeviceState.ERROR
             }
             _state.update { it.copy(device = ds, deviceMessage = e.message ?: "") }
-            autoVpn(reachable = ds != DeviceState.UNREACHABLE)
+            if (Background.visible) autoVpn(reachable = ds != DeviceState.UNREACHABLE)
             if (ds == DeviceState.LOCKED) maybeAutoUnlock()
+            connectedNote()
         }
+    }
+
+    /** Settings → "Stay connected in the background": the silent notification, with the Tiiny's state in it. */
+    private fun connectedNote() {
+        val s = _state.value
+        val label = if (!s.settings.stayConnected) null else when (s.device) {
+            DeviceState.ONLINE -> "Connected to the Tiiny · " + s.models.count { it.running }.let { if (it == 0) "no model loaded" else "$it loaded" }
+            DeviceState.LOCKED -> "Connected · the Tiiny is locked" + if (s.settings.autoUnlock) ", unlocking" else ""
+            else -> "Connected · the Tiiny isn't reachable right now"
+        }
+        Background.set(app, Background.CONNECTED, label)
     }
 
     private fun maybeAutoUnlock() {
@@ -631,6 +644,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteModel(m: ModelInfo) = modelAction("Delete", m.id, "Deleted ${m.name} from the Tiiny") { this.delete(m.id) }
 
     init {
+        // "Stay connected": while the app is away, the Tiiny is still checked every minute (status, auto-unlock).
+        viewModelScope.launch {
+            while (true) {
+                delay(60_000)
+                if (!Background.visible && settings.stayConnected) refresh()
+            }
+        }
+    }
+
+    init {
         // With "Keep working in the background" on, downloads are still followed while the app is away (the loop
         // below runs only while it's on screen), so the finish is noticed and notified.
         viewModelScope.launch {
@@ -672,6 +695,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDisplay(s: AppSettings) {
         store.save(s)
         _state.update { it.copy(settings = s) }
+    }
+
+    /** Settings → "Stay connected in the background": saved, and the notification shown or removed at once. */
+    fun setStayConnected(on: Boolean) {
+        setDisplay(settings.copy(stayConnected = on))
+        connectedNote()
     }
 
     fun saveSettings(s: AppSettings) {

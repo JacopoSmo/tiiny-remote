@@ -10,6 +10,7 @@
     <!-- Optional (Settings): keep working while the app is in the background, and say when a job is done. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Automations: your calendar, read-only and only after you allow it. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
@@ -41,7 +42,11 @@
         <service
             android:name=".WorkService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Stays connected to the user's own Tiiny AI device on the home network: status, unlocking after a restart, and finishing jobs." />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

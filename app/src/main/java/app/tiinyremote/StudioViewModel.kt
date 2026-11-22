@@ -38,7 +38,8 @@ data class SavedVoice(val id: String, val name: String, val text: String)
 
 data class Source(val title: String, val url: String)
 
-data class ChatInfo(val id: String, val title: String, val updated: Long)
+/** A saved chat in the list; [model] is the chat model it last used. */
+data class ChatInfo(val id: String, val title: String, val updated: Long, val model: String = "")
 
 data class ChatMsg(
     val role: String,
@@ -277,7 +278,30 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     fun pick(tool: String): String? = prefs.getString("pick_$tool", null)
     fun setPick(tool: String, id: String) {
         prefs.edit().putString("pick_$tool", id).apply()
+        _pickVersion.update { it + 1 }
     }
+
+    private val _pickVersion = MutableStateFlow(0)
+    /** Counts model choices made from outside a picker ("use this chat's model"), so pickers show them. */
+    val pickVersion: StateFlow<Int> = _pickVersion.asStateFlow()
+
+    /** The chat model each chat last used (kept in its file). */
+    private val lastModels = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    private val _resumed = MutableStateFlow<String?>(null)
+    /** A chat just opened from History: the chat screen says which model it last used. */
+    val resumed: StateFlow<String?> = _resumed.asStateFlow()
+
+    fun resumeChat(id: String) {
+        selectChat(id)
+        _resumed.value = id
+    }
+
+    fun resumedSeen() {
+        _resumed.value = null
+    }
+
+    fun lastModelOf(id: String): String? = lastModels[id]
 
     /** Runs a tool in the background; its result lands in the library. */
     fun run(tool: String, block: (DeviceClient, ResultStore, Progress, RemoteJob) -> ResultEntry) {
@@ -428,7 +452,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val title = o.optString("title", "Chat")
                 if (o.optBoolean("custom")) customTitles[f.nameWithoutExtension] = title
                 o.optString("auto_title").takeIf { it.isNotBlank() }?.let { autoTitles[f.nameWithoutExtension] = it }
-                ChatInfo(f.nameWithoutExtension, title, o.optLong("updated", f.lastModified()))
+                val model = o.optString("model")
+                if (model.isNotBlank()) lastModels[f.nameWithoutExtension] = model
+                ChatInfo(f.nameWithoutExtension, title, o.optLong("updated", f.lastModified()), model)
             } catch (e: Exception) {
                 null
             }
@@ -493,12 +519,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val tmp = java.io.File(chatsDir, "$id.json.tmp")
         val doc = JSONObject().put("title", title).put("custom", custom != null).put("updated", now).put("messages", a)
         if (auto != null) doc.put("auto_title", auto)
+        lastModels[id]?.let { doc.put("model", it) }
         tmp.writeText(doc.toString())
         if (!tmp.renameTo(f)) {
             f.delete()
             tmp.renameTo(f)
         }
-        _chatList.update { l -> (listOf(ChatInfo(id, title, now)) + l.filter { it.id != id }).sortedByDescending { it.updated } }
+        _chatList.update { l -> (listOf(ChatInfo(id, title, now, lastModels[id] ?: "")) + l.filter { it.id != id }).sortedByDescending { it.updated } }
     }
 
     /** Changes a chat's messages; a chat deleted meanwhile (or never loaded) stays as it is, so a late answer can't bring it back. */
@@ -551,6 +578,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         customTitles.remove(id)
         autoTitles.remove(id)
         condensed.remove(id)
+        lastModels.remove(id)
         chatDisk.execute { chatFile(id).delete() }
         lastImages.remove(id)
         _suggestions.update { it - id }
@@ -1307,6 +1335,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val id = _currentChat.value
         if (id in _busyChats.value || (text.isBlank() && image == null)) return
         _suggestions.update { it - id }
+        lastModels[id] = model
+        if (_resumed.value == id) _resumed.value = null
         if (image != null) lastImages[id] = image
         val history = (_all.value[id] ?: emptyList()) + ChatMsg("user", text.trim(), image = image)
         upd(id) { history + ChatMsg("assistant", "") }

@@ -338,3 +338,51 @@ fun DangerButton(
         ),
     ) { BtnLabel(text, icon) }
 }
+
+/** A Material-style icon from SVG path data (24×24), for pictograms the core icon set doesn't have. */
+private fun pathIcon(name: String, path: String): androidx.compose.ui.graphics.vector.ImageVector =
+    androidx.compose.ui.graphics.vector.ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
+        .addPath(
+            androidx.compose.ui.graphics.vector.addPathNodes(path),
+            fill = androidx.compose.ui.graphics.SolidColor(androidx.compose.ui.graphics.Color.Black),
+        )
+        .build()
+
+/** Translate: an "A" and a character, as in Material's translate icon. */
+val TranslateIcon by lazy {
+    pathIcon(
+        "Translate",
+        "M12.87,15.07l-2.54,-2.51 0.03,-0.03c1.74,-1.94 2.98,-4.17 3.71,-6.53H17V4h-7V2H8v2H1v1.99h11.17" +
+            "C11.5,7.92 10.44,9.75 9,11.35 8.07,10.32 7.3,9.19 6.69,8h-2c0.73,1.63 1.73,3.17 2.98,4.56l-5.09,5.02" +
+            "L4,19l5,-5 3.11,3.11 0.76,-2.04zM18.5,10h-2L12,22h2l1.12,-3h4.75L21,22h2l-4.5,-12zM15.88,17l1.62,-4.33L19.12,17h-3.24z",
+    )
+}
+
+/** History: a clock with an arrow going back. */
+val HistoryIcon by lazy {
+    pathIcon(
+        "History",
+        "M13,3c-4.97,0 -9,4.03 -9,9H1l3.89,3.89 0.07,0.14L9,12H6c0,-3.87 3.13,-7 7,-7s7,3.13 7,7 -3.13,7 -7,7" +
+            "c-1.93,0 -3.68,-0.79 -4.94,-2.06l-1.42,1.42C8.27,19.99 10.51,21 13,21c4.97,0 9,-4.03 9,-9s-4.03,-9 -9,-9z" +
+            "M12,8v5l4.28,2.54 0.72,-1.21 -3.5,-2.08V8H12z",
+    )
+}
+
+/** Creations: a stack of pictures. */
+val GalleryIcon by lazy {
+    pathIcon(
+        "Gallery",
+        "M22,16V4c0,-1.1 -0.9,-2 -2,-2H8c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2z" +
+            "M11,12l2.03,2.71L16,11l4,5H8l3,-4zM2,6v14c0,1.1 0.9,2 2,2h14v-2H4V6H2z",
+    )
+}
+
+/** Automations: two arrows going round. */
+val AutomationIcon by lazy {
+    pathIcon(
+        "Automations",
+        "M12,6v3l4,-4 -4,-4v3c-4.42,0 -8,3.58 -8,8 0,1.57 0.46,3.03 1.24,4.26L6.7,14.8c-0.45,-0.83 -0.7,-1.79 -0.7,-2.8" +
+            "c0,-3.31 2.69,-6 6,-6zM18.76,7.74L17.3,9.2c0.44,0.84 0.7,1.79 0.7,2.8 0,3.31 -2.69,6 -6,6v-3l-4,4 4,4v-3" +
+            "c4.42,0 8,-3.58 8,-8 0,-1.57 -0.46,-3.03 -1.24,-4.26z",
+    )
+}

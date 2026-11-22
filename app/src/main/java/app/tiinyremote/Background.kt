@@ -27,6 +27,9 @@ object Background {
     var visible = false
 
     private val reasons = LinkedHashMap<String, String>()
+
+    /** The reason key for Settings → "Stay connected in the background". */
+    const val CONNECTED = "connected"
     private var running = false
 
     /** What one part of the app is doing (`label`), or that it's done (null). */
@@ -57,7 +60,8 @@ object Background {
     @Synchronized
     private fun apply(app: Context, label: String?) {
         lastApplied = label
-        val keep = Store(app).load().keepRunning
+        // Jobs keep the service only with "Keep working" on; "Stay connected" is its own choice.
+        val keep = Store(app).load().keepRunning || synchronized(this) { CONNECTED in reasons }
         val intent = Intent(app, WorkService::class.java)
         if (label != null && keep) {
             if (!running) {
@@ -93,7 +97,10 @@ class WorkService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val n = Notifier.work(this, intent?.getStringExtra("label") ?: "Working…")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        // Android 14+: "special use" (staying connected to your own device) has no daily time limit; dataSync before.
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(Notifier.WORK_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(Notifier.WORK_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(Notifier.WORK_ID, n)
@@ -146,7 +153,7 @@ object Notifier {
         channels(ctx)
         return NotificationCompat.Builder(ctx, WORK)
             .setSmallIcon(R.drawable.ic_stat_tiiny)
-            .setContentTitle("Tiiny Remote is working")
+            .setContentTitle(if (label.startsWith("Connected")) "Tiiny Remote" else "Tiiny Remote is working")
             .setContentText(label)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

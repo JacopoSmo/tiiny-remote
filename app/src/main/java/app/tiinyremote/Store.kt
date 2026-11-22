@@ -54,6 +54,8 @@ data class AppSettings(
     val speedRuns: Int = 3,
     /** Auto thinking asks the helper how deep to think (answers start a moment later) instead of the app's own rule. */
     val autoAsksHelper: Boolean = false,
+    /** Stay connected in the background (a silent notification): status, auto-unlock and the Tiiny checked every minute. */
+    val stayConnected: Boolean = false,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -93,6 +95,7 @@ class Store(context: Context) {
         dailyUpdateCheck = prefs.getBoolean("daily_update_check", false),
         speedRuns = prefs.getInt("speed_runs", 3).coerceIn(1, 5),
         autoAsksHelper = prefs.getBoolean("auto_asks_helper", false),
+        stayConnected = prefs.getBoolean("stay_connected", false),
     )
 
     fun save(s: AppSettings) {
@@ -123,6 +126,7 @@ class Store(context: Context) {
             .putBoolean("daily_update_check", s.dailyUpdateCheck)
             .putInt("speed_runs", s.speedRuns.coerceIn(1, 5))
             .putBoolean("auto_asks_helper", s.autoAsksHelper)
+            .putBoolean("stay_connected", s.stayConnected)
             .apply()
     }
 

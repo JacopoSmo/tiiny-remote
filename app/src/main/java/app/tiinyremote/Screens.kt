@@ -258,15 +258,15 @@ fun AppRoot(vm: MainViewModel) {
     val chats by st.chatList.collectAsState()
     val current by st.currentChat.collectAsState()
     val busyChats by st.busyChats.collectAsState()
-    var chatMenu by remember { mutableStateOf<ChatInfo?>(null) }
+    var historyOpen by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     val sections = listOf(
         Triple("Models", Icons.Filled.Home, 0),
         Triple("Chat", Icons.Filled.Send, 2),
         Triple("Create", Icons.Filled.Create, 1),
-        Triple("Creations", Icons.Filled.Star, 6),
-        Triple("Translate", Icons.Filled.Face, 7),
-        Triple("Automations", Icons.Filled.DateRange, 5),
+        Triple("Creations", GalleryIcon, 6),
+        Triple("Translate", TranslateIcon, 7),
+        Triple("Automations", AutomationIcon, 5),
         Triple("Activity", Icons.Filled.List, 3),
         Triple("Settings", Icons.Filled.Settings, 4),
     )
@@ -289,43 +289,15 @@ fun AppRoot(vm: MainViewModel) {
                     Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                         Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
                         for ((label, icon, i) in sections) {
+                            // Using the Tiiny above, looking after it (Activity, Settings) below.
+                            if (i == 3) HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
                             NavigationDrawerItem(
                                 label = { Text(label) },
                                 icon = { Icon(icon, contentDescription = null) },
-                                selected = tab == i && i != 2,
+                                selected = tab == i,
                                 onClick = { go(i) },
                                 modifier = Modifier.padding(horizontal = 8.dp),
                             )
-                        }
-                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Chats", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { st.newChat(); go(2) }) { Text("+ New chat") }
-                        }
-                        if (chats.isEmpty()) {
-                            Text("No saved chats yet.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp))
-                        }
-                        for (c in chats) {
-                            Box {
-                                NavigationDrawerItem(
-                                    label = { Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    badge = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (c.id in busyChats) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                            IconButton(onClick = { chatMenu = c }, modifier = Modifier.size(32.dp)) {
-                                                Icon(Icons.Filled.MoreVert, contentDescription = "Chat options")
-                                            }
-                                        }
-                                    },
-                                    selected = tab == 2 && c.id == current,
-                                    onClick = { st.selectChat(c.id); go(2) },
-                                    modifier = Modifier.padding(horizontal = 8.dp),
-                                )
-                                ScaledDropdownMenu(expanded = chatMenu?.id == c.id, onDismissRequest = { chatMenu = null }) {
-                                    DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Edit, null) }, onClick = { renaming = c; chatMenu = null })
-                                    DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { st.deleteChat(c.id); chatMenu = null })
-                                }
-                            }
                         }
                     }
                 }
@@ -350,7 +322,15 @@ fun AppRoot(vm: MainViewModel) {
                             Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
                         },
                         actions = {
-                            if (tab == 2) IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
+                            if (tab == 2) {
+                                // History: earlier chats, newest first; tap one to go back to it.
+                                Box {
+                                    IconButton(onClick = { historyOpen = true }) { Icon(HistoryIcon, contentDescription = "Chat history") }
+                                    ChatHistoryMenu(historyOpen, chats, current, busyChats, { historyOpen = false }, { st.resumeChat(it.id); historyOpen = false },
+                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) })
+                                }
+                                IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
+                            }
                             IconButton(onClick = { vm.refreshNow() }) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                             }
@@ -359,8 +339,9 @@ fun AppRoot(vm: MainViewModel) {
                 },
                 bottomBar = {
                     // On square screens the sidebar replaces the bottom bar, leaving more room for the output.
+                    // Material's bar holds five: the main places; the rest are in the ☰ menu.
                     if (!compact) NavigationBar {
-                        for ((label, icon, i) in sections) {
+                        for ((label, icon, i) in sections.filter { it.third in setOf(0, 2, 1, 6, 7) }) {
                             NavigationBarItem(
                                 selected = tab == i,
                                 onClick = { if (i == 6) galleryStart = null; goTab(i) },
@@ -1158,6 +1139,8 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Suggestions" to "Chat: follow-up suggestions on",
                     "Socratic" to "Chat: Socratic mode (guides with questions)",
                     "Student" to "Chat: Student mode (teaches step by step)",
+                    "Translates" to "Can translate (every chat model); also the Translate page",
+                    "Automations" to "Automations: processes and agents",
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1174,8 +1157,24 @@ private fun PictogramLegend(onClose: () -> Unit) {
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
+                Text("Create and Creations", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                for (c in CATEGORIES) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.icon, modifier = Modifier.width(36.dp))
+                        Text(c.label + ": " + c.tools.joinToString(", ") { t -> CHOICES[t]?.let { (i, w) -> if (i.isEmpty()) w else "$i $w" } ?: t },
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                for ((icon, what) in listOf(GalleryIcon to "Creations: everything made", TranslateIcon to "Translate: text, photos, speech",
+                    AutomationIcon to "Automations", HistoryIcon to "Chat history")) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
+                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 Text(
-                    "A button with no pictogram always shows its word. Others: ● loaded, ▾ opens a menu, ★ favourite.",
+                    "A button with no pictogram always shows its word (OCR, ASR). Others: ● loaded, ▾ opens a menu, ★ favourite.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1263,7 +1262,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1409,6 +1408,22 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 androidx.core.content.ContextCompat.checkSelfPermission(bgCtx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
             ) askNotify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Stay connected in the background", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "The app keeps running while you're elsewhere, with a silent notification showing the Tiiny's state. " +
+                        "It checks the Tiiny every minute, so it unlocks it after a restart even with the app closed. " +
+                        "Uses a little battery.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = cur.stayConnected, onCheckedChange = {
+                vm.setStayConnected(it)
+                if (it) askIfNeeded()
+            })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -1795,12 +1810,13 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
                     "• The update check asks GitHub for the newest version; nothing about you is sent.\n" +
                     "• Passwords and keys are stored encrypted on this phone. Chats and results stay on the phone; the log hides keys, e-mail addresses and device IDs.")
                 AboutHead("Good to know")
-                AboutBody("• Not made by or affiliated with Tiiny AI. Tiiny and TiinyOS are theirs.\n" +
+                AboutBody("• Not an official Tiiny AI app; Tiiny and TiinyOS are theirs.\n" +
                     "• Installed from GitHub, not Google Play: updates come through Settings → App updates.\n" +
                     "• AI answers can be wrong. Check what matters, especially facts, figures and medical, legal or financial advice.")
                 AboutHead("Built with")
-                AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0) and JSch (BSD) for SSH. " +
-                    "Made by JacopoSmo, written with Claude (Anthropic).")
+                AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0), JSch (BSD) for SSH, " +
+                    "and JavaMail (EPL 2.0 / GPL 2.0 with Classpath Exception) for reading email. The NAS agent is Python's standard library only. " +
+                    "Made by JacopoSmo, built with Claude (Anthropic), supported by Tiiny.")
             }
         },
         confirmButton = {},
@@ -1820,3 +1836,52 @@ private fun AboutLink(label: String, onClick: () -> Unit) = Text(
     color = MaterialTheme.colorScheme.primary,
     modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
 )
+
+private val historyTime = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
+
+/** Chat → History: every saved chat, newest first, with when and which model; rename or delete from here too. */
+@Composable
+private fun ChatHistoryMenu(
+    open: Boolean, chats: List<ChatInfo>, current: String, busy: Set<String>,
+    onDismiss: () -> Unit, onOpen: (ChatInfo) -> Unit, onRename: (ChatInfo) -> Unit, onDelete: (ChatInfo) -> Unit,
+) {
+    var confirm by remember { mutableStateOf<String?>(null) }
+    ScaledDropdownMenu(expanded = open, onDismissRequest = { confirm = null; onDismiss() }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 480.dp)) {
+        if (chats.isEmpty()) DropdownMenuItem(text = { Text("No saved chats yet.") }, onClick = onDismiss, enabled = false)
+        for (c in chats) {
+            DropdownMenuItem(
+                modifier = if (c.id == current) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier,
+                text = {
+                    Column {
+                        Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            historyTime.format(java.time.Instant.ofEpochMilli(c.updated).atZone(java.time.ZoneId.systemDefault())) +
+                                (c.model.takeIf { it.isNotBlank() }?.let { " · " + it.substringAfterLast('/') } ?: ""),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (c.id in busy) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        IconButton(onClick = { onRename(c) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
+                        }
+                        // Delete asks once more: a second tap on the red bin.
+                        IconButton(onClick = { if (confirm == c.id) { onDelete(c); confirm = null } else confirm = c.id }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                Icons.Filled.Delete, contentDescription = if (confirm == c.id) "Tap again to delete" else "Delete",
+                                tint = if (confirm == c.id) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                },
+                onClick = { onOpen(c) },
+            )
+        }
+    }
+}

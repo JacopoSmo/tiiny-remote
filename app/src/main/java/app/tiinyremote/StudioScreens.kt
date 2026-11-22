@@ -201,7 +201,9 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
         )
         return null
     }
-    var picked by remember(tool) { mutableStateOf(st.pick(tool)) }
+    // Keyed by pickVersion too: a choice made elsewhere ("use this chat's model") shows here at once.
+    val pickVersion by st.pickVersion.collectAsState()
+    var picked by remember(tool, pickVersion) { mutableStateOf(st.pick(tool)) }
     val model = choices.firstOrNull { it.id == picked } ?: choices.firstOrNull { it.running } ?: choices.first()
     var open by remember { mutableStateOf(false) }
     if (LocalUi.current.compact) {
@@ -1218,9 +1220,34 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Opened from History: which model this chat last used, and a tap to use it again.
+            val resumed by st.resumed.collectAsState()
+            val current by st.currentChat.collectAsState()
+            val lastId = if (resumed == current) st.lastModelOf(current) else null
+            if (lastId != null) {
+                val last = s.models.firstOrNull { it.id == lastId }
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "This chat last used ${last?.name ?: lastId.substringAfterLast('/')}" + when {
+                                last == null -> " (no longer on the Tiiny)."
+                                last.running -> " (loaded)."
+                                else -> " (not loaded)."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (last != null && model?.id != last.id) TextButton(onClick = {
+                            st.setPick("chat", last.id)
+                            if (!last.running) vm.load(last)
+                        }) { Text(if (last.running) "Use it" else "Load it") }
+                        TextButton(onClick = { st.resumedSeen() }) { Text("✕") }
+                    }
+                }
+            }
             if (msgs.isEmpty()) {
                 Text(
-                    "Chat with the loaded model. Earlier chats are in the ☰ sidebar; several can answer at the same time.",
+                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),
