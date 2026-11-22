@@ -8,4 +8,4 @@
 - **Speed test:** 1 or 3–5 runs with short pauses, up to 2 outliers of 5 left out, and a History of all tests (best pairs, model speeds, table).
 - **Chat:** History (clock, top right) with each chat's last model; "Use it" or "Load it" when you reopen one.
 - **Stay connected in the background** (Settings): a silent notification, the Tiiny checked every minute and unlocked after a restart even with the app closed.
-- **Smaller:** simpler menus, drawn pictograms for the new pages, one meaning per pictogram (legend in Settings → Labels), Activity's log titled "Logs".
+- **Smaller:** simpler menus; long dropdown lists (languages, models…) no longer run off the screen; drawn pictograms for the new pages and one meaning per pictogram (legend in Settings → Labels); a slightly larger title in the compact top bar; Activity's log titled "Logs".
