@@ -1116,6 +1116,12 @@ private fun PictogramLegend(onClose: () -> Unit) {
         Icons.Filled.Refresh to "Try again, check again, restart the Tiiny",
         Icons.Filled.Lock to "Unlock the Tiiny",
         Icons.Filled.Settings to "Open Settings",
+        "▶" to "Run an automation now",
+        "🔌" to "Test a connection (email, NAS agent)",
+        Icons.Filled.Delete to "Delete",
+        "📊" to "The Tiiny's own request statistics (Activity)",
+        HistoryIcon to "History: earlier chats, past speed tests",
+        GalleryIcon to "Open Creations",
     )
     ScaledAlertDialog(
         onDismissRequest = onClose,
@@ -1167,7 +1173,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for ((icon, what) in listOf(GalleryIcon to "Creations: everything made", TranslateIcon to "Translate: text, photos, speech",
-                    AutomationIcon to "Automations", HistoryIcon to "Chat history")) {
+                    AutomationIcon to "Automations: 📋 processes, 🤖 agents")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
                         Text(what, style = MaterialTheme.typography.bodyMedium)
@@ -1508,7 +1514,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     cur.speedRuns.toString(),
                 ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
             }
-            TextButton(onClick = { history = true }) { BtnLabel("History", symbol = "📊") }
+            TextButton(onClick = { history = true }) { BtnLabel("History", HistoryIcon) }
         }
         if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {

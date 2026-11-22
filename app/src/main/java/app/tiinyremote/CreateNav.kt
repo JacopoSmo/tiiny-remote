@@ -55,8 +55,8 @@ internal val CATEGORIES = listOf(
 /** The choices' names and pictograms; OCR and ASR are known by their letters, so they get none. */
 internal val CHOICES = mapOf(
     "image" to ("✦" to "Create"), "describe" to ("👁" to "Describe"), "edit" to ("✎" to "Edit"), "ocr" to ("" to "OCR"),
-    "speech" to ("🗣" to "Voice"), "loop" to ("🔁" to "Loop"), "song" to ("🎵" to "Song"), "transcribe" to ("" to "ASR"),
-    "classify" to ("🏷" to "Classification"), "embed" to ("🧭" to "Embedding"), "rerank" to ("📊" to "Reranking"),
+    "speech" to ("🗣" to "Voice"), "loop" to ("➰" to "Loop"), "song" to ("🎵" to "Song"), "transcribe" to ("" to "ASR"),
+    "classify" to ("🏷" to "Classification"), "embed" to ("🔗" to "Embedding"), "rerank" to ("🥇" to "Reranking"),
     "mesh" to ("🧊" to "3D model"), "video" to ("🎬" to "Video"),
 )
 
@@ -111,7 +111,7 @@ internal fun CreateHeader(current: String, setTool: (String) -> Unit, openGaller
                 FilterChip(selected = t == current, onClick = { if (t != current) setTool(t) }, label = { Text(choiceLabel(icon, word)) })
             }
         } else Spacer(Modifier.weight(1f))
-        TextButton(onClick = { openGallery(current) }) { Text(choiceLabel("🗂", "Creations")) }
+        TextButton(onClick = { openGallery(current) }) { BtnLabel("Creations", GalleryIcon) }
     }
 }
 

@@ -165,7 +165,7 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
             },
             enabled = ready,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(choiceLabel("🌍", "Translate into $to")) }
+        ) { Text(choiceLabel("🔤", "Translate into $to")) }
         busy?.let {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)
@@ -190,7 +190,7 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
                                     .putExtra(android.content.Intent.EXTRA_TEXT, r)
                                 ctx.startActivity(android.content.Intent.createChooser(send, "Share"))
                             }
-                        }) { BtnLabel("Share", symbol = "↗") }
+                        }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                     }
                 }
             }

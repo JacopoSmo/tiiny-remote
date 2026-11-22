@@ -218,7 +218,7 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", symbol = "⚙") }
+                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", symbol = "📋") }
                     OutlinedButton(onClick = { editing = Automation("", "New agent", kind = "agent", time = "", tools = setOf("web", "pages")) }) {
                         BtnLabel("Agent", symbol = "🤖")
                     }
@@ -255,7 +255,7 @@ private fun AutomationCard(a: Automation, doing: String?, last: AutoRun?, onEdit
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text((if (a.kind == "agent") "🤖 " else "⚙ ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text((if (a.kind == "agent") "🤖 " else "📋 ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Switch(checked = a.enabled, onCheckedChange = onEnable)
             }
             val what = if (a.kind == "agent") "Tools: " + a.tools.sorted().joinToString(", ").ifBlank { "none" }
@@ -313,7 +313,7 @@ private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewMo
                     Row {
                         if (r.ok) TextButton(onClick = { st.startChatWith(r.name, r.text); openChat() }) { BtnLabel("Continue in chat", symbol = "💬") }
                         TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(r.text)) }) { BtnLabel("Copy", symbol = "⧉") }
-                        if (r.where == "phone") TextButton(onClick = { av.deleteRun(r) }) { BtnLabel("Delete", symbol = "🗑") }
+                        if (r.where == "phone") TextButton(onClick = { av.deleteRun(r) }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
                     }
                 } else Text(r.text.replace(Regex("[#*_`>]"), "").take(140), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
@@ -424,7 +424,7 @@ private fun AutomationEditor(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 640.dp),
-        title = { ClosableTitle(onClose) { Text(if (a.kind == "agent") "🤖 Agent" else "⚙ Process") } },
+        title = { ClosableTitle(onClose) { Text(if (a.kind == "agent") "🤖 Agent" else "📋 Process") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(a.name, { a = a.copy(name = it.take(60)) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -533,7 +533,7 @@ private fun AgentInfo(onClose: () -> Unit) {
         title = { ClosableTitle(onClose) { Text("Processes and agents") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("⚙ Process: fixed steps", fontWeight = FontWeight.Bold)
+                Text("📋 Process: fixed steps", fontWeight = FontWeight.Bold)
                 Text("Always the same: get something (news, calendar, email), the model works on it, you get the result. Predictable and quick: the right choice for daily summaries.")
                 Text("🤖 Agent: a goal and tools", fontWeight = FontWeight.Bold)
                 Text("You give a goal; the model decides itself what to search, which pages to read, what to look up, step by step, until it has an answer (or reaches the step limit). Good for research. Slower, and a smaller model can lose its way: a chat model of 20B or more works best.")

@@ -52,7 +52,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 720.dp),
-        title = { ClosableTitle(onClose) { Text("📊 Speed test history") } },
+        title = { ClosableTitle(onClose) { Text("Speed test history") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (all.isEmpty()) {
