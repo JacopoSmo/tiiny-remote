@@ -289,8 +289,8 @@ private fun AutomationCard(a: Automation, doing: String?, last: AutoRun?, onEdit
 private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewModel, openChat: () -> Unit) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     if (runs.isEmpty()) Text("No results yet. Run an automation, or wait for its time.", style = MaterialTheme.typography.bodyMedium)
-    for (r in runs) {
-        var open by remember(r.id) { mutableStateOf(false) }
+    for (r in runs) androidx.compose.runtime.key(r.id) {
+        var open by remember { mutableStateOf(false) }
         Card(Modifier.fillMaxWidth().clickable { open = !open }) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
@@ -517,7 +517,7 @@ private fun AutomationEditor(
         confirmButton = {
             val valid = a.name.isNotBlank() && a.instruction.isNotBlank() &&
                 (a.time.isBlank() || runCatching { java.time.LocalTime.parse(a.time) }.isSuccess) &&
-                (a.kind != "agent" || a.tools.isNotEmpty())
+                (a.kind != "agent" || a.tools.isNotEmpty()) && (a.where != "nas" || conn.nasReady)
             TextButton(onClick = { onSave(a) }, enabled = valid) { BtnLabel("Save", symbol = "✓") }
         },
         dismissButton = if (start.id.isNotBlank()) ({ TextButton(onClick = { onDelete(start) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }) else null,

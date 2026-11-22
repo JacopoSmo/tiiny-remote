@@ -503,9 +503,10 @@ object AutoRunner {
         val mode = Tools.thinkingMode(c, model)
         fun body(withTools: Boolean): JSONObject {
             val b = JSONObject().put("model", model).put("messages", messages).put("stream", false).put("max_tokens", 3000)
+            // Tool steps without long thinking: quicker, and the answer budget isn't used up by reasoning.
             when (mode) {
-                "always" -> b.put("reasoning_effort", "medium")
-                "switch" -> b.put("chat_template_kwargs", JSONObject().put("enable_thinking", true))
+                "always" -> b.put("reasoning_effort", "low")
+                "switch" -> b.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
             }
             if (withTools) {
                 val list = a.tools.mapNotNull { AGENT_TOOLS[it] }.filter { t ->
