@@ -50,8 +50,8 @@ data class AppSettings(
     val labels: String = "both",
     /** Look for a newer Tiiny Remote once a day (GitHub Releases) and notify. */
     val dailyUpdateCheck: Boolean = false,
-    /** How many times the speed test repeats its measurements (1–4); the results are averaged. */
-    val speedRuns: Int = 1,
+    /** How many times the speed test repeats its measurements (1, or 3–5 for averaging with outliers left out). */
+    val speedRuns: Int = 3,
     /** Auto thinking asks the helper how deep to think (answers start a moment later) instead of the app's own rule. */
     val autoAsksHelper: Boolean = false,
 ) {
@@ -91,7 +91,7 @@ class Store(context: Context) {
         notifyDone = prefs.getBoolean("notify_done", false),
         labels = prefs.getString("labels", "both") ?: "both",
         dailyUpdateCheck = prefs.getBoolean("daily_update_check", false),
-        speedRuns = prefs.getInt("speed_runs", 1).coerceIn(1, 4),
+        speedRuns = prefs.getInt("speed_runs", 3).coerceIn(1, 5),
         autoAsksHelper = prefs.getBoolean("auto_asks_helper", false),
     )
 
@@ -121,7 +121,7 @@ class Store(context: Context) {
             .putBoolean("notify_done", s.notifyDone)
             .putString("labels", s.labels)
             .putBoolean("daily_update_check", s.dailyUpdateCheck)
-            .putInt("speed_runs", s.speedRuns.coerceIn(1, 4))
+            .putInt("speed_runs", s.speedRuns.coerceIn(1, 5))
             .putBoolean("auto_asks_helper", s.autoAsksHelper)
             .apply()
     }

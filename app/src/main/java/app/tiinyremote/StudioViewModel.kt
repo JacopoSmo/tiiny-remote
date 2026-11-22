@@ -994,13 +994,35 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * once (how pages are condensed), [runs] times (1–4), and averages: one run can be off by several percent. Both
      * must be loaded; nothing is swapped. Tells whether parallel work pays off.
      */
+    private val _speedHistory = MutableStateFlow(loadSpeedHistory())
+    /** Every speed test, newest first (the last 100). */
+    val speedHistory: StateFlow<List<SpeedRecord>> = _speedHistory.asStateFlow()
+
+    private fun loadSpeedHistory(): List<SpeedRecord> = try {
+        val a = JSONArray(prefs.getString("speed_history", "[]"))
+        (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SpeedRecord.from(o) } }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private fun addSpeedHistory(r: SpeedRecord) {
+        val list = (listOf(r) + _speedHistory.value).take(100)
+        prefs.edit().putString("speed_history", JSONArray(list.map { it.json() }).toString()).apply()
+        _speedHistory.value = list
+    }
+
+    fun clearSpeedHistory() {
+        prefs.edit().remove("speed_history").apply()
+        _speedHistory.value = emptyList()
+    }
+
     fun speedTest(big: ModelInfo, small: ModelInfo, runs: Int = 1) {
         if (_speed.value?.startsWith("Testing") == true) return
         if (!deviceBusy.compareAndSet(false, true)) {
             note("The Tiiny is busy with a job: run the test when it's done.")
             return
         }
-        val n = runs.coerceIn(1, 4)
+        val n = runs.coerceIn(1, 5)
         _speed.value = "Testing…"
         viewModelScope.launch {
             try {
@@ -1039,18 +1061,24 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     // Times, not added-up speeds, per run: the same work (what each wrote alone), timed one after the
                     // other and at the same time. When the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
                     fun gain(seqS: Double, parS: Double) = (1 - parS / seqS) * 100
+                    // A short pause before every measurement, so one doesn't run into the end of the one before.
+                    suspend fun pause() = kotlinx.coroutines.delay(PAUSE_MS)
                     for (i in 1..n) {
                         val run = if (n > 1) " (run $i of $n)" else ""
+                        if (i > 1) pause()
                         _speed.value = "Testing${run}: ${big.name} alone…"
                         val a = one(big.id)
+                        pause()
                         _speed.value = "Testing${run}: ${small.name} alone…"
                         val b = one(small.id)
+                        pause()
                         _speed.value = "Testing${run}: both at the same time…"
                         val (a2, b2) = coroutineScope {
                             val x = async { one(big.id) }
                             val y = async { one(small.id) }
                             x.await() to y.await()
                         }
+                        pause()
                         _speed.value = "Testing${run}: ${small.name} twice at the same time…"
                         val (h1, h2) = coroutineScope {
                             val x = async { one(small.id) }
@@ -1064,16 +1092,23 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
                     fun pct(v: Double) = "${Math.round(v)}%"
-                    // With 3 or 4 runs, one clear outlier (a hiccup on the Tiiny, say) is left out: it lies more than 3
-                    // robust standard deviations (MAD) from the median, and more than `floor` away. At most one per list.
-                    fun clean(l: List<Double>, floor: Double): Pair<List<Double>, Double?> {
-                        if (l.size < 3) return l to null
+                    // From 3 runs on, clear outliers (a hiccup on the Tiiny, say) are left out, one at a time: a value
+                    // more than 3 robust standard deviations (MAD) from the median of the rest, and more than `floor`
+                    // away. At least 3 values stay: 1 can go of 3 or 4 runs, 2 of 5.
+                    fun clean(l: List<Double>, floor: Double): Pair<List<Double>, List<Double>> {
                         fun median(v: List<Double>) = v.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
-                        val m = median(l)
-                        val mad = median(l.map { kotlin.math.abs(it - m) }) * 1.4826
-                        val worst = l.indices.maxByOrNull { kotlin.math.abs(l[it] - m) } ?: return l to null
-                        return if (kotlin.math.abs(l[worst] - m) > maxOf(3 * mad, floor)) l.filterIndexed { i, _ -> i != worst } to l[worst]
-                        else l to null
+                        var kept = l
+                        val out = ArrayList<Double>()
+                        val most = if (l.size < 3) 0 else maxOf(1, l.size - 3)
+                        while (out.size < most) {
+                            val m = median(kept)
+                            val mad = median(kept.map { kotlin.math.abs(it - m) }) * 1.4826
+                            val worst = kept.indices.maxByOrNull { kotlin.math.abs(kept[it] - m) } ?: break
+                            if (kotlin.math.abs(kept[worst] - m) <= maxOf(3 * mad, floor)) break
+                            out += kept[worst]
+                            kept = kept.filterIndexed { j, _ -> j != worst }
+                        }
+                        return kept to out
                     }
                     val (bigOk, bigOut) = clean(bigRates, bigRates.average() * 0.1)
                     val (smallOk, smallOut) = clean(smallRates, smallRates.average() * 0.1)
@@ -1083,9 +1118,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val smallRate = smallOk.average()
                     // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
                     prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
-                    fun spread(l: List<Double>, out: Double?) =
-                        (if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else "") + (out?.let { " [outlier ${f(it)} left out]" } ?: "")
-                    fun verdict(l: List<Double>, out: Double?): String {
+                    fun outText(out: List<Double>, show: (Double) -> String) =
+                        if (out.isEmpty()) "" else " [left out as outlier${if (out.size > 1) "s" else ""}: ${out.joinToString(", ") { show(it) }}]"
+                    fun spread(l: List<Double>, out: List<Double>) =
+                        (if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else "") + outText(out) { f(it) }
+                    fun verdict(l: List<Double>, out: List<Double>): String {
                         val p = l.average()
                         val text = when {
                             p >= 10 -> "${pct(p)} sooner: worth it"
@@ -1094,9 +1131,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             p > -5 -> "about the same"
                             else -> "${pct(-p)} slower: better one after the other"
                         }
-                        return text + (if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else "") +
-                            (out?.let { " [outlier ${pct(it)} left out]" } ?: "")
+                        return text + (if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else "") + outText(out) { pct(it) }
                     }
+                    // Kept for History: which pairs work best, and how each model performs over time.
+                    addSpeedHistory(
+                        SpeedRecord(System.currentTimeMillis(), big.name, small.name, n, bigRate, smallRate, bothOk.average(), helperOk.average(),
+                            bigOut.size + smallOut.size + bothOut.size + helperOut.size),
+                    )
                     val faster = (smallRate / bigRate - 1) * 100
                     val pages = if (smallRate >= bigRate * PAGE_RULE)
                         "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
@@ -1433,3 +1474,22 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
 /** The helper condenses web pages only when it writes at least this many times as fast as the chat model (25% faster). */
 private const val PAGE_RULE = 1.25f
+
+/** The pause before each speed-test measurement (a quarter to half a second), so they don't run into each other. */
+private const val PAUSE_MS = 500L
+
+/** One speed test, for History: the pair, its speeds alone, and how much sooner both (or the helper twice) finished at once. */
+data class SpeedRecord(
+    val at: Long, val big: String, val small: String, val runs: Int,
+    val bigRate: Double, val smallRate: Double, val bothGain: Double, val helperGain: Double, val outliers: Int,
+) {
+    fun json(): JSONObject = JSONObject().put("at", at).put("big", big).put("small", small).put("runs", runs)
+        .put("big_rate", bigRate).put("small_rate", smallRate).put("both", bothGain).put("helper", helperGain).put("outliers", outliers)
+
+    companion object {
+        fun from(o: JSONObject) = SpeedRecord(
+            o.optLong("at"), o.optString("big"), o.optString("small"), o.optInt("runs", 1),
+            o.optDouble("big_rate"), o.optDouble("small_rate"), o.optDouble("both"), o.optDouble("helper"), o.optInt("outliers"),
+        )
+    }
+}

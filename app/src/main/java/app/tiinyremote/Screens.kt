@@ -1238,10 +1238,11 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                 )
                 Text("Test runs", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Run the test once for each chat model you pair with the helper. With 2–4 runs the results are " +
+                    "Run the test once for each chat model you pair with the helper. With 3–5 runs the results are " +
                         "averaged, the spread is shown, and the rules apply to the average, so one lucky or unlucky run " +
-                        "doesn't decide. With 3 or 4 runs, a clear outlier (far from the others, e.g. a hiccup on the " +
-                        "Tiiny) is left out of the average, and the result says which.",
+                        "doesn't decide. Clear outliers (far from the others, e.g. a hiccup on the Tiiny) are left out: " +
+                        "1 of 3 or 4 runs, up to 2 of 5, so at least 3 always count. A short pause comes before every " +
+                        "measurement. History keeps every test, to compare pairs and models over time.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -1475,11 +1476,18 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
             ?: chatModels.firstOrNull { it.running && it.id != helper }
         var speedInfo by remember { mutableStateOf(false) }
-        SettingDropdown(
-            "Test runs",
-            (1..4).map { n -> n.toString() to if (n == 1) "1 (quick)" else "$n, averaged" },
-            cur.speedRuns.toString(),
-        ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
+        var history by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                SettingDropdown(
+                    "Test runs",
+                    listOf(1, 3, 4, 5).map { n -> n.toString() to if (n == 1) "1 (quick, no statistics)" else "$n, averaged" },
+                    cur.speedRuns.toString(),
+                ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
+            }
+            TextButton(onClick = { history = true }) { BtnLabel("History", symbol = "📊") }
+        }
+        if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(
                 onClick = { if (big != null && small != null) st.speedTest(big, small, cur.speedRuns) },
@@ -1497,8 +1505,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 small == null -> "Load the helper and your chat model to run the speed test."
                 big == null -> "Load your chat model too to run the speed test."
                 else -> "Tests ${big.name} and ${small.name}, alone and at the same time, " +
-                    (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary by a few percent from run to run: more runs give a steadier average."
-                    else "${cur.speedRuns} times and averages the results (about ${cur.speedRuns * 2} minutes).")
+                    (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary from run to run: 3–5 runs give a steadier average."
+                    else "${cur.speedRuns} times with short pauses between, and averages the results (about ${cur.speedRuns * 2} minutes).")
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
