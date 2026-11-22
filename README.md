@@ -70,4 +70,4 @@ and the NAS login for the SSH unlock fallback.
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE): free to use, change and share, with no warranty. Not affiliated with Tiiny AI; built with Claude (Anthropic) and supported by my own Tiiny AI Pocket Lab at home, where every feature is tested.
+MIT, see [LICENSE](LICENSE): free to use, change and share, with no warranty. Not affiliated with Tiiny AI; built with Claude (Anthropic), supported by my home Tiiny AI.

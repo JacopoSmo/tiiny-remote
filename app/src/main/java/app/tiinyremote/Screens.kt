@@ -1816,7 +1816,7 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
                 AboutHead("Built with")
                 AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0), JSch (BSD) for SSH, " +
                     "and JavaMail (EPL 2.0 / GPL 2.0 with Classpath Exception) for reading email. The NAS agent is Python's standard library only. " +
-                    "Made by JacopoSmo, built with Claude (Anthropic), and supported by his own Tiiny AI Pocket Lab at home, where every feature is tested.")
+                    "Made by JacopoSmo, built with Claude (Anthropic), supported by his home Tiiny AI.")
             }
         },
         confirmButton = {},
