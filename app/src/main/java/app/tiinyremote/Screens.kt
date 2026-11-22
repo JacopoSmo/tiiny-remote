@@ -80,6 +80,7 @@ import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -264,6 +265,7 @@ fun AppRoot(vm: MainViewModel) {
         Triple("Chat", Icons.Filled.Send, 2),
         Triple("Create", Icons.Filled.Create, 1),
         Triple("Creations", Icons.Filled.Star, 6),
+        Triple("Translate", Icons.Filled.Face, 7),
         Triple("Automations", Icons.Filled.DateRange, 5),
         Triple("Activity", Icons.Filled.List, 3),
         Triple("Settings", Icons.Filled.Settings, 4),
@@ -383,6 +385,7 @@ fun AppRoot(vm: MainViewModel) {
                         0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
                         1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openGallery = { galleryStart = it; goTab(6) })
                         6 -> CreationsScreen(st, galleryStart) { t -> goTab(1); openToolNav(t) }
+                        7 -> TranslateScreen(s, st)
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
                         5 -> AutomationsScreen(s, st, av, openChat = { goTab(2) })
@@ -519,6 +522,7 @@ private val FILTERS = listOf<Triple<String, String, (ModelInfo) -> Boolean>>(
     Triple("sees", "Sees images", { it.isChat && it.seesImages }),
     Triple("thinks", "Thinks", { it.thinks }),
     Triple("moe", "Mixture of experts", { it.isMoE }),
+    Triple("translate", "Translates", { it.isChat }),
 )
 
 private val SORTS = listOf("name" to "Name", "type" to "Type", "npu" to "NPU load")

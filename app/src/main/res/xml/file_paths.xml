@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <files-path name="results" path="results/" />
+    <!-- Translate: a photo taken with the camera app, kept only until it's read. -->
+    <cache-path name="camera" path="camera/" />
 </paths>

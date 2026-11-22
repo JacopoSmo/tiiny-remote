@@ -632,7 +632,14 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val model = ok.firstOrNull { it.running && it.id == fast } ?: ok.firstOrNull { it.running && it.id == pick(tool) } ?: ok.firstOrNull { it.running }
             ?: ok.firstOrNull { it.id == pick(tool) } ?: ok.firstOrNull()
         if (model == null) {
-            note(if (tool == "chat") "This helper needs a chat model on the Tiiny." else "Auto-transcribe needs a speech-to-text (ASR) model on the Tiiny.")
+            note(
+                when (tool) {
+                    "chat" -> "This needs a chat model loaded on the Tiiny."
+                    "ocr" -> "Reading text from a photo needs an OCR model (or a chat model that sees images) on the Tiiny."
+                    "describe" -> "This needs a chat model that sees images, loaded on the Tiiny."
+                    else -> "This needs a speech-to-text (ASR) model on the Tiiny."
+                },
+            )
             return
         }
         // A helper whose model is already loaded swaps nothing; one that must load its model waits for the device.
@@ -704,6 +711,56 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         helperRun("Translating into $language…", "chat", models, { it.isChat && it.running }, { c, m ->
             Tools.chatOnce(c, m, translateSystem(language), text.take(16_000), 6000)
         }, onDone)
+
+    /**
+     * Translate tab: [text] into [to], from [from] or, blank, detected. onDone gets (the source language as the model
+     * named it, or "", and the translation).
+     */
+    fun translateFull(text: String, from: String, to: String, models: List<ModelInfo>, onDone: (Pair<String, String>) -> Unit) {
+        val keep = " Keep the meaning, tone and layout (lines, lists, prices, Markdown); don't translate names, code or links."
+        val system = if (from.isBlank())
+            "Translate the user's text into $to.$keep First line: the language the text is written in, in English, in square brackets, " +
+                "e.g. [German]. Then the translation only, nothing else."
+        else "Translate the user's text from $from into $to.$keep Reply with the translation only."
+        helperRun("Translating into $to…", "chat", models, { it.isChat && it.running }, { c, m ->
+            Tools.chatOnce(c, m, system, text.take(16_000), 6000)
+        }) { out ->
+            val m = Regex("^\\s*\\[([^\\]]{2,40})]\\s*\\n?").find(out)
+            onDone(if (from.isBlank() && m != null) m.groupValues[1].trim() to out.substring(m.range.last + 1).trim() else from to out.trim())
+        }
+    }
+
+    /**
+     * The text in a photo (a menu, a sign) for Translate: read by a loaded chat model that sees images, else by an OCR
+     * model (loaded for it if needed, your models put back after). Then translated like any text.
+     */
+    fun translatePhoto(image: String, to: String, models: List<ModelInfo>, onDone: (Pair<String, String>) -> Unit) {
+        val vision = models.any { it.isChat && it.seesImages && it.running }
+        val next: (String) -> Unit = { text ->
+            // After this helper has finished: one helper runs at a time.
+            viewModelScope.launch {
+                if (text.isBlank()) note("No text found in the photo.") else translateFull(text, "", to, models, onDone)
+            }
+        }
+        if (vision) helperRun("Reading the photo…", "describe", models, { it.isChat && it.seesImages && it.running }, { c, m ->
+            Tools.describe(c, store, m, image, "Write out all the text in this image exactly as it is, line by line, keeping the layout " +
+                "(e.g. a menu's dishes with their prices). Only the text, no comments.", Progress({ _, _ -> }, { false })).text
+        }, next)
+        else helperRun("Reading the photo…", "ocr", models, { it.isOcr }, { c, m ->
+            Tools.ocr(c, store, m, image, Progress({ _, _ -> }, { false })).text
+        }, next)
+    }
+
+    /** Speech for Translate: transcribed by the ASR model (loaded if needed, your models put back), then translated. */
+    fun translateSpeech(audio: PickedAudio, to: String, models: List<ModelInfo>, onDone: (Pair<String, String>) -> Unit) {
+        helperRun("Listening…", "transcribe", models, { it.isAsr }, { c, m ->
+            Tools.transcribe(c, store, m, audio.bytes, audio.mime, audio.name, "", Progress({ _, _ -> }, { false })).text
+        }) { text ->
+            viewModelScope.launch {
+                if (text.isBlank()) note("No speech found in the recording.") else translateFull(text, "", to, models, onDone)
+            }
+        }
+    }
 
     /** The message being written, shortened or reworded (DRAFT_ACTIONS) by the helper (or the chat model). */
     fun rewriteDraft(text: String, how: String, models: List<ModelInfo>, onDone: (String) -> Unit) {

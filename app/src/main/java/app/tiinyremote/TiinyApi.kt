@@ -53,6 +53,7 @@ data class ModelInfo(
             },
             if (makesThings) "Makes things" else null,
             if (seesImages) "Sees images" else null,
+            "Translates",
         )
 
     /**
