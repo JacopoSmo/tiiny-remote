@@ -319,7 +319,12 @@ fun AppRoot(vm: MainViewModel) {
                                 tab == 1 && toolId != null -> toolTitle(toolId!!)
                                 else -> sections.first { it.third == tab }.first
                             }
-                            Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+                            // Compact: a little larger than titleMedium (16 → 19 sp) with its line height kept, so the slim 48 dp bar stays as it is.
+                            Text(
+                                t, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = if (compact) MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp)
+                                else MaterialTheme.typography.titleLarge,
+                            )
                         },
                         actions = {
                             if (tab == 2) {
