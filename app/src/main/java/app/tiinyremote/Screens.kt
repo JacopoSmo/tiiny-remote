@@ -1810,13 +1810,13 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
                     "• The update check asks GitHub for the newest version; nothing about you is sent.\n" +
                     "• Passwords and keys are stored encrypted on this phone. Chats and results stay on the phone; the log hides keys, e-mail addresses and device IDs.")
                 AboutHead("Good to know")
-                AboutBody("• Not an official Tiiny AI app; Tiiny and TiinyOS are theirs.\n" +
+                AboutBody("• Not made by or affiliated with Tiiny AI. Tiiny and TiinyOS are theirs.\n" +
                     "• Installed from GitHub, not Google Play: updates come through Settings → App updates.\n" +
                     "• AI answers can be wrong. Check what matters, especially facts, figures and medical, legal or financial advice.")
                 AboutHead("Built with")
                 AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0), JSch (BSD) for SSH, " +
                     "and JavaMail (EPL 2.0 / GPL 2.0 with Classpath Exception) for reading email. The NAS agent is Python's standard library only. " +
-                    "Made by JacopoSmo, built with Claude (Anthropic), supported by Tiiny.")
+                    "Made by JacopoSmo, built with Claude (Anthropic), and supported by his own Tiiny AI Pocket Lab at home, where every feature is tested.")
             }
         },
         confirmButton = {},
