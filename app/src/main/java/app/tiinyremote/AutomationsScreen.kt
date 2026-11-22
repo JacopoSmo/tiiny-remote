@@ -477,7 +477,7 @@ private fun AutomationEditor(
                 } else {
                     Text("Tools the agent may use", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for ((k, label) in listOf("web" to "🌐 Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉ Email")) {
+                        for ((k, label) in listOf("web" to "🔍 Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉ Email")) {
                             FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { Text(label) })
                         }
                     }

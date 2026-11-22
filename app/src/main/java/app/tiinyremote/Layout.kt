@@ -8,6 +8,7 @@ import android.widget.VideoView
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -73,10 +74,10 @@ val TAG_ICONS = linkedMapOf(
     // The chat's switches use the same signs as the model labels.
     "Thinking" to "💭",
     "Can make things" to "🛠",
-    "Web search" to "🌐",
+    "Web search" to "🔍",
     "Automations" to "🔁",
-    "Translates" to "🔤",
-    "Translate" to "🔤",
+    "Translates" to "🌐",
+    "Translate" to "🌐",
     "Suggestions" to "💡",
     "Socratic" to "🤔",
     "Student" to "🎓",
@@ -138,14 +139,21 @@ fun ScaledAlertDialog(
     properties = properties,
 )
 
-/** DropdownMenu at the app's scale. */
+/**
+ * DropdownMenu at the app's scale. The menu is placed in the phone's own scale while its items are drawn larger, so a
+ * long list could run past the top and bottom of the screen: it's held to 70 % of the screen's height, and scrolls.
+ */
 @Composable
 fun ScaledDropdownMenu(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
-) = androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = onDismissRequest, modifier = modifier) {
+) = androidx.compose.material3.DropdownMenu(
+    expanded = expanded,
+    onDismissRequest = onDismissRequest,
+    modifier = modifier.heightIn(max = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.7f).dp),
+) {
     val scope = this
     AppScale { scope.content() }
 }
