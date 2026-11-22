@@ -79,6 +79,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -181,6 +182,8 @@ fun AppRoot(vm: MainViewModel) {
     val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var toolId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Where Creations opens (a tool or a kind, from Create's link), or everything.
+    var galleryStart by rememberSaveable { mutableStateOf<String?>(null) }
     // Where you came from: ← and Android's back gesture go back through it; with nothing left, back closes the app.
     val history = remember { mutableStateListOf<Pair<Int, String?>>() }
     fun goTab(i: Int) {
@@ -190,12 +193,12 @@ fun AppRoot(vm: MainViewModel) {
         tab = i
     }
     fun openToolNav(id: String?) {
-        if (id == toolId) return
+        if (id == toolId || (id == "image" && toolId == null)) return // no tool open = Image → Create
         if (id != null) history.add(tab to toolId)
         else if (history.lastOrNull() == (tab to null)) history.removeAt(history.size - 1) // "‹ Tools" = back
         toolId = id
     }
-    val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null)
+    val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null && toolId != "image")
     fun back() {
         if (history.isNotEmpty()) {
             val (t, tool) = history.removeAt(history.size - 1)
@@ -260,11 +263,13 @@ fun AppRoot(vm: MainViewModel) {
         Triple("Models", Icons.Filled.Home, 0),
         Triple("Chat", Icons.Filled.Send, 2),
         Triple("Create", Icons.Filled.Create, 1),
+        Triple("Creations", Icons.Filled.Star, 6),
         Triple("Automations", Icons.Filled.DateRange, 5),
         Triple("Activity", Icons.Filled.List, 3),
         Triple("Settings", Icons.Filled.Settings, 4),
     )
     fun go(i: Int) {
+        if (i == 6) galleryStart = null // from the menu, Creations shows everything
         goTab(i)
         scope.launch { drawer.close() }
     }
@@ -356,7 +361,7 @@ fun AppRoot(vm: MainViewModel) {
                         for ((label, icon, i) in sections) {
                             NavigationBarItem(
                                 selected = tab == i,
-                                onClick = { goTab(i) },
+                                onClick = { if (i == 6) galleryStart = null; goTab(i) },
                                 icon = { Icon(icon, contentDescription = null) },
                                 label = { Text(label, maxLines = 1) },
                             )
@@ -376,7 +381,8 @@ fun AppRoot(vm: MainViewModel) {
                     if (s.settings.tiinyConfigured) StatsStrip(s, vm, st)
                     Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
                         0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
-                        1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openChat = { goTab(2) })
+                        1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openGallery = { galleryStart = it; goTab(6) })
+                        6 -> CreationsScreen(st, galleryStart) { t -> goTab(1); openToolNav(t) }
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
                         5 -> AutomationsScreen(s, st, av, openChat = { goTab(2) })
@@ -534,9 +540,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
     var typeSel by remember { mutableStateOf(prefs.getStringSet("types", emptySet())!!.toSet()) }
     var typesOpen by remember { mutableStateOf(false) }
     val typeOrder = remember(s.models.size) {
-        // The order arranged in Create → Create, then any other type the Tiiny has.
-        val o = createTypeOrder(st)
-        o + s.models.map { it.type }.filter { it.isNotBlank() && it !in o }.distinct()
+        s.models.map { it.type }.filter { it.isNotBlank() }.distinct().sorted()
     }
     val stats by vm.stats.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }

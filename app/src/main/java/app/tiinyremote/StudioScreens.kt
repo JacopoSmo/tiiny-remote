@@ -100,7 +100,6 @@ private class Tool(val id: String, val type: String, val title: String, val what
 
 private val TOOLS = listOf(
     Tool("describe", "Image-Text-to-Text", "Describe image", "Have a picture described, or ask a question about it", { it.seesImages }),
-    Tool("chat", "Text Generation", "Chat", "Talk with the loaded model (also in the Chat tab)", { it.isChat }),
     Tool("image", "Text-to-Image", "Create image", "A picture from a description", { it.isImageGen }),
     Tool("edit", "Text-to-Image", "Edit image", "Change a photo with words", { it.canEditImages }),
     Tool("transcribe", "ASR", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
@@ -123,9 +122,13 @@ internal const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI ke
 
 // ---------------- the Create tab ----------------
 
+/**
+ * Create: the five kinds on top (3D, Audio, Image, Text, Video), the open kind's choices below, and the chosen tool.
+ * It opens on Image → Create; Back goes through what you had open before.
+ */
 @Composable
-fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: String?, setTool: (String?) -> Unit, openChat: () -> Unit) {
-    // The open tool lives in AppRoot, so its ← back button and Android's back gesture can close it.
+fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: String?, setTool: (String?) -> Unit, openGallery: (String) -> Unit) {
+    // The open tool lives in AppRoot, so its ← back button and Android's back gesture can go back through it.
     val openTool by st.openTool.collectAsState()
     LaunchedEffect(openTool) {
         openTool?.let {
@@ -133,217 +136,11 @@ fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: Str
             st.toolOpened()
         }
     }
-    val tool = TOOLS.firstOrNull { it.id == toolId }
-    if (tool == null) {
-        ToolHub(s, st, openChat) { id ->
-            if (id == "chat") openChat()
-            if (id != "chat") setTool(id)
-        }
-    } else {
-        ToolScreen(tool, s, vm, st, { setTool(it) }) { setTool(null) }
-    }
+    val current = toolId?.takeIf { id -> TOOLS.any { it.id == id } } ?: "image"
+    ToolScreen(TOOLS.first { it.id == current }, s, vm, st, setTool, openGallery)
 }
 
 internal fun toolTitle(id: String) = TOOLS.firstOrNull { it.id == id }?.title ?: "Create"
-
-/** The kinds of creation in the order arranged under Create → Create. */
-internal fun createTypeOrder(st: StudioViewModel): List<String> {
-    val all = TOOLS.map { it.type }.distinct()
-    val saved = st.setting("create.order", "").split('|').filter { it in all }
-    return saved + all.filter { it !in saved }
-}
-
-/** Where results land in "Creations". */
-private val CREATION_GROUPS = listOf(
-    "Images" to setOf("image"),
-    "Videos" to setOf("video"),
-    "3D models" to setOf("mesh"),
-    "Voice" to setOf("speech"),
-    "Music" to setOf("loop", "song"),
-    "Transcripts" to setOf("transcript"),
-    "Texts" to setOf("ocr", "description", "classification", "embedding", "rerank"),
-)
-
-/** A bar that opens and closes what's under it. */
-@Composable
-private fun Bar(title: String, detail: String, open: Boolean, onToggle: () -> Unit, action: @Composable () -> Unit = {}) {
-    Card(
-        onClick = onToggle,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(detail, style = MaterialTheme.typography.bodySmall)
-            }
-            action()
-            Text(if (open) "▴" else "▾", style = MaterialTheme.typography.titleMedium)
-        }
-    }
-}
-
-@Composable
-private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open: (String) -> Unit) {
-    val results by st.results.collectAsState()
-    val chats by st.chatList.collectAsState()
-    val job by st.job.collectAsState()
-    val compact = LocalUi.current.compact
-    var createOpen by rememberSaveable { mutableStateOf(st.setting("hub.create", "1") == "1") }
-    var creationsOpen by rememberSaveable { mutableStateOf(st.setting("hub.creations", "0") == "1") }
-    var arranging by rememberSaveable { mutableStateOf(false) }
-    var openType by remember { mutableStateOf(st.setting("hub.type", "").ifBlank { null }) }
-    var openGroup by remember { mutableStateOf(st.setting("hub.group", "").ifBlank { null }) }
-    // The kinds of creation, in the order you arranged them (new kinds go at the end).
-    var order by remember { mutableStateOf(createTypeOrder(st)) }
-    // The Creations groups, also in your order.
-    var arrangingC by rememberSaveable { mutableStateOf(false) }
-    val defaultGroups = listOf("Chats") + CREATION_GROUPS.map { it.first }
-    var groupOrder by remember {
-        val saved = st.setting("creations.order", "").split('|').filter { it in defaultGroups }
-        mutableStateOf(saved + defaultGroups.filter { it !in saved })
-    }
-    fun moveGroup(i: Int, by: Int) {
-        val j = i + by
-        if (j !in groupOrder.indices) return
-        groupOrder = groupOrder.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t }
-        st.setSetting("creations.order", groupOrder.joinToString("|"))
-    }
-    fun move(i: Int, by: Int) {
-        val j = i + by
-        if (j !in order.indices) return
-        order = order.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t }
-        st.setSetting("create.order", order.joinToString("|"))
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(if (compact) 10.dp else 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (s.device != DeviceState.ONLINE) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
-                Text("The Tiiny isn't online: see the Models tab.", Modifier.padding(14.dp))
-            }
-        }
-        job?.takeIf { it.running }?.let { j ->
-            Card(onClick = { open(j.tool) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Working: ${TOOLS.firstOrNull { it.id == j.tool }?.title ?: j.tool}", style = MaterialTheme.typography.titleSmall)
-                    Text(j.message + "  · tap to open", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-
-        // ---- Create: the kinds of creation; tap one for its tools ----
-        Bar("Create", "${order.size} kinds · tap one to see its tools", createOpen, {
-            createOpen = !createOpen
-            st.setSetting("hub.create", if (createOpen) "1" else "0")
-        }) {
-            if (createOpen) TextButton(onClick = { arranging = !arranging }) { BtnLabel(if (arranging) "Done" else "Arrange", symbol = if (arranging) "✓" else "⇅") }
-        }
-        if (createOpen) {
-            if (arranging) Text("Move the kinds with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
-            for ((i, type) in order.withIndex()) {
-                val tools = TOOLS.filter { it.type == type }
-                val installed = s.models.count { m -> tools.any { it.fits(m) } }
-                val loaded = s.models.count { m -> m.running && tools.any { it.fits(m) } }
-                val expanded = openType == type && !arranging
-                Card(
-                    onClick = { if (!arranging) { openType = if (expanded) null else type; st.setSetting("hub.type", openType ?: "") } },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(type, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    when {
-                                        installed == 0 -> "No model for this on your Tiiny"
-                                        loaded > 0 -> "$loaded loaded · ${tools.joinToString(", ") { it.title }}"
-                                        else -> tools.joinToString(", ") { it.title }
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (loaded > 0) Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                            }
-                            if (arranging) {
-                                TextButton(onClick = { move(i, -1) }, enabled = i > 0) { Text("↑") }
-                                TextButton(onClick = { move(i, 1) }, enabled = i < order.size - 1) { Text("↓") }
-                            } else {
-                                Text(if (expanded) "▴" else "▾")
-                            }
-                        }
-                        if (expanded) {
-                            for (t in tools) {
-                                Spacer(Modifier.height(6.dp))
-                                OutlinedCard(onClick = { open(t.id) }, modifier = Modifier.fillMaxWidth()) {
-                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(t.title, style = MaterialTheme.typography.titleSmall)
-                                            Text(t.what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- Creations: everything made, by kind, chats included ----
-        Bar("Creations", "${chats.size} chats · ${results.size} results", creationsOpen, {
-            creationsOpen = !creationsOpen
-            st.setSetting("hub.creations", if (creationsOpen) "1" else "0")
-        }) {
-            if (creationsOpen) TextButton(onClick = { arrangingC = !arrangingC }) {
-                BtnLabel(if (arrangingC) "Done" else "Arrange", symbol = if (arrangingC) "✓" else "⇅")
-            }
-        }
-        if (creationsOpen) {
-            if (arrangingC) Text("Move the groups with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
-            for ((i, name) in groupOrder.withIndex()) {
-                val count = if (name == "Chats") chats.size else CREATION_GROUPS.first { it.first == name }.second.let { k -> results.count { it.kind in k } }
-                val expanded = openGroup == name && !arrangingC
-                Card(onClick = { if (!arrangingC) { openGroup = if (expanded) null else name; st.setSetting("hub.group", openGroup ?: "") } }, modifier = Modifier.fillMaxWidth(), enabled = count > 0 || arrangingC) {
-                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Text("$count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(8.dp))
-                        if (arrangingC) {
-                            TextButton(onClick = { moveGroup(i, -1) }, enabled = i > 0) { Text("↑") }
-                            TextButton(onClick = { moveGroup(i, 1) }, enabled = i < groupOrder.size - 1) { Text("↓") }
-                        } else Text(if (expanded) "▴" else "▾")
-                    }
-                }
-                if (expanded) {
-                    if (name == "Chats") {
-                        for (c in chats) {
-                            OutlinedCard(onClick = { st.selectChat(c.id); openChat() }, modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                                    Text(
-                                        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(c.updated)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        val kinds = CREATION_GROUPS.first { it.first == name }.second
-                        for (e in results.filter { it.kind in kinds }.take(40)) ResultCard(e, st)
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ---------------- shared pieces ----------------
 
@@ -667,7 +464,7 @@ internal fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.n
 // ---------------- the tools ----------------
 
 @Composable
-private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, switchTo: (String) -> Unit, back: () -> Unit) {
+private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, switchTo: (String) -> Unit, openGallery: (String) -> Unit) {
     val compact = LocalUi.current.compact
     val scroll = rememberScrollState()
     val job by st.job.collectAsState()
@@ -683,19 +480,21 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             .padding(if (compact) 10.dp else 16.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = back) { Text("‹ Tools") }
-            Spacer(Modifier.width(6.dp))
-            if (compact) {
-                Text(tool.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            } else Column {
-                Text(tool.title, style = MaterialTheme.typography.titleLarge)
-                Text(tool.type, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (s.device != DeviceState.ONLINE) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+                Text("The Tiiny isn't online: see the Models tab.", Modifier.padding(12.dp))
             }
         }
-        if (tool.id in setOf("image", "edit", "ocr")) {
-            // Tiiny Studio's image workspace: Create, Edit and Text side by side.
-            Chips(listOf("image" to "✦ Create", "edit" to "✎ Edit", "ocr" to "Aa Text"), tool.id) { if (it != tool.id) switchTo(it) }
+        CreateHeader(tool.id, switchTo, openGallery)
+        // Another tool still working: a tap goes back to it.
+        job?.takeIf { it.running && it.tool != tool.id }?.let { j ->
+            Card(onClick = { switchTo(j.tool) }, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Working: ${TOOLS.firstOrNull { it.id == j.tool }?.title ?: j.tool} · ${j.message} · tap to open",
+                    Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
         val model = ModelPicker(tool.id, tool.fits, s, vm, st)
         val notReady = when {
