@@ -55,11 +55,5 @@ jobs:
           name: Tiiny Remote Experimental ${{ env.APP_VERSION }}
           prerelease: true
           make_latest: "false"
-          body: |
-            Experimental: installs as a separate app, "Tiiny Remote Exp", beside the normal Tiiny Remote, with its own settings.
-            New here: a fast helper model (Settings → Fast helper model) that names new chats while the main model answers,
-            condenses long chats, runs the writing helpers, and condenses web pages when the speed test found it at least
-            15% faster than the chat model; the speed test itself, with an ⓘ on which models to use for what; mixture-of-experts
-            models marked "MoE" with a filter of their own; main and helper model shown in the status panel; optional
-            background work and "done" notifications (Settings → In the background).
+          body_path: EXP_NOTES.md
           files: TiinyRemoteExp-*.apk
