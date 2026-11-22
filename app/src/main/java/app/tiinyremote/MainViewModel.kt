@@ -420,6 +420,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The one-tap button: switches the tunnel and pauses automatic switching for 10 minutes. */
     fun toggleVpn() {
         val v = _state.value.vpn
+        if (v.switching) return // a second tap mid-switch would start a second, crossing switch
         vpnPausedUntil = System.currentTimeMillis() + 10 * 60_000
         switchVpn(!v.active, reason = null)
     }
@@ -466,6 +467,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             toast("Allow Tiiny Remote to control WireGuard first (Settings → VPN).")
             return
         }
+        if (_state.value.vpn.switching) return
         lastVpnSwitch = System.currentTimeMillis()
         viewModelScope.launch {
             _state.update { it.copy(vpn = it.vpn.copy(switching = true)) }

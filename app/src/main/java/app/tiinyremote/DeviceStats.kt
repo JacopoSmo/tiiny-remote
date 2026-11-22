@@ -224,15 +224,9 @@ object TiinyInfo {
             null
         } ?: return emptyList()
         fun v(k: String) = o.optString(k).takeIf { it.isNotBlank() && it != "null" }
-        val api = try {
-            c.request("GET", "/openapi.json", null, 8, log = false).takeIf { it.ok }?.json()?.optJSONObject("info")?.optString("version")
-        } catch (e: Exception) {
-            null
-        }?.takeIf { it.isNotBlank() }
         return listOfNotNull(
             v("tiiny_os")?.let { "TiinyOS" to it },
             v("version")?.let { "Service version" to it },
-            api?.let { "Gateway API" to it },
             listOfNotNull(v("device_model_name"), v("device_model_version")).joinToString(" ").ifBlank { null }?.let { "Model" to it },
             v("dnpu")?.let { "NPU" to it },
             v("cpu")?.let { "CPU" to it },

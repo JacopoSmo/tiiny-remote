@@ -71,12 +71,12 @@ data class ModelInfo(
     val seesImages get() = type == "Image-Text-to-Text" || input.contains("Image")
     val isImageGen get() = type == "Text-to-Image" || type == "Image-to-Image"
     /** Same test as Tiiny Studio: "Image Editing" listed, or images accepted as input. */
-    val canEditImages get() = isImageGen && ("Image Editing" in supported || Regex("\\bImage\\b").containsMatchIn(input))
+    val canEditImages get() = isImageGen && ("Image Editing" in supported || IMAGE_WORD.containsMatchIn(input))
     val isOcr get() = type == "Image-to-Text"
     val isSpeech get() = type == "Text-to-Speech"
     val isAsr get() = type == "ASR"
     val isMusic get() = type == "Music Generation"
-    val isSongModel get() = isMusic && Regex("song|lyric", RegexOption.IGNORE_CASE).containsMatchIn(id + desc.take(300))
+    val isSongModel get() = isMusic && SONG_WORDS.containsMatchIn(id + desc.take(300))
     val isLoopModel get() = isMusic && !isSongModel
     val isVideo get() = type == "Text-to-Video"
     val is3d get() = type == "Image-to-3D"
@@ -127,7 +127,8 @@ data class Plan(
 )
 
 /** One line of the unified log: when, which kind (see ApiLog.TYPES), the text, and whether it reports a problem. */
-data class LogEntry(val ms: Long, val type: String, val text: String, val error: Boolean, val time: String)
+/** One log line. [id] is unique: two identical lines can arrive in the same millisecond (parallel web searches). */
+data class LogEntry(val ms: Long, val type: String, val text: String, val error: Boolean, val time: String, val id: Long = 0)
 
 /** The app's one log: device API calls, models, unlocking, VPN, chat, web search and the creation tools. */
 object ApiLog {
@@ -179,14 +180,16 @@ object ApiLog {
         line.contains("auth.api.tiiny") || line.startsWith("Logged in") || line.contains("unlock", true) -> "Unlock"
         line.contains("/api/v1/models") || line.contains("/v1/models ") || line.startsWith("Loading ") || line.startsWith("Unloading ") ||
             line.startsWith("Model list") || line.startsWith("unload_candidate") -> "Models"
-        Regex("^(GET|POST|DELETE|PUT) /v1/").containsMatchIn(line) || line.contains(" failed: ") -> "Create"
+        CREATE_CALL.containsMatchIn(line) || line.contains(" failed: ") -> "Create"
         else -> "Device"
     }
 
     /** [isProblem] decides the ⚠ when the caller knows better than the wording (e.g. "0 errors" isn't one). */
+    private val nextId = java.util.concurrent.atomic.AtomicLong()
+
     fun add(line: String, type: String? = null, isProblem: Boolean? = null) {
         val text = redact(line)
-        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, isProblem ?: problem.containsMatchIn(text), clock.format(java.time.LocalTime.now()))
+        val e = LogEntry(System.currentTimeMillis(), type ?: classify(text), text, isProblem ?: problem.containsMatchIn(text), clock.format(java.time.LocalTime.now()), nextId.incrementAndGet())
         synchronized(this) { _entries.value = (listOf(e) + _entries.value).take(400) }
     }
 
@@ -536,3 +539,8 @@ class TiinyApi(url: String, private val key: String) {
         modelCall("POST", id, "/stop", timeoutSec = 120)
     }
 }
+
+// Compiled once: these run for every model on every redraw, and for every log line.
+private val IMAGE_WORD = Regex("\\bImage\\b")
+private val SONG_WORDS = Regex("song|lyric", RegexOption.IGNORE_CASE)
+private val CREATE_CALL = Regex("^(GET|POST|DELETE|PUT) /v1/")

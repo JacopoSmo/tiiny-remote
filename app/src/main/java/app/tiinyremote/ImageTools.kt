@@ -142,9 +142,9 @@ private fun resOptions(verified: Boolean, shapes: List<Shape>, aspect: String, r
 
 /** How many reference pictures an editing model takes ("up to N reference images" in its description). */
 private fun maxRefs(m: ModelInfo?): Int =
-    if (m?.canEditImages != true) 0 else Regex("up to (\\d+) reference images", RegexOption.IGNORE_CASE).find(m.desc)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+    if (m?.canEditImages != true) 0 else MAX_REFS.find(m.desc)?.groupValues?.get(1)?.toIntOrNull() ?: 1
 
-private fun makesTransparent(m: ModelInfo?) = m != null && Regex("transparent|alpha channel|RGBA", RegexOption.IGNORE_CASE).containsMatchIn(m.desc)
+private fun makesTransparent(m: ModelInfo?) = m != null && TRANSPARENT.containsMatchIn(m.desc)
 
 /** Tiiny Studio's first guess before it has timed a model: ~75 s per 512² image at 30 steps (10 s for turbo models). */
 private fun imageEstimate(model: String, w: Int, h: Int, steps: Int?, n: Int, edit: Boolean): Double {
@@ -467,3 +467,6 @@ internal fun TextTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
         }
     }
 }
+
+private val MAX_REFS = Regex("up to (\\d+) reference images", RegexOption.IGNORE_CASE)
+private val TRANSPARENT = Regex("transparent|alpha channel|RGBA", RegexOption.IGNORE_CASE)

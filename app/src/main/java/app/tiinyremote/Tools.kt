@@ -792,19 +792,21 @@ object Tools {
             } catch (e: MediaException) {
                 null
             }
-            val st = if (r != null && r.code < 500) r.json().optString("status") else ""
+            if (r != null && r.code == 404) throw MediaException("The Tiiny no longer has this clip (it keeps clips for an hour).")
+            // Parsed once per poll; an answer that isn't JSON (a proxy's error page) counts as no answer.
+            val o = if (r != null && r.code < 500) r.json() else null
+            val st = o?.optString("status").orEmpty()
             if (st in setOf("completed", "failed", "cancelled")) {
-                last = r!!.json()
+                last = o!!
                 break
             }
-            if (r != null && r.code == 404) throw MediaException("The Tiiny no longer has this clip (it keeps clips for an hour).")
             lost = if (st.isEmpty()) lost + 1 else 0
             if (lost >= 100) throw MediaException("Lost the Tiiny while it rendered this video.")
             if (lost > 0) {
                 p.update("No answer from the Tiiny yet (it's usually just busy). Still waiting…", null)
                 continue
             }
-            val pct = r!!.json().optDouble("progress", 0.0).toInt()
+            val pct = o!!.optDouble("progress", 0.0).toInt()
             p.update(if (st == "in_progress") "Rendering" else "Waiting in the device queue", pct)
         }
         job.cancelPath = null

@@ -929,7 +929,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     Tools.image(c, store, model, args.optString("prompt"), "", size, null, null, emptyList(), p)
                 }
-                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImage(id)!!), p)
+                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImage(id) ?: throw MediaException("There's no picture in this chat to edit yet.")), p)
                 "speak" -> {
                     val caps = Tools.voiceCaps(c, model)
                     val savedSpeaker = prefs.getString("voice_speaker", null)
@@ -1382,8 +1382,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     Notifier.done(getApplication(), "Answered: $title", answer.ifBlank { "The answer is ready." })
                 }
             } catch (e: Exception) {
-                // An answer that broke off can be the Tiiny's NPU restarting after a fault, not the network: then say so.
-                val fault = if (chatStop.get()) null else withContext(Dispatchers.IO) { Stats.recentFault(client()) }
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // An answer that broke off can be the Tiiny's NPU restarting after a fault, not the network: then say
+                // so. Only for a lost connection or a server error: "context too long" has nothing to do with the NPU.
+                val lost = Regex("(?i)connection|abort|reset|timed? ?out|HTTP 5\\d\\d|upstream").containsMatchIn(e.message ?: "")
+                val fault = if (chatStop.get() || !lost) null else withContext(Dispatchers.IO) { Stats.recentFault(client()) }
                 val why = "Error: ${e.message}" + (fault?.let {
                     "\n\nThe Tiiny reported an NPU fault at $it and restarted its NPU. Send your question again."
                 } ?: "")

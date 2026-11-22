@@ -794,7 +794,7 @@ private fun ModelInfoDialog(m: ModelInfo, onClose: () -> Unit) {
                         ", so it writes much faster than a dense model of its size" else null,
                     m.npuUsage?.let { "NPU" to "${pct(it)} of the NPU when loaded" },
                     m.loadTimeSec?.let { "Loading" to "about ${fmtSec(it)}" },
-                    if (m.thinks) "Thinking" to (if (m.alwaysThinks) "always reasons (effort adjustable)" else "can be switched on and off") else null,
+                    if (m.thinks) "Thinking" to (if (m.alwaysThinks) "always reasons; depth Low to High on the chat's Thinking slider" else "Off to Max on the chat's Thinking slider") else null,
                     "Status" to when (m.status) {
                         "running" -> if (m.busy) "loaded, working" else "loaded"
                         "loading" -> "loading"
@@ -931,9 +931,8 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
     val list = entries.filter { (shown.isEmpty() || it.type in shown) && (!problems || it.error) }
     val compact = LocalUi.current.compact
     // Long-press picks entries: then Share and Copy send only those (an error with what came before and after it).
-    var picked by remember { mutableStateOf(setOf<String>()) }
-    fun keyOf(e: LogEntry) = "${e.ms}-${e.text.hashCode()}-${e.type}"
-    val pickedEntries = entries.filter { keyOf(it) in picked }
+    var picked by remember { mutableStateOf(setOf<Long>()) }
+    val pickedEntries = entries.filter { it.id in picked }
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
     Column(
@@ -943,7 +942,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Log", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("Activity", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { vm.unlock() }, enabled = !s.unlocking) {
                 BtnLabel(if (s.unlocking) "Unlocking…" else "Unlock Tiiny", androidx.compose.material.icons.Icons.Filled.Lock)
             }
@@ -1010,8 +1009,8 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
         )
         LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (list.isEmpty()) item { Text("Nothing here yet.", style = MaterialTheme.typography.bodyMedium) }
-            items(list, key = { keyOf(it) }) { e ->
-                val k = keyOf(e)
+            items(list, key = { it.id }) { e ->
+                val k = e.id
                 LogRow(
                     e,
                     chosen = k in picked,
