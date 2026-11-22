@@ -195,8 +195,8 @@ fun AppRoot(vm: MainViewModel) {
     }
     fun openToolNav(id: String?) {
         if (id == toolId || (id == "image" && toolId == null)) return // no tool open = Image → Create
-        if (id != null) history.add(tab to toolId)
-        else if (history.lastOrNull() == (tab to null)) history.removeAt(history.size - 1) // "‹ Tools" = back
+        history.add(tab to toolId)
+        if (history.size > 30) history.removeAt(0)
         toolId = id
     }
     val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null && toolId != "image")
@@ -575,7 +575,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                         onClick = { storeView = true; if (s.store == null) vm.loadStore() },
                         label = { Text("Store" + (s.store?.let { " ${it.size}" } ?: "")) },
                     )
-                    // Types: the kinds from Create → Create, for both lists.
+                    // Types: every kind of model the Tiiny has, for both lists.
                     Box {
                         FilterChip(
                             selected = typeSel.isNotEmpty(),

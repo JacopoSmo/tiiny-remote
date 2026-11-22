@@ -705,6 +705,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveSettings(s: AppSettings) {
         store.save(s)
+        // The NAS agent works with the Tiiny's address and key: it gets the new ones (when it's set up).
+        if (AutoStore(app).connectors().nasReady) viewModelScope.launch(Dispatchers.IO) {
+            try {
+                NasAgent.push(app)
+            } catch (e: Exception) {
+                ApiLog.add("Couldn't update the NAS agent: ${e.message}", "Automations")
+            }
+        }
         _state.update { it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") }
         lastAutoUnlock = 0L
         autoUnlockFails = 0

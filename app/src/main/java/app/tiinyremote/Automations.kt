@@ -386,7 +386,7 @@ object AutoRunner {
             progress("Checking the model…")
             model = pickModel(api, a, progress, started)
             val text = if (a.kind == "agent") agent(app, c, s, conn, model, a, steps, progress, started)
-            else process(app, c, s, conn, model, a, steps, progress)
+            else process(app, c, s, conn, model, a, steps, progress, started)
             AutoRun(Automation.newId(), a.id, a.name, System.currentTimeMillis(), true, text, "phone", model.substringAfterLast('/'), steps)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
@@ -434,7 +434,7 @@ object AutoRunner {
     /** Input → model → result. */
     private fun process(
         ctx: Context, c: DeviceClient, s: AppSettings, conn: Connectors, model: String, a: Automation,
-        steps: MutableList<String>, progress: (String) -> Unit,
+        steps: MutableList<String>, progress: (String) -> Unit, started: Long,
     ): String {
         val input = when (a.source) {
             "web", "news" -> {
@@ -459,7 +459,10 @@ object AutoRunner {
         }
         progress("Writing…")
         val user = "Task: ${a.instruction.ifBlank { "Summarise this." }}" + if (input.isNotBlank()) "\n\n$input" else ""
-        return Tools.chatOnce(c, model, system(), user, 2500, timeoutSec = 420)
+        // Within what's left of the 9 minutes (a slow model load may have used some): a run cut off by Android leaves nothing.
+        val left = ((DEADLINE_MS - (System.currentTimeMillis() - started)) / 1000).toInt()
+        if (left < 45) throw MediaException("No time left to write: the model took too long to load. Try again now that it's loaded.")
+        return Tools.chatOnce(c, model, system(), user, 2500, timeoutSec = minOf(420, left))
     }
 
     private fun hitsText(hits: List<WebSearch.Hit>) = hits.mapIndexed { i, h -> "${i + 1}. ${h.title} — ${h.url}\n   ${h.snippet}" }.joinToString("\n")
@@ -517,9 +520,10 @@ object AutoRunner {
             return b
         }
         for (step in 1..a.maxSteps.coerceIn(1, 12)) {
-            if (System.currentTimeMillis() - started > DEADLINE_MS - 90_000) break
+            if (System.currentTimeMillis() - started > DEADLINE_MS - 150_000) break
             progress("Thinking (step $step of ${a.maxSteps})…")
-            val r = c.request("POST", "/v1/chat/completions", body(true), 300)
+            val left = ((DEADLINE_MS - (System.currentTimeMillis() - started)) / 1000).toInt()
+            val r = c.request("POST", "/v1/chat/completions", body(true), minOf(300, left - 60).coerceAtLeast(30))
             if (!r.ok) throw MediaException(r.error())
             val msg = r.json().optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
                 ?: throw MediaException("The model gave no answer.")
@@ -554,7 +558,8 @@ object AutoRunner {
         // Out of steps or time: one last answer from what was found.
         progress("Writing the answer…")
         messages.put(JSONObject().put("role", "user").put("content", "Stop using tools. Give your final answer now with what you have."))
-        val r = c.request("POST", "/v1/chat/completions", body(false), 300)
+        val left = ((DEADLINE_MS - (System.currentTimeMillis() - started)) / 1000).toInt()
+        val r = c.request("POST", "/v1/chat/completions", body(false), minOf(300, left).coerceAtLeast(30))
         if (!r.ok) throw MediaException(r.error())
         return clean(r.json().optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty())
             .ifBlank { throw MediaException("The model's answer was empty.") }
@@ -610,7 +615,11 @@ object AutoScheduler {
         return null
     }
 
-    fun schedule(ctx: Context, a: Automation, keepExisting: Boolean = false) {
+    /**
+     * [keepExisting]: at app start, what's queued stays. [fromWorker]: the run itself queues the next one, appended
+     * after it (replacing would cancel the run that's just finishing).
+     */
+    fun schedule(ctx: Context, a: Automation, keepExisting: Boolean = false, fromWorker: Boolean = false) {
         val wm = WorkManager.getInstance(ctx.applicationContext)
         val at = next(a)
         if (!a.enabled || a.where != "phone" || at == null) {
@@ -624,7 +633,12 @@ object AutoScheduler {
             .setInputData(workDataOf("id" to a.id))
             .addTag("automation")
             .build()
-        wm.enqueueUniqueWork(name(a.id), if (keepExisting) ExistingWorkPolicy.KEEP else ExistingWorkPolicy.REPLACE, req)
+        val policy = when {
+            fromWorker -> ExistingWorkPolicy.APPEND_OR_REPLACE
+            keepExisting -> ExistingWorkPolicy.KEEP
+            else -> ExistingWorkPolicy.REPLACE
+        }
+        wm.enqueueUniqueWork(name(a.id), policy, req)
     }
 
     fun cancel(ctx: Context, id: String) = WorkManager.getInstance(ctx.applicationContext).cancelUniqueWork(name(id))
@@ -641,8 +655,8 @@ class AutoWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         val id = inputData.getString("id") ?: return Result.success()
         val a = AutoStore(app).automations().firstOrNull { it.id == id } ?: return Result.success()
         if (a.enabled && a.where == "phone") AutoRunner.run(app, a)
-        // The next time is queued after this one ran (or was skipped).
-        AutoScheduler.schedule(app, a)
+        // The next time is queued after this one ran (or was skipped); the latest version, in case it was edited meanwhile.
+        AutoScheduler.schedule(app, AutoStore(app).automations().firstOrNull { it.id == id } ?: return Result.success(), fromWorker = true)
         return Result.success()
     }
 }

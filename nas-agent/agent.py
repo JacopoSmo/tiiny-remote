@@ -369,8 +369,11 @@ def system():
 
 def chat(model, messages, tools=None, max_tokens=3000):
     body = {"model": model, "messages": messages, "stream": False, "max_tokens": max_tokens}
+    # Quick, direct answers: gpt-oss thinks briefly; others (Qwen…) not at all, or the thinking could use up the budget.
     if "gpt-oss" in model:
-        body["reasoning_effort"] = "medium"
+        body["reasoning_effort"] = "low"
+    else:
+        body["chat_template_kwargs"] = {"enable_thinking": False}
     if tools:
         body["tools"] = tools
     r = tiiny("/v1/chat/completions", body, timeout=420)
@@ -411,7 +414,10 @@ def process(a, model, steps):
                read_email(int(arg or 24), a.get("unread_only", False))
         steps.append("email read")
     user = "Task: " + (a.get("instruction") or "Summarise this.") + (f"\n\n{data}" if data else "")
-    return clean(chat(model, [{"role": "system", "content": system()}, {"role": "user", "content": user}], max_tokens=2500).get("content"))
+    out = clean(chat(model, [{"role": "system", "content": system()}, {"role": "user", "content": user}], max_tokens=2500).get("content"))
+    if not out:
+        raise RuntimeError("The model's answer was empty.")
+    return out
 
 
 def agent(a, model, steps, started):

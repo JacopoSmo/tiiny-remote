@@ -171,7 +171,8 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
-                        val labels = m.abilities + if (m.isMoE) listOf("MoE") else emptyList()
+                        // "Translates" is on every chat model: no news in a chat's model list.
+                        val labels = m.abilities.filter { it != "Translates" } + if (m.isMoE) listOf("MoE") else emptyList()
                         if (labels.isNotEmpty()) {
                             Text(
                                 tags(labels),
