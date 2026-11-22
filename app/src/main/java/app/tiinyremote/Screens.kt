@@ -942,7 +942,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Activity", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("Logs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { vm.unlock() }, enabled = !s.unlocking) {
                 BtnLabel(if (s.unlocking) "Unlocking…" else "Unlock Tiiny", androidx.compose.material.icons.Icons.Filled.Lock)
             }
@@ -1004,7 +1004,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
             if (pickedEntries.isNotEmpty()) "Tap entries to add or remove them. Share and Copy send only the chosen ones."
             else "Share sends what's shown, without keys, passwords or email addresses. Long-press an entry to choose just some. " +
                 "Tiiny stats adds what the Tiiny itself counted.",
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
