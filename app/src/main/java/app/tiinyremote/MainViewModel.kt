@@ -710,7 +710,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 NasAgent.push(app)
             } catch (e: Exception) {
-                ApiLog.add("Couldn't update the NAS agent: ${e.message}", "Automations")
+                ApiLog.add("Couldn't update the NAS agent: ${e.message}", "Automate")
             }
         }
         _state.update { it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") }

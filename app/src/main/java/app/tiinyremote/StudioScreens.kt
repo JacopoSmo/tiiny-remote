@@ -2,6 +2,10 @@
 
 package app.tiinyremote
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.filled.Close
@@ -1072,6 +1076,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var web by rememberSaveable { mutableStateOf(st.setting("chat.web", "0") == "1") }
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    var file by remember { mutableStateOf<PickedFile?>(null) } // a document attached to the next message
+    var attachError by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
     var lastCount by remember { mutableStateOf(0) }
     val ideasNow = st.suggestions.collectAsState().value[st.currentChat.collectAsState().value]
@@ -1207,10 +1213,11 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             val m = model ?: return
             if (busy) return
             val pic = if (typed) image.firstOrNull()?.dataUri else null
-            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models)
+            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models, if (typed) file else null)
             if (typed) {
                 input = ""
                 image = emptyList()
+                file = null
                 undoDraft = null
             }
         }
@@ -1286,10 +1293,27 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 ) { Icon(androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to the newest message") }
             }
         }
-        if (model?.seesImages == true) {
-            ImagePickerRow(image, 1, "Add a picture") { image = it }
+        // What's attached to the next message, only when something is: a small line, not a permanent row.
+        if (image.isNotEmpty() || file != null || attachError != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                image.firstOrNull()?.let { p ->
+                    androidx.compose.foundation.Image(
+                        p.preview.asImageBitmap(), "Attached image",
+                        Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop,
+                    )
+                    TextButton(onClick = { image = emptyList() }) { Text("✕") }
+                }
+                file?.let { f ->
+                    Text(
+                        "📄 ${f.name}" + if (f.cut) " (first ${Docs.MAX_CHARS / 1000}k characters)" else "",
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    TextButton(onClick = { file = null }) { Text("✕") }
+                }
+                attachError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
         }
-        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty()) && !busy
+        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty() || file != null) && !busy
         fun doSend() = sendText(input, typed = true)
         helperBusy?.let { what ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -1300,6 +1324,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         quick?.let { (title, text) -> QuickResult(title, text) { quick = null } }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
+            AttachButton(
+                seesImages = model?.seesImages == true,
+                onImage = { image = listOf(it); attachError = null },
+                onFile = { file = it; attachError = null },
+                onError = { attachError = it },
+            )
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -1336,10 +1366,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     }
                 }
             }
-            if (busy) {
-                OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
-            } else {
-                Button(onClick = { doSend() }, enabled = canSend) { BtnLabel("Send", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
+            when {
+                busy -> OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
+                // Nothing typed or attached yet: the microphone, to dictate the message instead.
+                input.isBlank() && image.isEmpty() && file == null ->
+                    DictateButton(enabled = helperBusy == null, models = s.models, st = st) { said -> input = (input + " " + said).trim() }
+                else -> Button(onClick = { doSend() }, enabled = canSend) { BtnLabel("Send", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
             }
         }
     }
@@ -1361,7 +1393,8 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
             modifier = Modifier.fillMaxWidth(0.88f),
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (m.image != null) Text("(picture attached)", style = MaterialTheme.typography.bodySmall)
+                if (m.image != null) Text("🖼 image attached", style = MaterialTheme.typography.bodySmall)
+                m.fileName?.let { Text("📄 $it", style = MaterialTheme.typography.bodySmall) }
                 if (m.reasoning.isNotBlank()) {
                     TextButton(onClick = { showThinking = !showThinking }) {
                         Text(if (showThinking) "Hide thinking" else if (live && m.text.isEmpty()) "Thinking…" else "Show thinking")
@@ -1516,4 +1549,106 @@ private fun QuickResult(title: String, text: String, onClose: () -> Unit) {
             }
         },
     )
+}
+
+/**
+ * The ＋ beside the message: an image (from the phone, or a new photo; only for models that see images) or a file
+ * (PDF, Word, Excel, PowerPoint, text), whose text is read on the phone and sent along.
+ */
+@Composable
+private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, onFile: (PickedFile) -> Unit, onError: (String) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    fun load(block: suspend () -> Unit) = scope.launch {
+        try {
+            block()
+        } catch (e: Exception) {
+            onError(e.message ?: "Couldn't read it.")
+        }
+    }
+    val pickImage = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) load { onImage(withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.image(ctx, uri, 2048) }) }
+    }
+    val shot = remember { java.io.File(ctx.cacheDir, "camera").apply { mkdirs() }.let { java.io.File(it, "chat.jpg") } }
+    val shotUri = remember { androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", shot) }
+    val camera = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) load {
+            try {
+                onImage(withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.image(ctx, shotUri, 2048) })
+            } finally {
+                shot.delete()
+            }
+        }
+    }
+    val pickFile = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) load { onFile(withContext(kotlinx.coroutines.Dispatchers.IO) { Docs.read(ctx, uri) }) }
+    }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Add, contentDescription = "Attach an image or a file") }
+        ScaledDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("🖼 Image from the phone" + if (seesImages) "" else " (this model doesn't see images)") },
+                enabled = seesImages,
+                onClick = {
+                    open = false
+                    pickImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("📷 Take a photo") },
+                enabled = seesImages,
+                onClick = { open = false; runCatching { camera.launch(shotUri) }.onFailure { onError("No camera app found.") } },
+            )
+            DropdownMenuItem(
+                text = { Text("📄 File: PDF, Word, Excel, PowerPoint, text") },
+                onClick = { open = false; runCatching { pickFile.launch(Docs.MIMES) }.onFailure { onError("No file picker found.") } },
+            )
+        }
+    }
+}
+
+/**
+ * The microphone for dictating a message: tap to start, tap again to stop; the Tiiny's speech-to-text model writes it
+ * out (nothing goes to Google or anywhere else) and it lands in the message box to check before sending.
+ */
+@Composable
+private fun DictateButton(enabled: Boolean, models: List<ModelInfo>, st: StudioViewModel, onText: (String) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val rec = remember { WavRecorder() }
+    var recording by remember { mutableStateOf(false) }
+    var seconds by remember { mutableStateOf(0) }
+    LaunchedEffect(recording) {
+        while (recording) {
+            kotlinx.coroutines.delay(500)
+            seconds = rec.seconds.toInt()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { if (rec.recording) rec.stop() } }
+    fun start() {
+        seconds = 0
+        rec.start()
+        recording = true
+    }
+    val ask = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok -> if (ok) start() }
+    val hasAsr = models.any { it.isAsr }
+    if (recording) {
+        Button(
+            onClick = {
+                recording = false
+                val wav = rec.stop()
+                if (wav.size > 16_000) st.dictate(wav, models, onText) // under half a second: nothing said
+            },
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+        ) { Text("■ ${seconds}s") }
+    } else {
+        IconButton(
+            onClick = {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) start() else ask.launch(android.Manifest.permission.RECORD_AUDIO)
+            },
+            enabled = enabled && hasAsr,
+        ) { Icon(MicIcon, contentDescription = if (hasAsr) "Dictate" else "Dictating needs a speech-to-text (ASR) model on the Tiiny") }
+    }
 }

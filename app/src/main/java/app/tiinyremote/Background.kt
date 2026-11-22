@@ -185,13 +185,13 @@ object Notifier {
 
     private const val UPDATE_ID = 2
 
-    /** An automation's result (or failure): always, on its own channel, private on the lock screen; opens Automations. */
+    /** An automation's result (or failure): always, on its own channel, private on the lock screen; opens Automate. */
     fun automation(ctx: Context, run: AutoRun) {
         val app = ctx.applicationContext
         if (!allowed(app)) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             app.getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(NotificationChannel("automations", "Automations", NotificationManager.IMPORTANCE_DEFAULT))
+                .createNotificationChannel(NotificationChannel("automations", "Automate", NotificationManager.IMPORTANCE_DEFAULT))
         }
         val title = if (run.ok) run.name else "${run.name} didn't work"
         val text = run.text.replace(Regex("[#*_`>]"), "").trim().take(1500)

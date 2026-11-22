@@ -134,7 +134,7 @@ data class LogEntry(val ms: Long, val type: String, val text: String, val error:
 /** The app's one log: device API calls, models, unlocking, VPN, chat, web search and the creation tools. */
 object ApiLog {
     /** The kinds of entries, in the order the Activity tab shows its filter buttons. */
-    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create", "Automations")
+    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create", "Automate")
 
     private val _entries = kotlinx.coroutines.flow.MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: kotlinx.coroutines.flow.StateFlow<List<LogEntry>> = _entries

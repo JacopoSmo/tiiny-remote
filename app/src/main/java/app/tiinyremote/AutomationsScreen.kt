@@ -196,7 +196,7 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = section == "list", onClick = { section = "list" }, label = { Text(sign("Automations") + " Automations") })
+            FilterChip(selected = section == "list", onClick = { section = "list" }, label = { Text(sign("Automate") + " Automate") })
             FilterChip(selected = section == "results", onClick = { section = "results"; av.refresh() }, label = { Text("Results") })
             FilterChip(selected = section == "connectors", onClick = { section = "connectors" }, label = { Text("Connectors") })
         }

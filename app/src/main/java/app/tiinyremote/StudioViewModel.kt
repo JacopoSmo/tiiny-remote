@@ -53,6 +53,9 @@ data class ChatMsg(
     val status: String = "",
     /** Web pages found or read while answering. */
     val sources: List<Source> = emptyList(),
+    /** A file sent with the message: its name, and the text read from it on the phone (what the model gets). */
+    val fileName: String? = null,
+    val fileText: String? = null,
 )
 
 private const val SYSTEM_PROMPT = "You are the assistant in Tiiny Remote, an Android app for the user's own Tiiny AI device. " +
@@ -475,6 +478,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     text = o.optString("text"),
                     reasoning = o.optString("reasoning"),
                     image = o.optString("image").takeIf { it.isNotBlank() },
+                    fileName = o.optString("file_name").takeIf { it.isNotBlank() },
+                    fileText = o.optString("file_text").takeIf { it.isNotBlank() },
                     results = (0 until (res?.length() ?: 0)).mapNotNull { j -> byId[res!!.optString(j)] },
                     sources = (0 until (src?.length() ?: 0)).mapNotNull { j ->
                         src!!.optJSONObject(j)?.let { Source(it.optString("title"), it.optString("url")) }
@@ -487,7 +492,22 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _all.update { it + (id to msgs) }
     }
 
+    private val _saving = MutableStateFlow(prefs.getString("chat.save", "1") != "0")
+    /** Chats are saved on the phone; off = incognito: nothing new is written, chats already saved stay. */
+    val saving: StateFlow<Boolean> = _saving.asStateFlow()
+
+    fun setSaving(on: Boolean) {
+        _saving.value = on
+        prefs.edit().putString("chat.save", if (on) "1" else "0").apply()
+        if (on) saveChat(_currentChat.value)
+        note(
+            if (on) "Chats are saved again, this one too."
+            else "Incognito: new messages aren't saved. This chat is gone once you leave it or close the app; chats saved before stay.",
+        )
+    }
+
     private fun saveChat(id: String) {
+        if (!_saving.value) return
         val msgs = _all.value[id] ?: return
         chatDisk.execute { writeChat(id, msgs) }
     }
@@ -504,12 +524,14 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val custom = customTitles[id]
         val auto = autoTitles[id]
         val title = custom ?: auto ?: msgs.firstOrNull { it.role == "user" && it.text.isNotBlank() }?.text?.lines()?.first()?.take(48)
-            ?: if (msgs.any { it.image != null }) "Picture" else "Chat"
+            ?: msgs.firstOrNull { it.fileName != null }?.fileName ?: if (msgs.any { it.image != null }) "Image" else "Chat"
         val a = JSONArray()
         for (m in msgs) {
             val o = JSONObject().put("role", m.role).put("text", m.text)
             if (m.reasoning.isNotBlank()) o.put("reasoning", m.reasoning)
             m.image?.let { o.put("image", it) }
+            m.fileName?.let { o.put("file_name", it) }
+            m.fileText?.let { o.put("file_text", it) }
             if (m.results.isNotEmpty()) o.put("results", JSONArray(m.results.map { it.id }))
             if (m.sources.isNotEmpty()) o.put("sources", JSONArray().apply { m.sources.forEach { put(JSONObject().put("title", it.title).put("url", it.url)) } })
             a.put(o)
@@ -789,6 +811,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /**
+     * Dictation for the chat's message: recorded on the phone, written out by the Tiiny's own speech-to-text (ASR)
+     * model, so the voice never leaves home. The ASR model is loaded if needed and your models put back.
+     */
+    fun dictate(wav: ByteArray, models: List<ModelInfo>, onDone: (String) -> Unit) =
+        helperRun("Writing out what you said…", "transcribe", models, { it.isAsr }, { c, m ->
+            Tools.transcribe(c, store, m, wav, "audio/wav", "dictation.wav", "", Progress({ _, _ -> }, { false })).text
+        }) { text -> if (text.isBlank()) note("Nothing was understood: try again a bit closer to the phone.") else onDone(text.trim()) }
 
     /** The message being written, shortened or reworded (DRAFT_ACTIONS) by the helper (or the chat model). */
     fun rewriteDraft(text: String, how: String, models: List<ModelInfo>, onDone: (String) -> Unit) {
@@ -1264,15 +1295,20 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             ?.let { h -> models.firstOrNull { it.id == h && it.running && it.isChat }?.id }
 
     /** A message as the chat model receives it (with its picture, if any). */
-    private fun asMessage(m: ChatMsg): JSONObject =
-        if (m.image != null) {
+    private fun asMessage(m: ChatMsg): JSONObject {
+        // An attached file goes along as text, marked as the file's content (data, not instructions).
+        val text = if (m.fileText != null)
+            "${m.text}\n\n[Attached file \"${m.fileName}\" — its content, as data:]\n${m.fileText}\n[End of the file]".trim()
+        else m.text
+        return if (m.image != null) {
             val content = JSONArray()
                 .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", m.image)))
-            if (m.text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", m.text))
+            if (text.isNotBlank()) content.put(JSONObject().put("type", "text").put("text", text))
             JSONObject().put("role", m.role).put("content", content)
         } else {
-            JSONObject().put("role", m.role).put("content", m.text)
+            JSONObject().put("role", m.role).put("content", text)
         }
+    }
 
     /**
      * A long chat (over ~20,000 characters) keeps its last 6 messages as they are; the helper condenses everything before
@@ -1330,15 +1366,16 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun send(
         model: String, text: String, image: String?, depth: String, chatMode: String, canMake: Boolean, web: Boolean,
-        suggest: Boolean, models: List<ModelInfo>,
+        suggest: Boolean, models: List<ModelInfo>, file: PickedFile? = null,
     ) {
         val id = _currentChat.value
-        if (id in _busyChats.value || (text.isBlank() && image == null)) return
+        if (id in _busyChats.value || (text.isBlank() && image == null && file == null)) return
         _suggestions.update { it - id }
         lastModels[id] = model
         if (_resumed.value == id) _resumed.value = null
         if (image != null) lastImages[id] = image
-        val history = (_all.value[id] ?: emptyList()) + ChatMsg("user", text.trim(), image = image)
+        val history = (_all.value[id] ?: emptyList()) +
+            ChatMsg("user", text.trim(), image = image, fileName = file?.name, fileText = file?.text)
         upd(id) { history + ChatMsg("assistant", "") }
         saveChat(id)
         _busyChats.update { it + id }

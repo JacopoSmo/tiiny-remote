@@ -208,7 +208,7 @@ fun AppRoot(vm: MainViewModel) {
         } else if (tab == 1 && toolId != null) toolId = null
     }
     BackHandler(enabled = canGoBack) { back() }
-    // A notification can ask for a screen (an automation's result opens Automations).
+    // A notification can ask for a screen (an automation's result opens Automate).
     val navRequest by Nav.request.collectAsState()
     LaunchedEffect(navRequest) {
         if (navRequest == "automations") goTab(5)
@@ -259,14 +259,15 @@ fun AppRoot(vm: MainViewModel) {
     val current by st.currentChat.collectAsState()
     val busyChats by st.busyChats.collectAsState()
     var historyOpen by remember { mutableStateOf(false) }
+    val saving by st.saving.collectAsState()
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     val sections = listOf(
         Triple("Models", Icons.Filled.Home, 0),
         Triple("Chat", Icons.Filled.Send, 2),
         Triple("Create", Icons.Filled.Create, 1),
         Triple("Creations", GalleryIcon, 6),
+        Triple("Automate", AutomationIcon, 5),
         Triple("Translate", TranslateIcon, 7),
-        Triple("Automations", AutomationIcon, 5),
         Triple("Activity", Icons.Filled.List, 3),
         Triple("Settings", Icons.Filled.Settings, 4),
     )
@@ -333,6 +334,13 @@ fun AppRoot(vm: MainViewModel) {
                                     IconButton(onClick = { historyOpen = true }) { Icon(HistoryIcon, contentDescription = "Chat history") }
                                     ChatHistoryMenu(historyOpen, chats, current, busyChats, { historyOpen = false }, { st.resumeChat(it.id); historyOpen = false },
                                         onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) })
+                                }
+                                // Save: green, chats are kept in History; red, incognito (nothing is kept from now on).
+                                IconButton(onClick = { st.setSaving(!saving) }) {
+                                    Icon(
+                                        SaveIcon, tint = if (saving) Color(0xFF43A047) else MaterialTheme.colorScheme.error,
+                                        contentDescription = if (saving) "Chats are saved (tap for incognito)" else "Incognito: chats aren't saved (tap to save them)",
+                                    )
                                 }
                                 IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             }
@@ -921,7 +929,7 @@ private fun logColor(type: String): Color = when (type) {
     "Chat" -> Color(0xFFF4511E)
     "Search" -> Color(0xFF43A047)
     "Create" -> Color(0xFFFFB300)
-    "Automations" -> Color(0xFF6D4C41)
+    "Automate" -> Color(0xFF6D4C41)
     else -> Color.Gray
 }
 
@@ -1127,6 +1135,9 @@ private fun PictogramLegend(onClose: () -> Unit) {
         "📊" to "The Tiiny's own request statistics (Activity)",
         HistoryIcon to "History: earlier chats, past speed tests",
         GalleryIcon to "Open Creations",
+        Icons.Filled.Add to "New chat; beside the message: attach an image or a file",
+        MicIcon to "Dictate a message (needs a speech-to-text model)",
+        SaveIcon to "Chat: green, chats are saved; red, incognito",
     )
     ScaledAlertDialog(
         onDismissRequest = onClose,
@@ -1151,7 +1162,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Socratic" to "Chat: Socratic mode (guides with questions)",
                     "Student" to "Chat: Student mode (teaches step by step)",
                     "Translates" to "Can translate (every chat model); also the Translate page",
-                    "Automations" to "Automations: processes and agents",
+                    "Automate" to "Automate: processes and agents",
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1178,7 +1189,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for ((icon, what) in listOf(GalleryIcon to "Creations: everything made", TranslateIcon to "Translate: text, photos, speech",
-                    AutomationIcon to "Automations: 📋 processes, 🤖 agents")) {
+                    AutomationIcon to "Automate: 📋 processes, 🤖 agents")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
                         Text(what, style = MaterialTheme.typography.bodyMedium)

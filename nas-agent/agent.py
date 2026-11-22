@@ -211,7 +211,7 @@ def mail_text(msg):
 def read_email(hours=24, unread_only=False, limit=25):
     c = config().get("imap", {})
     if not (c.get("host") and c.get("user") and c.get("password")):
-        raise RuntimeError("Email isn't set up in the app (Automations → Connectors).")
+        raise RuntimeError("Email isn't set up in the app (Automate → Connectors).")
     if c.get("ssl", True):
         m = imaplib.IMAP4_SSL(c["host"], int(c.get("port", 993)), ssl_context=ssl.create_default_context(), timeout=30)
     else:

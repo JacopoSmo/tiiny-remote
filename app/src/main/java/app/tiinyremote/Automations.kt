@@ -248,7 +248,7 @@ object PhoneCalendar {
 
     /** today, tomorrow or week (the next 7 days), one line per event. */
     fun events(ctx: Context, range: String): String {
-        if (!allowed(ctx)) throw MediaException("Calendar access isn't allowed: Automations → Connectors → Calendar.")
+        if (!allowed(ctx)) throw MediaException("Calendar access isn't allowed: Automate → Connectors → Calendar.")
         val zone = ZoneId.systemDefault()
         val today = LocalDate.now(zone)
         val (from, to) = when (range) {
@@ -290,7 +290,7 @@ object PhoneCalendar {
 /** Reads recent mail over IMAP, read-only: nothing is marked as read, moved or deleted. */
 object Mail {
     fun read(c: Connectors, hours: Int, unreadOnly: Boolean, max: Int = 25): String {
-        if (!c.emailReady) throw MediaException("Email isn't set up: Automations → Connectors → Email.")
+        if (!c.emailReady) throw MediaException("Email isn't set up: Automate → Connectors → Email.")
         val proto = if (c.imapSsl) "imaps" else "imap"
         val props = java.util.Properties().apply {
             put("mail.store.protocol", proto)
@@ -392,13 +392,13 @@ object AutoRunner {
             if (e is kotlinx.coroutines.CancellationException) throw e
             val why = when {
                 e is TiinyException && e.kind == TiinyException.Kind.UNREACHABLE ->
-                    "The Tiiny wasn't reachable. Automations on the phone need it at home or over your VPN."
+                    "The Tiiny wasn't reachable. Phone automations need it at home or over your VPN."
                 else -> e.message ?: e.javaClass.simpleName
             }
             AutoRun(Automation.newId(), a.id, a.name, System.currentTimeMillis(), false, why, "phone", model.substringAfterLast('/'), steps)
         }
         AutoStore(app).addRun(run)
-        ApiLog.add("Automation \"${a.name}\" ${if (run.ok) "done" else "failed: ${run.text.take(200)}"} (${(System.currentTimeMillis() - started) / 1000} s)", "Automations", isProblem = !run.ok)
+        ApiLog.add("Automation \"${a.name}\" ${if (run.ok) "done" else "failed: ${run.text.take(200)}"} (${(System.currentTimeMillis() - started) / 1000} s)", "Automate", isProblem = !run.ok)
         if (a.notify || !run.ok) Notifier.automation(app, run)
         run
     }
@@ -667,7 +667,7 @@ class AutoWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
  */
 object NasAgent {
     private fun call(c: Connectors, method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> {
-        if (!c.nasReady) throw MediaException("The NAS agent isn't set up: Automations → Connectors → NAS agent.")
+        if (!c.nasReady) throw MediaException("The NAS agent isn't set up: Automate → Connectors → NAS agent.")
         val conn = URL(c.nasUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
         conn.connectTimeout = 8_000
         conn.readTimeout = timeoutSec * 1000

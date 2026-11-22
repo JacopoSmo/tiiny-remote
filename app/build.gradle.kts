@@ -91,4 +91,6 @@ dependencies {
 
     // SSH client used to run "tiiny login" on the NAS.
     implementation("com.github.mwiede:jsch:0.2.20")
+    // Reading PDFs attached in Chat (text only, on the phone).
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 }
