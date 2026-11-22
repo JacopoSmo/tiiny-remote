@@ -178,6 +178,39 @@ object Notifier {
 
     private const val UPDATE_ID = 2
 
+    /** An automation's result (or failure): always, on its own channel, private on the lock screen; opens Automations. */
+    fun automation(ctx: Context, run: AutoRun) {
+        val app = ctx.applicationContext
+        if (!allowed(app)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            app.getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(NotificationChannel("automations", "Automations", NotificationManager.IMPORTANCE_DEFAULT))
+        }
+        val title = if (run.ok) run.name else "${run.name} didn't work"
+        val text = run.text.replace(Regex("[#*_`>]"), "").trim().take(1500)
+        val open = PendingIntent.getActivity(
+            app,
+            3,
+            Intent(app, MainActivity::class.java).putExtra(MainActivity.OPEN, "automations")
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = NotificationCompat.Builder(app, "automations")
+            .setSmallIcon(R.drawable.ic_stat_tiiny)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(
+                NotificationCompat.Builder(app, "automations").setSmallIcon(R.drawable.ic_stat_tiiny)
+                    .setContentTitle("Tiiny Remote: an automation finished").build(),
+            )
+            .build()
+        app.getSystemService(NotificationManager::class.java).notify(ids.incrementAndGet(), n)
+    }
+
     /** "Done" notice, when that's turned on and the app isn't on screen (you'd see it there anyway). */
     fun done(ctx: Context, title: String, text: String) {
         val app = ctx.applicationContext

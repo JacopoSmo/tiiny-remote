@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Automations: your calendar, read-only and only after you allow it. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <queries>
         <package android:name="com.wireguard.android" />

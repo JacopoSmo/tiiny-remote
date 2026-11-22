@@ -21,6 +21,16 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
+    companion object {
+        /** Extra naming the screen to open (from a notification): "automations". */
+        const val OPEN = "open"
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(OPEN)?.let { Nav.request.value = it }
+    }
+
     override fun onStart() {
         super.onStart()
         Background.visible = true
@@ -35,6 +45,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // The daily update check (Settings) is kept scheduled, or cancelled, to match the setting.
         AppUpdate.schedule(this, Store(this).load().dailyUpdateCheck)
+        // Scheduled automations stay queued (after an update, say); what's already waiting is kept.
+        AutoScheduler.scheduleAll(this)
+        intent?.getStringExtra(OPEN)?.let { Nav.request.value = it }
         // Check the Tiiny only while the app is on screen; stops in the background to save battery.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -59,4 +72,9 @@ fun AppTheme(content: @Composable () -> Unit) {
         else -> lightColorScheme()
     }
     MaterialTheme(colorScheme = scheme, content = content)
+}
+
+/** A screen to open, asked from outside the UI (a notification): AppRoot goes there and clears it. */
+object Nav {
+    val request = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 }

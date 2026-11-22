@@ -521,6 +521,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         selectChat(id)
     }
 
+    /** A new chat that starts with a text (an automation's result), to ask about it further. */
+    fun startChatWith(title: String, text: String) {
+        val id = newChatId()
+        customTitles[id] = title.take(60)
+        _all.update { it + (id to listOf(ChatMsg("assistant", text))) }
+        selectChat(id)
+        saveChat(id)
+    }
+
     fun renameChat(id: String, title: String) {
         if (title.isBlank()) return
         val name = title.trim().take(60)

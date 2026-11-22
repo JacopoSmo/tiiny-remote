@@ -154,7 +154,7 @@ class Store(context: Context) {
     }
 }
 
-private object Crypto {
+internal object Crypto {
     private const val ALIAS = "tiiny_remote_secrets"
 
     private fun key(): SecretKey {

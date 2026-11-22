@@ -74,6 +74,7 @@ val TAG_ICONS = linkedMapOf(
     "Thinking" to "💭",
     "Can make things" to "🛠",
     "Web search" to "🌐",
+    "Automations" to "🔁",
     "Suggestions" to "💡",
     "Socratic" to "🤔",
     "Student" to "🎓",

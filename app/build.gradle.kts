@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = buildNumber
-        // The workflows set APP_VERSION (3.2.0 is build 46 of the normal app; experimental builds are 3.2.0-exp.N).
+        // The workflows set APP_VERSION (3.2.0 is build 46 of the normal app; experimental builds are 4.0.0-exp.N from build 40).
         versionName = System.getenv("APP_VERSION") ?: "3.0.$buildNumber-local"
     }
 
@@ -63,6 +63,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // JavaMail and its activation library both bring these.
+            excludes += "/META-INF/{LICENSE.md,NOTICE.md,LICENSE.txt,NOTICE.txt}"
         }
     }
 }
@@ -82,6 +84,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // The optional daily check for a newer Tiiny Remote.
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+
+    // Automations: reading email over IMAP (read-only).
+    implementation("com.sun.mail:android-mail:1.6.7")
+    implementation("com.sun.mail:android-activation:1.6.7")
 
     // SSH client used to run "tiiny login" on the NAS.
     implementation("com.github.mwiede:jsch:0.2.20")

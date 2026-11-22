@@ -78,6 +78,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -174,6 +175,7 @@ private fun shareLog(ctx: Context, s: UiState, types: Set<String>? = null, error
 fun AppRoot(vm: MainViewModel) {
     val s by vm.state.collectAsState()
     val st: StudioViewModel = viewModel()
+    val av: AutoViewModel = viewModel()
     val job by st.job.collectAsState()
     val anyChatBusy by st.busyChats.collectAsState()
     val studioNote by st.note.collectAsState()
@@ -202,6 +204,12 @@ fun AppRoot(vm: MainViewModel) {
         } else if (tab == 1 && toolId != null) toolId = null
     }
     BackHandler(enabled = canGoBack) { back() }
+    // A notification can ask for a screen (an automation's result opens Automations).
+    val navRequest by Nav.request.collectAsState()
+    LaunchedEffect(navRequest) {
+        if (navRequest == "automations") goTab(5)
+        Nav.request.value = null
+    }
     val openTool by st.openTool.collectAsState()
     LaunchedEffect(openTool) {
         if (openTool != null) goTab(1) // "Edit this" from the chat or results goes to the Create tab
@@ -252,6 +260,7 @@ fun AppRoot(vm: MainViewModel) {
         Triple("Models", Icons.Filled.Home, 0),
         Triple("Chat", Icons.Filled.Send, 2),
         Triple("Create", Icons.Filled.Create, 1),
+        Triple("Automations", Icons.Filled.DateRange, 5),
         Triple("Activity", Icons.Filled.List, 3),
         Triple("Settings", Icons.Filled.Settings, 4),
     )
@@ -370,6 +379,7 @@ fun AppRoot(vm: MainViewModel) {
                         1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openChat = { goTab(2) })
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
+                        5 -> AutomationsScreen(s, st, av, openChat = { goTab(2) })
                         else -> SettingsScreen(s, vm, st)
                     } }
                 }
@@ -917,6 +927,7 @@ private fun logColor(type: String): Color = when (type) {
     "Chat" -> Color(0xFFF4511E)
     "Search" -> Color(0xFF43A047)
     "Create" -> Color(0xFFFFB300)
+    "Automations" -> Color(0xFF6D4C41)
     else -> Color.Gray
 }
 
@@ -1068,7 +1079,7 @@ private fun LogRow(e: LogEntry, chosen: Boolean, choosing: Boolean, onChoose: ()
 }
 
 @Composable
-private fun SecretField(value: String, onChange: (String) -> Unit, label: String) {
+internal fun SecretField(value: String, onChange: (String) -> Unit, label: String) {
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
@@ -1085,7 +1096,7 @@ private fun SecretField(value: String, onChange: (String) -> Unit, label: String
 }
 
 @Composable
-private fun SettingDropdown(label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+internal fun SettingDropdown(label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
@@ -1263,7 +1274,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var helper by remember(formKey) { mutableStateOf(cur.helperModel) }
     val scope = rememberCoroutineScope()
 
-    fun current() = AppSettings(
+    // From the saved settings: fields this form doesn't show (speed test runs, helper options…) are kept as they are.
+    fun current() = cur.copy(
         tiinyUrl = url.trim(),
         apiKey = key.trim(),
         nasHost = host.trim(),
@@ -1279,15 +1291,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         searxUrl = searx.trim(),
         searchMode = searchMode,
         tavilyKey = tavily.trim(),
-        layout = cur.layout,
-        uiScale = cur.uiScale,
-        textScale = cur.textScale,
-        enterSends = cur.enterSends,
         helperModel = helper,
-        keepRunning = cur.keepRunning,
-        notifyDone = cur.notifyDone,
-        labels = cur.labels,
-        dailyUpdateCheck = cur.dailyUpdateCheck,
     )
 
     Column(
