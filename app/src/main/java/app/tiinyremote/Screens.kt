@@ -1447,6 +1447,12 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        var searxGuide by remember { mutableStateOf(false) }
+        TextButton(onClick = { searxGuide = true }) { Text("How to set it up (Terminal)") }
+        if (searxGuide) TerminalGuide(
+            "SearXNG from the terminal", SEARX_STEPS,
+            "Keep port 8888 on your home network (don't forward it on the router); away from home the app reaches it through WireGuard.",
+        ) { searxGuide = false }
         Text("Search with", style = MaterialTheme.typography.labelLarge)
         for ((v, label) in listOf(
             "auto" to "Your SearXNG when reachable, else the phone (works anywhere)",
@@ -2115,3 +2121,20 @@ private fun QuitDialog(s: UiState, vm: MainViewModel, working: Boolean, onClose:
         },
     )
 }
+
+/** SearXNG in Docker on the NAS, over SSH: what Settings → Web search → How to set it up (Terminal) shows. */
+private val SEARX_STEPS = listOf(
+    "1. Connect to the NAS with your SSH app (on Ugreen: Control Panel → Terminal → SSH on). Then make a folder and SearXNG's settings: " +
+        "JSON answers on (the app needs them), the bot limiter off (it's only for you), a random secret." to
+        "mkdir -p ~/searxng/config && cd ~/searxng\ncat > config/settings.yml <<EOF\nuse_default_settings: true\nserver:\n" +
+        "  secret_key: \"$(openssl rand -hex 32)\"\n  limiter: false\n  image_proxy: false\nsearch:\n  formats:\n    - html\n    - json\nEOF",
+    "2. Write the setup file (paste the whole block):" to
+        "cat > docker-compose.yml <<'EOF'\nservices:\n  searxng:\n    image: searxng/searxng:latest\n    container_name: searxng\n" +
+        "    restart: unless-stopped\n    ports:\n      - \"8888:8080\"\n    volumes:\n      - ./config:/etc/searxng\nEOF",
+    "3. Start it (if \"compose\" isn't known: sudo docker-compose up -d):" to "sudo docker compose up -d",
+    "4. Check it: after a few seconds the search should answer with {\"query\": \"test\"…; the last line shows the NAS's address (192.168.…). " +
+        "If it doesn't answer, sudo docker logs searxng says why." to
+        "curl -s \"http://localhost:8888/search?q=test&format=json\" | head -c 300; echo\nhostname -I",
+    "5. Here in Settings: SearXNG address http://<NAS address>:8888, then Test. Later, to update SearXNG:" to
+        "cd ~/searxng && sudo docker compose pull && sudo docker compose up -d",
+)

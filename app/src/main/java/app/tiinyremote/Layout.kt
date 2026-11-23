@@ -1,5 +1,8 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
@@ -418,5 +421,45 @@ val CodeIcon by lazy {
     pathIcon(
         "Code",
         "M9.4,16.6L4.8,12l4.6,-4.6L8,6l-6,6 6,6 1.4,-1.4zM14.6,16.6l4.6,-4.6 -4.6,-4.6L16,6l6,6 -6,6 -1.4,-1.4z",
+    )
+}
+
+/**
+ * "How to set it up (Terminal)": the commands to run over SSH (Termius, Termux…) on the NAS, step by step, each in
+ * its own box with Copy. [steps]: what the step does, then its commands.
+ */
+@Composable
+fun TerminalGuide(title: String, steps: List<Pair<String, String>>, note: String, onClose: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 680.dp),
+        title = { ClosableTitle(onClose) { Text(title) } },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((what, cmd) in steps) {
+                    Text(what, style = MaterialTheme.typography.bodyMedium)
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                    ) {
+                        Text(
+                            cmd,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        )
+                        androidx.compose.material3.TextButton(
+                            onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(cmd)) },
+                            modifier = Modifier.align(Alignment.End),
+                        ) { BtnLabel("Copy", symbol = "⧉") }
+                    }
+                }
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {},
     )
 }

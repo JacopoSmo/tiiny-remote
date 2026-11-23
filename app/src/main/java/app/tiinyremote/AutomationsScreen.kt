@@ -416,7 +416,10 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                 }
                 TextButton(onClick = { terminal = true }) { Text("How to set it up (Terminal)") }
             }
-            if (terminal) NasTerminalGuide { terminal = false }
+            if (terminal) TerminalGuide(
+                "NAS agent from the terminal", NAS_STEPS,
+                "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
+            ) { terminal = false }
         }
     }
 }
@@ -439,44 +442,6 @@ private val NAS_STEPS = listOf(
         "cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d",
 )
 
-@Composable
-private fun NasTerminalGuide(onClose: () -> Unit) {
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    ScaledAlertDialog(
-        onDismissRequest = onClose,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 680.dp),
-        title = { ClosableTitle(onClose) { Text("NAS agent from the terminal") } },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((what, cmd) in NAS_STEPS) {
-                    Text(what, style = MaterialTheme.typography.bodyMedium)
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                            .padding(8.dp),
-                    ) {
-                        Text(
-                            cmd,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        )
-                        TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(cmd)) }, modifier = Modifier.align(Alignment.End)) {
-                            BtnLabel("Copy", symbol = "⧉")
-                        }
-                    }
-                }
-                Text(
-                    "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {},
-    )
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
