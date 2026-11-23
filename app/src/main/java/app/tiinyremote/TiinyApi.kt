@@ -74,7 +74,8 @@ data class ModelInfo(
     val isImageGen get() = type == "Text-to-Image" || type == "Image-to-Image"
     /** Same test as Tiiny Studio: "Image Editing" listed, or images accepted as input. */
     val canEditImages get() = isImageGen && ("Image Editing" in supported || IMAGE_WORD.containsMatchIn(input))
-    val isOcr get() = type == "Image-to-Text"
+    /** PP-DocLayoutV3 is "Image-to-Text" too, but finds page layouts and reads no text (Tiiny Studio). */
+    val isOcr get() = type == "Image-to-Text" && !id.contains("DocLayout", true)
     val isSpeech get() = type == "Text-to-Speech"
     val isAsr get() = type == "ASR"
     val isMusic get() = type == "Music Generation"

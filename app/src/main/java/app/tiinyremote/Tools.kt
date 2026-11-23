@@ -355,13 +355,14 @@ object Tools {
         when {
             !speaker.isNullOrBlank() -> body.put("voice", speaker)
             !design.isNullOrBlank() -> body.put("instruct", design)
-            else -> {
-                if (refAudio == null) throw MediaException("This voice needs a reference clip: record or pick one.")
+            refAudio != null -> {
                 if (refText.isNullOrBlank()) throw MediaException("Type what's said in the reference clip: cloning needs both.")
                 body.put("ref_audio", b64(refAudio)).put("ref_text", refText.trim())
                 if (instruct.isNotBlank()) body.put("instruct", instruct.trim())
             }
+            // Nothing chosen: the model's own voice (VoxCPM2, say, has no built-in speakers and speaks without one).
         }
+        val noVoice = speaker.isNullOrBlank() && design.isNullOrBlank() && refAudio == null
         if (language.isNotBlank()) body.put("language", language)
         val parts = chunks(text)
         val wavs = ArrayList<ByteArray>()
@@ -404,7 +405,7 @@ object Tools {
                         "Supertonic-3 work there; or try again on the home Wi-Fi, where the app uses the model's own port.",
                 )
             }
-            throw MediaException(e)
+            throw MediaException(if (noVoice) "$e (No voice was chosen: if this model has no voice of its own, give it a speaker, a voice description or a clip.)" else e)
         }
         val id = store.newId()
         val file = store.saveFile(id, "speech.wav", Wav.join(wavs))
@@ -461,6 +462,8 @@ object Tools {
         val maxSteps: Int?,
         val maxSeconds: Int,
         val secsPerSec: Double?,
+        /** Takes a style reference: a clip of music whose feel the song borrows (SongGeneration, AceStep; not YuE2). */
+        val styleRef: Boolean = false,
     )
 
     fun songInfo(c: DeviceClient, model: String): SongInfo {
@@ -489,6 +492,7 @@ object Tools {
                 svc.startsWith("AceStep") -> 1.5
                 else -> null
             },
+            styleRef = mi.optJSONArray("supported_prompt_sources")?.let { a -> (0 until a.length()).any { a.optString(it) == "reference_audio_base64" } } == true,
         )
     }
 

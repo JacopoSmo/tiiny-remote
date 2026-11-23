@@ -8,4 +8,9 @@
   - **3D:** every picture with see-through parts (a cut-out or your own) is cleaned of faint pixels and its subject cropped and centred: no more flat cards or big floors.
   - **Model Store:** a paused download (the Tiiny says "download_stop") now shows Resume instead of Pause; a download stopped by an error (no internet on the Tiiny's Wi-Fi) shows Retry; a model being unloaded isn't taken for a download.
   - **Improve prompt:** uses a loaded Qwen-Image prompt enhancer (PE-T2I for prompts, PE-I2I for edits) first, and keeps only its text; helper models that claim not to think are told not to (the enhancer otherwise reasons until its tokens run out).
+- **Earlier Tiiny Studio fixes, checked against the app:**
+  - **Voice:** "The model's own voice" for voice models without built-in speakers: VoxCPM2 speaks with no voice chosen (before, it asked for a clip to clone).
+  - **Songs:** a **style reference** (10–30 s of music whose feel the song borrows) for the song models that take one (SongGeneration from 10 s, AceStep from 5 s; not YuE2).
+  - **OCR:** PP-DocLayoutV3 (it finds page layouts, reads no text) is no longer offered as an OCR model.
+  - **Free space:** a Create job doesn't start when the Tiiny has under 2 GB free (it would fail half-way); the message says how to make room.
 - **Starting point:** the same as the normal app 4.0.1 (see its release; 4.0.1 adds the NAS agent's terminal guide under Automate → Connectors). New experimental features will be listed here as they come.

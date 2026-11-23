@@ -318,6 +318,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Runs a tool in the background; its result lands in the library. */
     fun run(tool: String, block: (DeviceClient, ResultStore, Progress, RemoteJob) -> ResultEntry) {
+        // A job writes its result on the Tiiny first: under 2 GB free it can fail half-way (as Tiiny Studio checks).
+        Stats.freeGb?.let { free ->
+            if (free < 2.0) {
+                note("The Tiiny has only ${"%.1f".format(free)} GB free; a job needs about 2 GB. Delete a model you don't use (Models) first.")
+                return
+            }
+        }
         if (_job.value?.running == true) {
             note("Something is already running on the Tiiny. Wait for it, or cancel it.")
             return
@@ -902,7 +909,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         run("song") { c, store, p, _ ->
             val out = Tools.song(c, store, model, config, seconds, preview, null, p)
             out.session?.let { sid ->
-                prefs.edit().putString("resume_${out.entry.id}", JSONObject().put("session", sid).put("model", model).put("config", config).toString()).apply()
+                // Kept for "Continue to the full song", without the style reference's audio (megabytes; the session has it).
+                val keep = JSONObject(config.toString()).apply { remove("reference_audio_base64") }
+                prefs.edit().putString("resume_${out.entry.id}", JSONObject().put("session", sid).put("model", model).put("config", keep).toString()).apply()
             }
             out.entry
         }

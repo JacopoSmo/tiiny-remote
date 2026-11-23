@@ -184,6 +184,8 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
     val speakers = c?.speakers ?: emptyList()
     val canDesign = c?.design == true
     val choices = buildList {
+        // The model's own voice (no voice sent), for models without built-in speakers: VoxCPM2 speaks this way.
+        if (speakers.isEmpty()) add("own")
         speakers.forEach { add("spk:$it") }
         if (canClone) voices.forEach { add("saved:${it.id}") }
         if (canDesign) add("design")
@@ -211,12 +213,13 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
         when {
             speakers.isNotEmpty() && canClone -> "built-in, or cloned from a 3–20 s clip"
             speakers.isNotEmpty() -> "built into this model"
-            else -> "cloned from a 3–20 s clip"
+            else -> "its own, or cloned from a 3–20 s clip"
         },
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (s in speakers) FilterChip(selected = cur == "spk:$s", onClick = { choose("spk:$s") }, label = { Text(speakerName(s)) })
         if (canClone) for (v in voices) FilterChip(selected = cur == "saved:${v.id}", onClick = { choose("saved:${v.id}") }, label = { Text("🎙 ${v.name}") })
+        if ("own" in choices) FilterChip(selected = cur == "own", onClick = { choose("own") }, label = { Text("The model's own voice") })
         if (canDesign) FilterChip(selected = cur == "design", onClick = { choose("design") }, label = { Text("Describe a voice") })
         if (canClone) FilterChip(selected = cur == "new", onClick = { choose("new") }, label = { Text("+ New voice") })
     }
@@ -479,6 +482,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     var type by rememberSaveable { mutableStateOf("mixed") }
     var lyrics by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(LYRICS_TEMPLATE)) }
     var seconds by rememberSaveable { mutableStateOf(60) }
+    var styleRef by remember { mutableStateOf<PickedAudio?>(null) }
     var preview by rememberSaveable { mutableStateOf(false) }
     var aceOpen by remember { mutableStateOf(false) }
     var bpm by rememberSaveable { mutableStateOf("") }
@@ -587,6 +591,12 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         }
     }
 
+    // Style reference: a clip of music whose feel the song borrows (models that take one)
+    if (sm.styleRef) {
+        LabelRow("Style reference", "optional · 10–30 s of music whose feel the song borrows")
+        AudioInput(styleRef, arrayOf("audio/*"), "Upload…") { styleRef = it }
+    }
+
     // Length
     if (!usePreview) {
         LabelRow("Length", fmtLen(secs) + " · up to ${fmtLen(sm.maxSeconds)}")
@@ -616,8 +626,13 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         else -> 10 + secs * 3.2
     }
     val bpmN = bpm.toIntOrNull()
+    val refSecs = styleRef?.seconds
     val why = notReady ?: when {
         caption.isBlank() -> "Describe the style."
+        sm.styleRef && styleRef != null && refSecs != null && refSecs < (if (sm.plain) 5.0 else 10.0) ->
+            "The style reference must be at least ${if (sm.plain) 5 else 10} s long."
+        sm.styleRef && styleRef != null && refSecs != null && refSecs > 120.0 -> "The style reference can be at most 120 s long (30 s is plenty)."
+        sm.styleRef && (styleRef?.bytes?.size ?: 0) > 25 * 1024 * 1024 -> "The style reference is too big: use a shorter clip (up to 25 MB)."
         vocals && lyrics.text.isBlank() -> "Add lyrics, or switch to Instrumental."
         sm.ace && bpm.isNotBlank() && (bpmN == null || bpmN !in 30..300) -> "Tempo is a number of beats per minute (30–300)."
         else -> null
@@ -625,6 +640,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     RunPanel("song", (if (usePreview) "Compose preview" else "Compose") + "  ·  ${about(est)}", why == null, why, st) {
         val cfg = JSONObject().put("caption", caption.trim()).put("generation_type", t).put("seed", seedOf(seed))
         if (vocals) cfg.put("lyrics", lyrics.text.trim())
+        if (sm.styleRef) styleRef?.let { cfg.put("reference_audio_base64", android.util.Base64.encodeToString(it.bytes, android.util.Base64.NO_WRAP)) }
         steps.toIntOrNull()?.let { cfg.put("steps", it) }
         temperature.toDoubleOrNull()?.let { cfg.put("temperature", it) }
         topK.toIntOrNull()?.let { cfg.put("top_k", it) }
