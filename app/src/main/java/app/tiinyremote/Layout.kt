@@ -376,7 +376,7 @@ val HistoryIcon by lazy {
     )
 }
 
-/** Creations: a stack of pictures. */
+/** Gallery: a stack of pictures. */
 val GalleryIcon by lazy {
     pathIcon(
         "Gallery",

@@ -183,7 +183,7 @@ fun AppRoot(vm: MainViewModel) {
     val studioNote by st.note.collectAsState()
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var toolId by rememberSaveable { mutableStateOf<String?>(null) }
-    // Where Creations opens (a tool or a kind, from Create's link), or everything.
+    // Where the Gallery opens (a tool or a kind, from Create's link), or everything.
     var galleryStart by rememberSaveable { mutableStateOf<String?>(null) }
     // Where you came from: ← and Android's back gesture go back through it; with nothing left, back closes the app.
     val history = remember { mutableStateListOf<Pair<Int, String?>>() }
@@ -262,17 +262,17 @@ fun AppRoot(vm: MainViewModel) {
     val saving by st.saving.collectAsState()
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     val sections = listOf(
-        Triple("Models", Icons.Filled.Home, 0),
         Triple("Chat", Icons.Filled.Send, 2),
         Triple("Create", Icons.Filled.Create, 1),
-        Triple("Creations", GalleryIcon, 6),
+        Triple("Gallery", GalleryIcon, 6),
         Triple("Automate", AutomationIcon, 5),
         Triple("Translate", TranslateIcon, 7),
         Triple("Activity", Icons.Filled.List, 3),
+        Triple("Models", Icons.Filled.Home, 0),
         Triple("Settings", Icons.Filled.Settings, 4),
     )
     fun go(i: Int) {
-        if (i == 6) galleryStart = null // from the menu, Creations shows everything
+        if (i == 6) galleryStart = null // from the menu, the Gallery shows everything
         goTab(i)
         scope.launch { drawer.close() }
     }
@@ -290,7 +290,7 @@ fun AppRoot(vm: MainViewModel) {
                     Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                         Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
                         for ((label, icon, i) in sections) {
-                            // Using the Tiiny above, looking after it (Activity, Settings) below.
+                            // Using the Tiiny above, looking after it (Activity, Models, Settings) below.
                             if (i == 3) HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
                             NavigationDrawerItem(
                                 label = { Text(label) },
@@ -354,7 +354,7 @@ fun AppRoot(vm: MainViewModel) {
                     // On square screens the sidebar replaces the bottom bar, leaving more room for the output.
                     // Material's bar holds five: the main places; the rest are in the ☰ menu.
                     if (!compact) NavigationBar {
-                        for ((label, icon, i) in sections.filter { it.third in setOf(0, 2, 1, 6, 7) }) {
+                        for ((label, icon, i) in listOf(0, 2, 1, 6, 7).map { n -> sections.first { it.third == n } }) {
                             NavigationBarItem(
                                 selected = tab == i,
                                 onClick = { if (i == 6) galleryStart = null; goTab(i) },
@@ -1134,7 +1134,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         Icons.Filled.Delete to "Delete",
         "📊" to "The Tiiny's own request statistics (Activity)",
         HistoryIcon to "History: earlier chats, past speed tests",
-        GalleryIcon to "Open Creations",
+        GalleryIcon to "Open Gallery",
         Icons.Filled.Add to "New chat; beside the message: attach an image or a file",
         MicIcon to "Dictate a message (needs a speech-to-text model)",
         SaveIcon to "Chat: green, chats are saved; red, incognito",
@@ -1179,7 +1179,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Text("Create and Creations", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                Text("Create and Gallery", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for (c in CATEGORIES) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(c.icon, modifier = Modifier.width(36.dp))
@@ -1188,7 +1188,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     }
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-                for ((icon, what) in listOf(GalleryIcon to "Creations: everything made", TranslateIcon to "Translate: text, photos, speech",
+                for ((icon, what) in listOf(GalleryIcon to "Gallery: everything made", TranslateIcon to "Translate: text, photos, speech",
                     AutomationIcon to "Automate: 📋 processes, 🤖 agents")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }

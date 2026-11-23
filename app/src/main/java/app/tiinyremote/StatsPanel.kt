@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,13 +86,26 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
     // Light green while the Tiiny is online, light red when it isn't.
     val hue = if (online) Color(0xFF43A047) else Color(0xFFE53935)
     var stripHeight by remember { mutableStateOf(0) }
+    // A new NPU fault: the strip pulses red until it's tapped (the fault itself stays in the panel).
+    val seen by vm.faultSeen.collectAsState()
+    val fault = st?.npuFaultNew?.takeIf { it != seen }
+    val pulse = if (fault != null) {
+        androidx.compose.animation.core.rememberInfiniteTransition(label = "fault").animateFloat(
+            0.15f, 0.75f,
+            androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(700), androidx.compose.animation.core.RepeatMode.Reverse,
+            ),
+            label = "fault",
+        ).value
+    } else 0f
+    val back = if (fault != null) Color(0xFFE53935).copy(alpha = pulse) else hue.copy(alpha = 0.22f)
     Box(Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .onSizeChanged { stripHeight = it.height }
-                .background(hue.copy(alpha = 0.22f).compositeOver(MaterialTheme.colorScheme.surface))
-                .clickable { open = true; vm.statsPanel(true) }
+                .background(back.compositeOver(MaterialTheme.colorScheme.surface))
+                .clickable { open = true; vm.statsPanel(true); if (fault != null) vm.sawFault(fault) }
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -111,7 +125,8 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
                 if (online) {
                     // With a helper chosen in Settings: whether it's at work beside a main model.
                     val helperState = if (s.settings.helperModel.isBlank()) "" else if (chatRoles(s, studio).second != null) " · helper on" else " · helper off"
-                    Text("$loaded loaded$helperState", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    if (fault != null) Text("⚠ NPU fault: tap", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error, maxLines = 1)
+                    else Text("$loaded loaded$helperState", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
             }
             if (!online) {
@@ -121,9 +136,10 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
                 val mt = st?.npuMemTotalMb
                 // TiinyOS 0.1.39 doesn't report the NPU's own memory: then show the share the loaded models take.
                 val budget = s.models.filter { it.running }.sumOf { it.npuUsage ?: 0.0 }
-                Meter("NPU", st?.npuUtil, Modifier.weight(1f), "Mem " + if (mu != null && mt != null) "${gbText(mu / 1024)} / ${gbText(mt / 1024)} GB" else "${fmt(budget, "%")} used by models")
+                Meter("NPU", st?.npuUtil, Modifier.weight(1f), "Mem " + if (mu != null && mt != null) "${gbText(mu / 1024)} / ${gbText(mt / 1024)} GB" else "48 GB · ${fmt(budget, "%")} used")
                 val ru = st?.ramUsedGb
                 val rt = st?.ramTotalGb
+                // The CPU's own memory (32 GB, the system and the apps); the models live in the NPU's 48 GB.
                 Meter("CPU", st?.cpuPct, Modifier.weight(1f), "RAM " + if (ru != null && rt != null) "${gbText(ru)} / ${gbText(rt)} GB" else "—")
                 // Power and temperature only when the Tiiny reports them (TiinyOS 0.1.39 doesn't).
                 if (st?.npuPowerW != null) Text(
@@ -304,7 +320,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                             Stat("CPU", fmt(st?.cpuPct, "%"), Modifier.weight(1f))
                         }
                         Row {
-                            Stat("RAM", st?.ramUsedGb?.let { u -> st?.ramTotalGb?.let { t -> "${gbText(u)} / ${gbText(t)} GB" } } ?: fmt(st?.memPct, "%"), Modifier.weight(1f))
+                            Stat("CPU RAM", st?.ramUsedGb?.let { u -> st?.ramTotalGb?.let { t -> "${gbText(u)} / ${gbText(t)} GB" } } ?: fmt(st?.memPct, "%"), Modifier.weight(1f))
                             if (st?.npuPowerW != null) Stat("NPU power", fmt(st.npuPowerW, " W", 1), Modifier.weight(1f))
                             else Spacer(Modifier.weight(1f))
                         }
@@ -326,6 +342,11 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                                 }
                             }
                         }
+                        Text(
+                            "The Tiiny's 80 GB are two parts: 48 GB on the NPU, where the models run, and 32 GB beside the CPU " +
+                                "for TiinyOS and its services (shown as CPU RAM, about 33 GB as the system counts it).",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         st?.npuIssue?.let { issue ->
                             Text(
                                 "⚠ The NPU reported a fault: $issue. Once is usually harmless; if it keeps happening, tell Tiiny support.",

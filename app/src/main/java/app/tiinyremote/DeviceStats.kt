@@ -26,12 +26,22 @@ data class DeviceStats(
     val temps: List<Pair<String, Double>> = emptyList(),
     /** A fault the NPU reported (e.g. a PCIe transfer timeout), with when it happened, while the Tiiny reports it. */
     val npuIssue: String? = null,
+    /** A fault that happened while the app was watching (not an old one still in the status): the strip blinks for it. */
+    val npuFaultNew: String? = null,
     val gateway: Boolean = false,
     val dashboard: Boolean = false,
     val time: Long = System.currentTimeMillis(),
 )
 
 object Stats {
+    /** The models on the NPU as the app last saw them ("A 49% + B 29%"), for the log when a fault happens. */
+    @Volatile
+    var onNpu: String = ""
+
+    /** A fault seen happening, kept until the NPU restarts cleanly, so the strip keeps blinking until it's looked at. */
+    @Volatile
+    private var newFault: String? = null
+
     /** The last NPU fault logged, so each one is logged once. */
     @Volatile
     private var lastIssue: String? = null
@@ -117,7 +127,9 @@ object Stats {
                 // A fault reported by the NPU: logged once each time it happens (it's kept in the status afterwards).
                 val npu = o.optJSONObject("npu")
                 val reason = npu?.optJSONObject("reason") ?: npu?.optJSONObject("failure")
-                val issue = reason?.let { r ->
+                // Besides a reason, a status that itself says error or failure counts as a fault.
+                val bad = npu?.optString("status").orEmpty().lowercase().let { "error" in it || "fail" in it || "fault" in it }
+                val issue = (if (reason == null && bad) npu?.optString("status_message")?.takeIf { it.isNotBlank() && it != "null" } ?: "NPU status: ${npu?.optString("status")}" else null) ?: reason?.let { r ->
                     val msg = r.optString("message").takeIf { it.isNotBlank() && it != "null" } ?: r.optString("code")
                     val at = npu?.num("started_at")?.let { t ->
                         java.time.Instant.ofEpochMilli((t * 1000).toLong()).atZone(java.time.ZoneId.systemDefault())
@@ -131,14 +143,19 @@ object Stats {
                     // minutes ago (seen when the app starts, say) is an old one, and the log says so.
                     val ageMin = npu?.num("started_at")?.let { (System.currentTimeMillis() / 1000.0 - it) / 60 }
                     val code = reason?.optString("code")?.takeIf { it.isNotBlank() }?.let { " [$it]" } ?: ""
+                    val old = ageMin != null && ageMin > 10
+                    if (!old) newFault = issue
                     ApiLog.add(
-                        if (ageMin != null && ageMin > 10) "Earlier NPU fault, still in the Tiiny's status (${Math.round(ageMin)} min ago, nothing new): $issue$code"
-                        else "NPU fault reported by the Tiiny: $issue$code",
+                        if (old) "Earlier NPU fault, still in the Tiiny's status (${Math.round(ageMin!!)} min ago, nothing new): $issue$code"
+                        else "NPU fault reported by the Tiiny: $issue$code. On the NPU at the time: ${onNpu.ifBlank { "no model" }}.",
                         "Device",
+                        isProblem = !old,
                     )
                 }
+                if (issue == null) newFault = null
                 s = s.copy(
                     npuIssue = issue,
+                    npuFaultNew = newFault,
                     gateway = true,
                     npuUtil = dev.num("util_percent"),
                     npuMemUsedMb = dev.num("mem_used_mb"),

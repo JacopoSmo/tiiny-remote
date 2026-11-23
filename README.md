@@ -21,7 +21,7 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
   an answer, ✎ to shorten or reword your message, and a jump-to-newest button.
 - **Create:** images (create, edit, read text), voice (built-in, described or cloned), transcription, loops and
   songs, video, 3D models, text embedding, reranking and classification, laid out like Tiiny Studio. Results are
-  kept under Creations and can be saved to the phone or shared.
+  kept in the Gallery and can be saved to the phone or shared.
 - **Unlock:** after a restart the app unlocks the Tiiny with its password (or through the NAS over SSH).
 - **Tiiny power:** Restart and Power off from Settings (to switch it on again, press the Tiiny's power button).
   NPU faults the Tiiny reports (e.g. a PCIe transfer timeout) are logged and shown in the status panel.

@@ -330,7 +330,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val entry = withContext(Dispatchers.IO) { block(client(), store, progress, rj).also { store.add(it) } }
                 _results.value = store.all()
                 _job.value = JobUi(tool, false, "Done", 100, null, entry)
-                Notifier.done(getApplication(), "${toolTitle(tool)} is ready", "It's in Creations in Tiiny Remote.")
+                Notifier.done(getApplication(), "${toolTitle(tool)} is ready", "It's in the Gallery in Tiiny Remote.")
             } catch (e: Throwable) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 // Out of memory (a huge picture or file) ends this job, not the app.
@@ -1599,8 +1599,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 /** The helper condenses web pages only when it writes at least this many times as fast as the chat model (25% faster). */
 private const val PAGE_RULE = 1.25f
 
-/** The pause before each speed-test measurement (a quarter to half a second), so they don't run into each other. */
-private const val PAUSE_MS = 500L
+/** The pause before each speed-test measurement (a quarter second), so the Tiiny has finished the previous one. */
+private const val PAUSE_MS = 250L
 
 /** One speed test, for History: the pair, its speeds alone, and how much sooner both (or the helper twice) finished at once. */
 data class SpeedRecord(

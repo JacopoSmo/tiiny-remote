@@ -130,6 +130,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             // A model that is running after all (loaded from TiinyOS, say) is no longer marked unavailable.
             val nowRunning = cat.models.filter { it.status == "running" }.map { it.id }.toSet()
             if (_state.value.unavailable.any { it in nowRunning }) setUnavailable(_state.value.unavailable - nowRunning)
+            logOccupants(cat.models)
             _state.update {
                 it.copy(
                     device = DeviceState.ONLINE,
@@ -152,6 +153,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (ds == DeviceState.LOCKED) maybeAutoUnlock()
             connectedNote()
         }
+    }
+
+    private var lastOccupants: String? = null
+
+    /**
+     * Which models are on the NPU, logged each time that changes (also when Tiiny Studio loads or stops one), so the log
+     * shows what ran side by side, and an NPU fault can be matched to it.
+     */
+    private fun logOccupants(models: List<ModelInfo>) {
+        val on = models.filter { it.status == "running" || it.status == "loading" }.sortedBy { it.name }
+        val text = on.joinToString(" + ") { m ->
+            m.name + (m.npuUsage?.let { " ${Math.round(it)}%" } ?: "") + if (m.status == "loading") " (loading)" else ""
+        }
+        Stats.onNpu = text
+        if (text == lastOccupants) return
+        lastOccupants = text
+        val total = on.sumOf { it.npuUsage ?: 0.0 }
+        ApiLog.add(if (on.isEmpty()) "On the NPU now: no model." else "On the NPU now: $text (together ${Math.round(total)}% of the NPU).", "Models")
+    }
+
+    /** The NPU fault the strip blinks for, once tapped: it stops blinking (the fault stays in the panel). */
+    private val _faultSeen = MutableStateFlow<String?>(null)
+    val faultSeen: StateFlow<String?> = _faultSeen.asStateFlow()
+    fun sawFault(f: String?) {
+        _faultSeen.value = f
     }
 
     /** Settings → "Stay connected in the background": the silent notification, with the Tiiny's state in it. */

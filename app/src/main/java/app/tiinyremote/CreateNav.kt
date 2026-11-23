@@ -73,7 +73,7 @@ internal fun choiceLabel(icon: String, word: String): String {
     }
 }
 
-/** Which Create choice made a result: its place in Creations, and where "Create more" goes. */
+/** Which Create choice made a result: its place in the Gallery, and where "Create more" goes. */
 internal fun toolOf(e: ResultEntry): String = when (e.kind) {
     "image" -> if (e.title.startsWith("Edited")) "edit" else "image"
     "description" -> "describe"
@@ -111,7 +111,7 @@ internal fun CreateHeader(current: String, setTool: (String) -> Unit, openGaller
                 FilterChip(selected = t == current, onClick = { if (t != current) setTool(t) }, label = { Text(choiceLabel(icon, word)) })
             }
         } else Spacer(Modifier.weight(1f))
-        TextButton(onClick = { openGallery(current) }) { BtnLabel("Creations", GalleryIcon) }
+        TextButton(onClick = { openGallery(current) }) { BtnLabel("Gallery", GalleryIcon) }
     }
 }
 
@@ -120,7 +120,7 @@ private val monthFmt = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH)
 private val yearFmt = DateTimeFormatter.ofPattern("yyyy", Locale.ENGLISH)
 
 /**
- * Creations: everything made, by kind (3D, Audio, Image, Text, Video) and choice, searchable, newest or oldest first,
+ * Gallery: everything made, by kind (3D, Audio, Image, Text, Video) and choice, searchable, newest or oldest first,
  * grouped by day, month or year. Pictures and video stills show as a grid; the rest as cards. "Create more" goes back
  * to the matching place in Create.
  */
