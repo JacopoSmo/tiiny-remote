@@ -175,6 +175,11 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             for ((i, m) in msgs.withIndex()) CodeBubble(m, live = busy != null && i == msgs.lastIndex)
         }
         busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+        if (model != null && !model.makesThings && mode == "build") Text(
+            "${model.name} isn't marked for tool use, so it can't change the files itself: it writes them out for you to copy (Files).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             OutlinedTextField(
                 value = input,
@@ -187,7 +192,7 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 OutlinedButton(onClick = { cv.stopNow() }) { BtnLabel("Stop", symbol = "■") }
             } else {
                 Button(
-                    onClick = { model?.let { cv.send(it.id, mode, think, input); input = "" } },
+                    onClick = { model?.let { cv.send(it.id, mode, think, input, it.makesThings); input = "" } },
                     enabled = model?.running == true && input.isNotBlank() && current != null,
                 ) { BtnLabel("Send", Icons.AutoMirrored.Filled.Send) }
             }

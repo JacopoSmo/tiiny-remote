@@ -214,7 +214,7 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
      * Sends a message in [mode]: "ask" (answers, may read the files), "learn" (teaches step by step, may read the
      * files) or "build" (changes the files itself). [think]: let the model reason first (slower, often better code).
      */
-    fun send(model: String, mode: String, think: Boolean, text: String) {
+    fun send(model: String, mode: String, think: Boolean, text: String, usesTools: Boolean = true) {
         val p = _current.value ?: run { _note.value = "Make a project first (⋮ → New project)."; return }
         if (_busy.value != null || text.isBlank()) return
         val before = _msgs.value
@@ -234,14 +234,15 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
                     val s = settings.load()
                     val c = DeviceClient(s.tiinyUrl, s.apiKey)
                     val tm = Tools.thinkingMode(c, model)
-                    val convo = JSONArray().put(JSONObject().put("role", "system").put("content", systemFor(p, mode)))
+                    val convo = JSONArray().put(JSONObject().put("role", "system").put("content", systemFor(p, mode, usesTools)))
                     // The earlier conversation (text only, the last 16 messages), then the new message.
                     for (m in before.takeLast(16)) if (m.text.isNotBlank()) {
                         convo.put(JSONObject().put("role", m.role).put("content", m.text + if (m.steps.isNotEmpty()) "\n\n(Done with the files: ${m.steps.joinToString("; ")})" else ""))
                     }
                     convo.put(JSONObject().put("role", "user").put("content", text.trim()))
                     val tools = toolSpecs(mode == "build")
-                    val rounds = if (mode == "build") 30 else 8
+                    // A model not marked for tool use answers in one go (with code to copy) instead of using the files.
+                    val rounds = if (!usesTools) 0 else if (mode == "build") 30 else 8
                     for (round in 0..rounds) {
                         if (halt.get()) break
                         val body = JSONObject().put("model", model).put("messages", convo).put("stream", true)
@@ -286,12 +287,16 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun systemFor(p: String, mode: String): String {
+    private fun systemFor(p: String, mode: String, usesTools: Boolean): String {
         val list = _files.value.take(200).joinToString("\n") { "${it.path} (${it.size} bytes)" }.ifBlank { "(no files yet)" }
         val base = "You're a coding assistant in Tiiny Remote, running on the user's own Tiiny AI device. The user works on the " +
             "project \"$p\", a folder of files on their phone. Its files now:\n$list\n\n" +
             "Code can't be run here: there's no terminal or compiler. A web page (index.html with its CSS and JavaScript) can " +
             "be previewed in the app (⋮ → Preview). The project can be shared as a .zip or pushed to GitHub. "
+        if (!usesTools) return base + "You can't open or change the files yourself here: ask the user to paste what you " +
+            "need. Give complete files in fenced code blocks, each with its path on the line before it, so the user can copy " +
+            "them into the project (Files). " + if (mode == "learn") "Teach step by step, one idea at a time, with a question at the end. " +
+            "Answer in the user's language." else "Be concise. Answer in the user's language."
         return base + when (mode) {
             "build" -> "Build what the user asks by changing the files yourself with the tools: look at the relevant files " +
                 "first (read_file), then write them (write_file replaces a whole file; edit_file changes one exact piece). Write " +
