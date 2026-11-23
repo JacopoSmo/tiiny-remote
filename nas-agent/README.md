@@ -17,6 +17,20 @@ It's one small Python file using only the standard library, in a Docker containe
    Google Calendar: Settings → your calendar → "Secret address in iCal format") and an **ntfy** topic URL for push.
 5. Edit an automation, set **Runs on → The NAS agent**, save. The app sends it to the NAS.
 
+### From a terminal instead (SSH from the phone: Termius, Termux…)
+
+The app shows these steps with a Copy button each: **Automate → Connectors → NAS agent → How to set it up (Terminal)**.
+
+```
+mkdir -p ~/tiiny-agent && cd ~/tiiny-agent
+TOKEN=$(openssl rand -hex 24); echo $TOKEN     # copy it for the app
+curl -fsSL https://raw.githubusercontent.com/JacopoSmo/tiiny-remote/main/nas-agent/docker-compose.yml -o docker-compose.yml
+sed -i "s/change-me-to-a-long-random-secret/$TOKEN/" docker-compose.yml
+sudo docker compose up -d                       # or: sudo docker-compose up -d
+sudo docker logs tiiny-agent                    # "… on port 8765"
+hostname -I                                     # the NAS's address for the app
+```
+
 The image is built from this folder by GitHub Actions (`ghcr.io/jacoposmo/tiiny-remote-agent`). If you'd rather build it
 yourself, replace the `image:` line with `build: https://github.com/JacopoSmo/tiiny-remote.git#main:nas-agent`.
 

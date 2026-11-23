@@ -1,5 +1,7 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
 import android.Manifest
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,9 +9,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -406,11 +408,74 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                 }
             }
             val uri = androidx.compose.ui.platform.LocalUriHandler.current
-            TextButton(onClick = { runCatching { uri.openUri("https://github.com/JacopoSmo/tiiny-remote/tree/main/nas-agent") } }) {
-                Text("How to set it up (GitHub)")
+            var terminal by remember { mutableStateOf(false) }
+            // Side by side (scrolling sideways when the screen is narrow).
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                TextButton(onClick = { runCatching { uri.openUri("https://github.com/JacopoSmo/tiiny-remote/tree/main/nas-agent") } }) {
+                    Text("How to set it up (GitHub)")
+                }
+                TextButton(onClick = { terminal = true }) { Text("How to set it up (Terminal)") }
             }
+            if (terminal) NasTerminalGuide { terminal = false }
         }
     }
+}
+
+/** The commands to set up the NAS agent over SSH (Termius, Termux…), step by step, each with Copy. */
+private val NAS_STEPS = listOf(
+    "1. Connect to the NAS with your SSH app (on Ugreen: Control Panel → Terminal → SSH on). Then make a folder and a secret token, and copy the long token it prints:" to
+        "mkdir -p ~/tiiny-agent && cd ~/tiiny-agent\nTOKEN=$(openssl rand -hex 24); echo \$TOKEN",
+    "2. Write the setup file (paste the whole block; it puts the token in). The last line shows it: AGENT_TOKEN must not be empty." to
+        "cat > docker-compose.yml <<EOF\nservices:\n  tiiny-agent:\n    image: ghcr.io/jacoposmo/tiiny-remote-agent:latest\n" +
+        "    container_name: tiiny-agent\n    restart: unless-stopped\n    ports:\n      - \"8765:8765\"\n    environment:\n" +
+        "      AGENT_TOKEN: \"\$TOKEN\"\n      TZ: \"Europe/Zurich\"\n    volumes:\n      - tiiny-agent-data:/data\nvolumes:\n" +
+        "  tiiny-agent-data:\nEOF\ncat docker-compose.yml",
+    "3. Start it (if \"compose\" isn't known: sudo docker-compose up -d):" to "sudo docker compose up -d",
+    "If it says denied or unauthorized while pulling the image, let the NAS build it itself instead:" to
+        "sed -i 's#image: ghcr.io/jacoposmo/tiiny-remote-agent:latest#build: https://github.com/JacopoSmo/tiiny-remote.git\\#main:nas-agent#' docker-compose.yml\nsudo docker compose up -d --build",
+    "4. Check it: the log says \"Tiiny Remote NAS agent … on port 8765\", the status comes back in {…}. The last line shows the NAS's address (192.168.…):" to
+        "sudo docker logs tiiny-agent\ncurl -s -H \"Authorization: Bearer \$TOKEN\" http://localhost:8765/status\nhostname -I",
+    "5. Here in the app: address http://<NAS address>:8765 and the token, Save, Test. Later, to update the agent:" to
+        "cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d",
+)
+
+@Composable
+private fun NasTerminalGuide(onClose: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 680.dp),
+        title = { ClosableTitle(onClose) { Text("NAS agent from the terminal") } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((what, cmd) in NAS_STEPS) {
+                    Text(what, style = MaterialTheme.typography.bodyMedium)
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                    ) {
+                        Text(
+                            cmd,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        )
+                        TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(cmd)) }, modifier = Modifier.align(Alignment.End)) {
+                            BtnLabel("Copy", symbol = "⧉")
+                        }
+                    }
+                }
+                Text(
+                    "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {},
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
