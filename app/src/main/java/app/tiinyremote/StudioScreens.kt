@@ -1092,8 +1092,14 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         lastCount = msgs.size
     }
     val ui = LocalUi.current
-    // Each chat keeps its own scroll; switching chats jumps to the end.
-    LaunchedEffect(current) { scroll.scrollTo(scroll.maxValue) }
+    // Switching chats (or reopening one from History) jumps to the end; again while the messages are still being laid
+    // out (a long chat takes a moment), so it really lands on the newest message.
+    LaunchedEffect(current) {
+        repeat(8) {
+            scroll.scrollTo(scroll.maxValue)
+            kotlinx.coroutines.delay(120)
+        }
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = if (ui.compact) 8.dp else 12.dp)) {
         Spacer(Modifier.height(if (ui.compact) 4.dp else 8.dp))
         var options by remember { mutableStateOf(false) }
