@@ -75,7 +75,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
     )
     2 -> "Chat" to listOf(
         GuideStep("🧠", "The model", "The button on top picks the chat model (● = loaded); ▶ loads it. A3B models answer fast, 27B ones more carefully.", "Top"),
-        GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth, tools (🛠 make images, speak…), web search (🔍), follow-up ideas (💡), and Socratic or Student mode.", "Right of the model"),
+        GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth, tools (🛠 make images, speak…), web search ($SIGN_WEB), follow-up ideas (💡), and Socratic or Student mode.", "Right of the model"),
         GuideStep("＋", "Attach", "＋ adds an image (from the phone or a new photo, for models that see images) or a file: PDF, Word, Excel, PowerPoint, text.", "Left of the message"),
         GuideStep("🎤", "Dictate", "With the message box empty, 🎤 records you; the Tiiny writes it out into the box. ✎ improves your message before sending.", "Right of the message"),
         GuideStep("🕘", "Chats", "🕘 earlier chats (rename or delete them there), 💾 green = saved / red = incognito, ＋ new chat, ⟳ try the last answer again.", "Top right"),
@@ -97,7 +97,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("ⓘ", "About", "ⓘ at the bottom: the app's version, your Tiiny's system versions and the link to the code. \"Welcome tour\" there shows the first-start tour again.", "Bottom"),
     )
     5 -> "Automate" to listOf(
-        GuideStep("🔁", "Let the Tiiny work on its own", "Jobs that run at a set time: a morning briefing, a news digest, a look at your calendar or mail."),
+        GuideStep(SIGN_AUTOMATE, "Let the Tiiny work on its own", "Jobs that run at a set time: a morning briefing, a news digest, a look at your calendar or mail."),
         GuideStep("🤖", "Agent or process", "🤖 An agent decides itself what to look up (web, news, calendar, mail) before it writes. 📋 A process follows fixed steps.", "When you make one"),
         GuideStep("＋", "Make one", "Start from a template or from scratch: name, time, days, model, what it should do, which tools it may use.", "Automate"),
         GuideStep("📬", "Results", "Results lists what came out; \"Continue in chat\" takes one into a chat.", "Results"),
@@ -110,7 +110,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("⤴", "Open, share, redo", "Tap an item to open it, share it, or go back to Create with the same settings.", "Each item"),
     )
     7 -> "Translate" to listOf(
-        GuideStep("🌐", "Translate", "Text, a photo (a sign, a menu, a letter) or speech, with the models on your Tiiny."),
+        GuideStep(SIGN_TRANSLATE, "Translate", "Text, a photo (a sign, a menu, a letter) or speech, with the models on your Tiiny."),
         GuideStep("🗂", "What to translate", "Text, Photo or Speech at the top. A photo can come from the camera or the phone.", "Top"),
         GuideStep("⇄", "Languages", "From (Detect finds it by itself) and To; ⇄ swaps them.", "Below"),
         GuideStep("▶", "Go", "\"Translate into …\" starts it; the result can be copied or shared.", "Bottom"),
@@ -164,14 +164,14 @@ fun GuideOverlay(title: String, steps: List<GuideStep>, onClose: () -> Unit) {
                     TextButton(onClick = onClose) { Text(if (i == steps.lastIndex) "Close" else "Skip") }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(step.icon, fontSize = 30.sp, modifier = Modifier.padding(end = 12.dp))
+                    SignText(step.icon, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 30.sp), modifier = Modifier.padding(end = 12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(step.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         if (step.where.isNotBlank()) Text("📍 ${step.where}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
                 }
                 Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
-                    Text(step.text, style = MaterialTheme.typography.bodyMedium)
+                    SignText(step.text, style = MaterialTheme.typography.bodyMedium)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Dots: where in the guide you are; tap one to jump there.

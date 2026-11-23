@@ -198,7 +198,7 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = section == "list", onClick = { section = "list" }, label = { Text(sign("Automate") + " Automate") })
+            FilterChip(selected = section == "list", onClick = { section = "list" }, label = { SignText(sign("Automate") + " Automate") })
             FilterChip(selected = section == "results", onClick = { section = "results"; av.refresh() }, label = { Text("Results") })
             FilterChip(selected = section == "connectors", onClick = { section = "connectors" }, label = { Text("Connectors") })
         }
@@ -508,8 +508,8 @@ private fun AutomationEditor(
                 } else {
                     Text("Tools the agent may use", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for ((k, label) in listOf("web" to "🔍 Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉ Email")) {
-                            FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { Text(label) })
+                        for ((k, label) in listOf("web" to "$SIGN_WEB Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉ Email")) {
+                            FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { SignText(label) })
                         }
                     }
                     if (a.tools.any { it in setOf("calendar", "email") } && a.tools.any { it in setOf("web", "news", "pages") }) {

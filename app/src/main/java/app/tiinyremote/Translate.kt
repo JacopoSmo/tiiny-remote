@@ -166,7 +166,7 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
             },
             enabled = ready,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(choiceLabel("🌐", "Translate into $to")) }
+        ) { SignText(choiceLabel(SIGN_TRANSLATE, "Translate into $to")) }
         busy?.let {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.padding(end = 8.dp).size(16.dp), strokeWidth = 2.dp)

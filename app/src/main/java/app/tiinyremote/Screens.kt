@@ -692,7 +692,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                                         filters = if (key in filters) filters - key else filters + key
                                         prefs.edit().putStringSet("filters", filters).apply()
                                     },
-                                    label = { Text(tag(label)) },
+                                    label = { SignText(tag(label)) },
                                 )
                             }
                         }
@@ -931,7 +931,7 @@ private fun ModelCard(
                     Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (m.abilities.isNotEmpty()) {
-                    Text(tags(m.abilities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    SignText(tags(m.abilities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 if (unavailable) {
                     Text(
@@ -1217,7 +1217,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Main chat model" to "The chat's main model (when a helper is loaded)",
                     "Helper" to "The fast helper model",
                     "working" to "Working on something right now",
-                    "Web search" to "Chat: web search on",
+                    "Web search" to "Web search: in the chat (on), and for agents",
                     "Suggestions" to "Chat: follow-up suggestions on",
                     "Socratic" to "Chat: Socratic mode (guides with questions)",
                     "Student" to "Chat: Student mode (teaches step by step)",
@@ -1227,7 +1227,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(TAG_ICONS[word] ?: "", modifier = Modifier.width(36.dp))
+                        SignText(TAG_ICONS[word] ?: "", modifier = Modifier.width(36.dp))
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }

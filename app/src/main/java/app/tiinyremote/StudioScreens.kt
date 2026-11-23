@@ -179,7 +179,7 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                         // "Translates" is on every chat model: no news in a chat's model list.
                         val labels = m.abilities.filter { it != "Translates" } + if (m.isMoE) listOf("MoE") else emptyList()
                         if (labels.isNotEmpty()) {
-                            Text(
+                            SignText(
                                 tags(labels),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
@@ -1114,7 +1114,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 val shownDepth = if (model?.alwaysThinks == true && depth == "off") "low" else depth
                 Box {
                     TextButton(onClick = { options = true }) {
-                        Text(listOfNotNull(
+                        SignText(listOfNotNull(
                             if (thinksNow && shownDepth != "off") sign("Thinking") else null,
                             if (canMake) sign("Can make things") else null,
                             if (web && hasSearx) sign("Web search") else null,
@@ -1178,7 +1178,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text("Can make things") })
             Spacer(Modifier.width(8.dp))
-            FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { Text("Web search") })
+            FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { SignText(tag("Web search")) })
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = suggest, onClick = { toggleSuggest() }, label = { Text("Suggestions") })
             Spacer(Modifier.width(8.dp))

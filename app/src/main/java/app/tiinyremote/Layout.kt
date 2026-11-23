@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.semantics.contentDescription
@@ -77,15 +78,70 @@ val TAG_ICONS = linkedMapOf(
     // The chat's switches use the same signs as the model labels.
     "Thinking" to "💭",
     "Can make things" to "🛠",
-    "Web search" to "🔍",
-    "Automate" to "🔁",
-    "Translates" to "🌐",
-    "Translate" to "🌐",
+    // Drawn pictograms (a character only stands in for them; SignText draws them): web search a globe with a
+    // magnifier, Translate and Automate the same as their pages.
+    "Web search" to SIGN_WEB,
+    "Automate" to SIGN_AUTOMATE,
+    "Translates" to SIGN_TRANSLATE,
+    "Translate" to SIGN_TRANSLATE,
     "Coding" to "💻",
     "Suggestions" to "💡",
     "Socratic" to "🤔",
     "Student" to "🎓",
 )
+
+/** Characters standing in for drawn pictograms in labels (private use, never typed); SignText draws them. */
+const val SIGN_WEB = "\uE101"
+const val SIGN_TRANSLATE = "\uE102"
+const val SIGN_AUTOMATE = "\uE103"
+
+/** Web search: a globe with a magnifier (Material's "travel explore"), blue. */
+val WebSearchIcon by lazy {
+    pathIcon(
+        "Web search",
+        "M19.3,16.9c0.4,-0.7 0.7,-1.5 0.7,-2.4c0,-2.5 -2,-4.5 -4.5,-4.5S11,12 11,14.5s2,4.5 4.5,4.5c0.9,0 1.7,-0.3 2.4,-0.7l3.2,3.2l1.4,-1.4L19.3,16.9z" +
+            "M15.5,17c-1.4,0 -2.5,-1.1 -2.5,-2.5s1.1,-2.5 2.5,-2.5s2.5,1.1 2.5,2.5S16.9,17 15.5,17z" +
+            "M12,20v2C6.48,22 2,17.52 2,12C2,6.48 6.48,2 12,2c4.84,0 8.87,3.44 9.8,8h-2.07c-0.64,-2.46 -2.4,-4.47 -4.73,-5.41V5" +
+            "c0,1.1 -0.9,2 -2,2h-2v2c0,0.55 -0.45,1 -1,1H8v2h2v3H9l-4.79,-4.79C4.08,10.79 4,11.38 4,12C4,16.41 7.59,20 12,20z",
+    )
+}
+
+private val WEB_BLUE = androidx.compose.ui.graphics.Color(0xFF1E88E5)
+
+/**
+ * Text that may hold drawn pictograms (SIGN_WEB, SIGN_TRANSLATE, SIGN_AUTOMATE): each is drawn in its place at the
+ * text's size, web search in blue, the others in the text's colour. Plain text otherwise.
+ */
+@Composable
+fun SignText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: androidx.compose.ui.text.TextStyle = androidx.compose.material3.LocalTextStyle.current,
+    color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+    fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
+) {
+    val signs = mapOf(SIGN_WEB to "web", SIGN_TRANSLATE to "translate", SIGN_AUTOMATE to "automate")
+    if (signs.keys.none { it in text }) {
+        Text(text, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight)
+        return
+    }
+    val annotated = androidx.compose.ui.text.buildAnnotatedString {
+        for (ch in text) {
+            val key = signs[ch.toString()]
+            if (key != null) appendInlineContent(key, ch.toString()) else append(ch)
+        }
+    }
+    val tint = if (color != androidx.compose.ui.graphics.Color.Unspecified) color else androidx.compose.material3.LocalContentColor.current
+    fun box(icon: androidx.compose.ui.graphics.vector.ImageVector, c: androidx.compose.ui.graphics.Color) = androidx.compose.foundation.text.InlineTextContent(
+        androidx.compose.ui.text.Placeholder(1.25.em, 1.25.em, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+    ) { androidx.compose.material3.Icon(icon, null, tint = c, modifier = Modifier.fillMaxSize()) }
+    Text(
+        annotated, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight,
+        inlineContent = mapOf("web" to box(WebSearchIcon, WEB_BLUE), "translate" to box(TranslateIcon, tint), "automate" to box(AutomationIcon, tint)),
+    )
+}
 
 /** The sign alone, for places that show only signs (the chat's compact switch summary). */
 fun sign(word: String): String = TAG_ICONS[word] ?: word
