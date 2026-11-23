@@ -153,6 +153,8 @@ object ApiLog {
     /** The same in plain text, as a command line prints it ("token: …", "password=…"), and any JWT-shaped token. */
     private val plainSecret = Regex("(?i)\\b(auth[_ ]?key|token|password|passwd|api[_ ]?key|secret)(\\s*[:=]\\s*)[^\\s\",}]+")
     private val jwt = Regex("eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*")
+    /** GitHub tokens (Code → GitHub), by their own prefixes. */
+    private val githubToken = Regex("\\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{10,}")
     /** A login written into an address (http://user:password@host). */
     private val urlLogin = Regex("(?i)(https?://)[^/\\s:@]+:[^/\\s@]+@")
     /** File paths from a computer (C:\\Users\\…, /C$/Users/…, /home/…, /Users/…): they name people and folders. */
@@ -169,6 +171,7 @@ object ApiLog {
         t = bearer.replace(t, "$1***")
         t = plainSecret.replace(t, "$1$2***")
         t = jwt.replace(t, "***")
+        t = githubToken.replace(t, "***")
         t = urlLogin.replace(t, "$1***@")
         // "failed to connect to … from /<this phone's address> (port …)": on mobile data that can be a public address.
         t = phoneAddress.replace(t, "from this phone")
