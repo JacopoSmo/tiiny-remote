@@ -333,11 +333,25 @@ fun AppRoot(vm: MainViewModel) {
                                 else -> sections.first { it.third == tab }.first
                             }
                             // Compact: a little larger than titleMedium (16 → 19 sp) with its line height kept, so the slim 48 dp bar stays as it is.
-                            Text(
-                                t, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                style = if (compact) MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp)
-                                else MaterialTheme.typography.titleLarge,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    t, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    style = if (compact) MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp)
+                                    else MaterialTheme.typography.titleLarge,
+                                )
+                                // ?: a walk through this page's basic functions.
+                                Surface(
+                                    onClick = { Guides.request.value = tab },
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp).size(24.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text("?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
                         },
                         actions = {
                             if (tab == 2) {
@@ -404,6 +418,18 @@ fun AppRoot(vm: MainViewModel) {
     }
 
     if (navSettings) NavSettingsDialog(s, vm) { navSettings = false }
+    // The welcome tour once at the first start; a page's guide from the ? beside its title.
+    LaunchedEffect(Unit) { if (!navPrefs.getBoolean("tour_seen", false)) Guides.request.value = -1 }
+    val guide by Guides.request.collectAsState()
+    guide?.let { g ->
+        val (title, steps) = if (g == -1) "Welcome" to WELCOME_TOUR else pageGuide(g)
+        CompositionLocalProvider(LocalAppDensity provides appDensity) {
+            GuideOverlay(title, steps) {
+                if (g == -1) navPrefs.edit().putBoolean("tour_seen", true).apply()
+                Guides.request.value = null
+            }
+        }
+    }
     if (quitting) QuitDialog(s, vm, anyChatBusy.isNotEmpty() || job?.running == true) { quitting = false }
 
     renaming?.let { c ->
@@ -1840,6 +1866,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
+            TextButton(onClick = { Guides.request.value = -1 }) { Text("Welcome tour") }
             IconButton(onClick = { about = true }) {
                 Icon(Icons.Filled.Info, contentDescription = "About this app", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
