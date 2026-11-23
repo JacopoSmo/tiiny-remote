@@ -98,7 +98,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
     )
     5 -> "Automate" to listOf(
         GuideStep(SIGN_AUTOMATE, "Let the Tiiny work on its own", "Jobs that run at a set time: a morning briefing, a news digest, a look at your calendar or mail."),
-        GuideStep("🤖", "Agent or process", "🤖 An agent decides itself what to look up (web, news, calendar, mail) before it writes. 📋 A process follows fixed steps.", "When you make one"),
+        GuideStep(SIGN_AGENT, "Agent or process", "$SIGN_AGENT An agent decides itself what to look up (web, news, calendar, mail) before it writes. $SIGN_PROCESS A process follows fixed steps.", "When you make one"),
         GuideStep("＋", "Make one", "Start from a template or from scratch: name, time, days, model, what it should do, which tools it may use.", "Automate"),
         GuideStep("📬", "Results", "Results lists what came out; \"Continue in chat\" takes one into a chat.", "Results"),
         GuideStep("🔗", "Connectors", "Your calendar, your email (read-only, via IMAP) and optionally your NAS, which can run automations even with the phone off.", "Connectors"),

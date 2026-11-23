@@ -223,9 +223,9 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Alphabetical: Agent, then Process.
                     OutlinedButton(onClick = { editing = Automation("", "New agent", kind = "agent", time = "", tools = setOf("web", "pages")) }) {
-                        BtnLabel("Agent", symbol = "🤖")
+                        BtnLabel("Agent", AgentIcon)
                     }
-                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", symbol = "📋") }
+                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", ProcessIcon) }
                     TextButton(onClick = { agentInfo = true }) { Text("ⓘ") }
                 }
                 Text("Start from an example:", style = MaterialTheme.typography.labelMedium)
@@ -259,7 +259,7 @@ private fun AutomationCard(a: Automation, doing: String?, last: AutoRun?, onEdit
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text((if (a.kind == "agent") "🤖 " else "📋 ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SignText((if (a.kind == "agent") "$SIGN_AGENT " else "$SIGN_PROCESS ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Switch(checked = a.enabled, onCheckedChange = onEnable)
             }
             val what = if (a.kind == "agent") "Tools: " + a.tools.sorted().joinToString(", ").ifBlank { "none" }
@@ -456,7 +456,7 @@ private fun AutomationEditor(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 640.dp),
-        title = { ClosableTitle(onClose) { Text(if (a.kind == "agent") "🤖 Agent" else "📋 Process") } },
+        title = { ClosableTitle(onClose) { SignText(if (a.kind == "agent") "$SIGN_AGENT Agent" else "$SIGN_PROCESS Process") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(a.name, { a = a.copy(name = it.take(60)) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -565,9 +565,9 @@ private fun AgentInfo(onClose: () -> Unit) {
         title = { ClosableTitle(onClose) { Text("Agents and processes") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("🤖 Agent: a goal and tools", fontWeight = FontWeight.Bold)
+                SignText("$SIGN_AGENT Agent: a goal and tools", fontWeight = FontWeight.Bold)
                 Text("You give a goal; the model decides itself what to search, which pages to read, what to look up, step by step, until it has an answer (or reaches the step limit). Good for research. Slower, and a smaller model can lose its way: a chat model of 20B or more works best.")
-                Text("📋 Process: fixed steps", fontWeight = FontWeight.Bold)
+                SignText("$SIGN_PROCESS Process: fixed steps", fontWeight = FontWeight.Bold)
                 Text("Always the same: get something (news, calendar, email), the model works on it, you get the result. Predictable and quick: the right choice for daily summaries.")
                 Text("Where it runs", fontWeight = FontWeight.Bold)
                 Text("• On the phone: nothing to set up. It runs when the phone is on and can reach the Tiiny (home or VPN).\n• On the NAS: a small Docker service runs it around the clock, even with the phone off. A bit of setup once (nas-agent/ on GitHub).")

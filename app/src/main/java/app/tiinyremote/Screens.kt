@@ -1250,10 +1250,10 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for ((icon, what) in listOf(GalleryIcon to "Gallery: everything made", TranslateIcon to "Translate: text, photos, speech",
-                    AutomationIcon to "Automate: 🤖 agents, 📋 processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
+                    AutomationIcon to "Automate: $SIGN_AGENT agents, $SIGN_PROCESS processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
-                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                        SignText(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 Text(

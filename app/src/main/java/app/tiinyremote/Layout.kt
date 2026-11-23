@@ -95,6 +95,27 @@ val TAG_ICONS = linkedMapOf(
 const val SIGN_WEB = "\uE101"
 const val SIGN_TRANSLATE = "\uE102"
 const val SIGN_AUTOMATE = "\uE103"
+const val SIGN_AGENT = "\uE104"
+const val SIGN_PROCESS = "\uE105"
+
+/** Agent (Automate): a robot head. */
+val AgentIcon by lazy {
+    pathIcon(
+        "Agent",
+        "M12,2a2,2 0 0 1 2,2c0,0.74 -0.4,1.39 -1,1.73V7h1a7,7 0 0 1 7,7h1a1,1 0 0 1 1,1v3a1,1 0 0 1 -1,1h-1v1a2,2 0 0 1 -2,2H5a2,2 0 0 1 -2,-2v-1H2" +
+            "a1,1 0 0 1 -1,-1v-3a1,1 0 0 1 1,-1h1a7,7 0 0 1 7,-7h1V5.73c-0.6,-0.34 -1,-0.99 -1,-1.73a2,2 0 0 1 2,-2M7.5,13A2.5,2.5 0 0 0 5,15.5" +
+            "A2.5,2.5 0 0 0 7.5,18a2.5,2.5 0 0 0 2.5,-2.5A2.5,2.5 0 0 0 7.5,13m9,0a2.5,2.5 0 0 0 -2.5,2.5a2.5,2.5 0 0 0 2.5,2.5a2.5,2.5 0 0 0 2.5,-2.5" +
+            "a2.5,2.5 0 0 0 -2.5,-2.5z",
+    )
+}
+
+/** Process (Automate): a numbered list, fixed steps in order. */
+val ProcessIcon by lazy {
+    pathIcon(
+        "Process",
+        "M2,17h2v0.5H3v1h1v0.5H2v1h3v-4H2v1zM3,8h1V4H2v1h1V8zM2,11h1.8L2,13.1v0.9h3v-1H3.2L5,10.9V10H2v1zM7,5v2h14V5H7zM7,19h14v-2H7v2zM7,13h14v-2H7v2z",
+    )
+}
 
 /** Web search: a globe with a magnifier (Material's "travel explore"), blue. */
 val WebSearchIcon by lazy {
@@ -123,7 +144,7 @@ fun SignText(
     overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
     fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
 ) {
-    val signs = mapOf(SIGN_WEB to "web", SIGN_TRANSLATE to "translate", SIGN_AUTOMATE to "automate")
+    val signs = mapOf(SIGN_WEB to "web", SIGN_TRANSLATE to "translate", SIGN_AUTOMATE to "automate", SIGN_AGENT to "agent", SIGN_PROCESS to "process")
     if (signs.keys.none { it in text }) {
         Text(text, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight)
         return
@@ -140,7 +161,10 @@ fun SignText(
     ) { androidx.compose.material3.Icon(icon, null, tint = c, modifier = Modifier.fillMaxSize()) }
     Text(
         annotated, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight,
-        inlineContent = mapOf("web" to box(WebSearchIcon, WEB_BLUE), "translate" to box(TranslateIcon, tint), "automate" to box(AutomationIcon, tint)),
+        inlineContent = mapOf(
+            "web" to box(WebSearchIcon, WEB_BLUE), "translate" to box(TranslateIcon, tint), "automate" to box(AutomationIcon, tint),
+            "agent" to box(AgentIcon, tint), "process" to box(ProcessIcon, tint),
+        ),
     )
 }
 
