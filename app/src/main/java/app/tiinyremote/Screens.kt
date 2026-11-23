@@ -1223,7 +1223,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Student" to "Chat: Student mode (teaches step by step)",
                     "Translates" to "Can translate (every chat model); also the Translate page",
                     "Coding" to "Good at code (made for it, or 20B parameters or more); also Models → Types → Coding",
-                    "Automate" to "Automate: processes and agents",
+                    "Automate" to "Automate: agents and processes",
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1250,7 +1250,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for ((icon, what) in listOf(GalleryIcon to "Gallery: everything made", TranslateIcon to "Translate: text, photos, speech",
-                    AutomationIcon to "Automate: 📋 processes, 🤖 agents", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
+                    AutomationIcon to "Automate: 🤖 agents, 📋 processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
                         Text(what, style = MaterialTheme.typography.bodyMedium)

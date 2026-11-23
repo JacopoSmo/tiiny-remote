@@ -219,10 +219,11 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", symbol = "📋") }
+                    // Alphabetical: Agent, then Process.
                     OutlinedButton(onClick = { editing = Automation("", "New agent", kind = "agent", time = "", tools = setOf("web", "pages")) }) {
                         BtnLabel("Agent", symbol = "🤖")
                     }
+                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", symbol = "📋") }
                     TextButton(onClick = { agentInfo = true }) { Text("ⓘ") }
                 }
                 Text("Start from an example:", style = MaterialTheme.typography.labelMedium)
@@ -531,13 +532,13 @@ private fun AgentInfo(onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
-        title = { ClosableTitle(onClose) { Text("Processes and agents") } },
+        title = { ClosableTitle(onClose) { Text("Agents and processes") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("📋 Process: fixed steps", fontWeight = FontWeight.Bold)
-                Text("Always the same: get something (news, calendar, email), the model works on it, you get the result. Predictable and quick: the right choice for daily summaries.")
                 Text("🤖 Agent: a goal and tools", fontWeight = FontWeight.Bold)
                 Text("You give a goal; the model decides itself what to search, which pages to read, what to look up, step by step, until it has an answer (or reaches the step limit). Good for research. Slower, and a smaller model can lose its way: a chat model of 20B or more works best.")
+                Text("📋 Process: fixed steps", fontWeight = FontWeight.Bold)
+                Text("Always the same: get something (news, calendar, email), the model works on it, you get the result. Predictable and quick: the right choice for daily summaries.")
                 Text("Where it runs", fontWeight = FontWeight.Bold)
                 Text("• On the phone: nothing to set up. It runs when the phone is on and can reach the Tiiny (home or VPN).\n• On the NAS: a small Docker service runs it around the clock, even with the phone off. A bit of setup once (nas-agent/ on GitHub).")
                 Text("Safety", fontWeight = FontWeight.Bold)
