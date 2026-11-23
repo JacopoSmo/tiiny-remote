@@ -78,6 +78,7 @@ val TAG_ICONS = linkedMapOf(
     "Automate" to "🔁",
     "Translates" to "🌐",
     "Translate" to "🌐",
+    "Coding" to "💻",
     "Suggestions" to "💡",
     "Socratic" to "🤔",
     "Student" to "🎓",
@@ -409,5 +410,13 @@ val SaveIcon by lazy {
     pathIcon(
         "Save",
         "M17,3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2V7l-4,-4zM12,19c-1.66,0 -3,-1.34 -3,-3s1.34,-3 3,-3 3,1.34 3,3 -1.34,3 -3,3zM15,9H5V5h10v4z",
+    )
+}
+
+/** Code: angle brackets, as in Material's code icon. */
+val CodeIcon by lazy {
+    pathIcon(
+        "Code",
+        "M9.4,16.6L4.8,12l4.6,-4.6L8,6l-6,6 6,6 1.4,-1.4zM14.6,16.6l4.6,-4.6 -4.6,-4.6L16,6l6,6 -6,6 -1.4,-1.4z",
     )
 }

@@ -68,7 +68,12 @@ class DeviceClient(url: String, private val key: String) {
     private fun looksLikeText(b: ByteArray) = b.take(64).all { it >= 9 || it < 0 }
 
     /** log = false for frequent polls (device stats), so they don't push the useful entries out of the log. */
-    fun request(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 60, log: Boolean = true): Reply {
+    fun request(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 60, log: Boolean = true): Reply =
+        // A POST to /v1/… has a model at work: loads wait for it (NpuGate).
+        if (method == "POST" && path.startsWith("/v1/")) NpuGate.work { send(method, path, body, timeoutSec, log) }
+        else send(method, path, body, timeoutSec, log)
+
+    private fun send(method: String, path: String, body: JSONObject?, timeoutSec: Int, log: Boolean): Reply {
         val conn = open(method, path, timeoutSec)
         try {
             if (body != null) {
@@ -91,7 +96,10 @@ class DeviceClient(url: String, private val key: String) {
 
     class Part(val field: String, val filename: String, val mime: String, val data: ByteArray)
 
-    fun multipart(path: String, fields: List<Pair<String, String>>, files: List<Part>, timeoutSec: Int): Reply {
+    fun multipart(path: String, fields: List<Pair<String, String>>, files: List<Part>, timeoutSec: Int): Reply =
+        NpuGate.work { sendParts(path, fields, files, timeoutSec) }
+
+    private fun sendParts(path: String, fields: List<Pair<String, String>>, files: List<Part>, timeoutSec: Int): Reply {
         val boundary = UUID.randomUUID().toString().replace("-", "")
         val out = ByteArrayOutputStream()
         for ((k, v) in fields) {
@@ -126,14 +134,30 @@ class DeviceClient(url: String, private val key: String) {
 
     class ToolCall(var id: String = "", var name: String = "", val args: StringBuilder = StringBuilder())
 
-    class Completion(val content: String, val reasoning: String, val calls: List<ToolCall>, val finish: String)
+    /**
+     * A finished answer. tokens and seconds measure the writing (first piece of text to the last), from the Tiiny's
+     * usage count if it sends one, else the pieces streamed (about one token each); alone: no other model of this app
+     * was writing meanwhile.
+     */
+    class Completion(
+        val content: String, val reasoning: String, val calls: List<ToolCall>, val finish: String,
+        val tokens: Int = 0, val seconds: Double = 0.0, val alone: Boolean = false,
+    )
 
     /**
      * Streams an OpenAI chat completion (server-sent events): onDelta(content, reasoning) for each piece of text;
      * tool calls are collected and returned at the end. `stop()` returning true ends it early.
      */
-    fun streamChat(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion {
+    fun streamChat(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion =
+        NpuGate.work { stream(body, onDelta, stop) }
+
+    private fun stream(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion {
         val conn = open("POST", "/v1/chat/completions", 900)
+        var first = 0L
+        var last = 0L
+        var pieces = 0
+        var usage = 0
+        var alone = true
         val content = StringBuilder()
         val reasoning = StringBuilder()
         val calls = java.util.TreeMap<Int, ToolCall>()
@@ -165,6 +189,7 @@ class DeviceClient(url: String, private val key: String) {
                     } catch (e: Exception) {
                         continue
                     }
+                    o.optJSONObject("usage")?.optInt("completion_tokens", 0)?.takeIf { it > 0 }?.let { usage = it }
                     val choice = o.optJSONArray("choices")?.optJSONObject(0) ?: continue
                     val fr = choice.optString("finish_reason")
                     if (fr.isNotBlank() && fr != "null") finish = fr
@@ -190,6 +215,13 @@ class DeviceClient(url: String, private val key: String) {
                     }
                     content.append(c)
                     reasoning.append(r)
+                    if (c.isNotEmpty() || r.isNotEmpty() || delta.has("tool_calls")) {
+                        val now = System.nanoTime()
+                        if (first == 0L) first = now
+                        last = now
+                        pieces++
+                        if (NpuGate.count > 1) alone = false
+                    }
                     if (c.isNotEmpty() || r.isNotEmpty()) onDelta(c, r)
                 }
             }
@@ -203,6 +235,8 @@ class DeviceClient(url: String, private val key: String) {
         } finally {
             conn.disconnect()
         }
-        return Completion(content.toString(), reasoning.toString(), calls.values.toList(), finish)
+        // The first piece isn't timed (it's the wait before writing), so it's left out of the count too.
+        val tokens = (if (usage > 0) usage else pieces) - 1
+        return Completion(content.toString(), reasoning.toString(), calls.values.toList(), finish, tokens.coerceAtLeast(0), (last - first) / 1e9, alone)
     }
 }

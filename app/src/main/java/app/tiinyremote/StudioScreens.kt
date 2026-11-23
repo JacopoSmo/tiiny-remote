@@ -1062,7 +1062,10 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
 fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val msgs by st.chat.collectAsState()
     val busy by st.chatBusy.collectAsState()
-    var input by rememberSaveable { mutableStateOf("") }
+    val current by st.currentChat.collectAsState()
+    // What's being typed is kept per chat (also when another app, WireGuard say, takes over the screen meanwhile).
+    var input by remember(current) { mutableStateOf(st.draftOf(current)) }
+    LaunchedEffect(input, current) { st.setDraft(current, input) }
     var depth by rememberSaveable { mutableStateOf(st.setting("chat.depth", "auto").takeIf { it in DEPTHS } ?: "auto") }
     var chatMode by rememberSaveable { mutableStateOf(st.setting("chat.mode", "normal")) }
     var suggest by rememberSaveable { mutableStateOf(st.setting("chat.suggest", "1") == "1") }
@@ -1089,7 +1092,6 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         lastCount = msgs.size
     }
     val ui = LocalUi.current
-    val current by st.currentChat.collectAsState()
     // Each chat keeps its own scroll; switching chats jumps to the end.
     LaunchedEffect(current) { scroll.scrollTo(scroll.maxValue) }
     Column(Modifier.fillMaxSize().padding(horizontal = if (ui.compact) 8.dp else 12.dp)) {
@@ -1256,7 +1258,9 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
             if (msgs.isEmpty()) {
                 Text(
-                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.",
+                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.\n\n" +
+                        "Tip: \"A3B\" models (mixture of experts) answer fast, good for everyday questions. Dense ones like the " +
+                        "27B models are slower but more careful: better for tricky questions, long texts or code.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),
@@ -1588,9 +1592,11 @@ private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, on
     Box {
         IconButton(onClick = { open = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Add, contentDescription = "Attach an image or a file") }
         ScaledDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp)
             DropdownMenuItem(
-                text = { Text("🖼 Image from the phone" + if (seesImages) "" else " (this model doesn't see images)") },
+                text = { Text("🖼 Image from the phone") },
                 enabled = seesImages,
+                contentPadding = pad,
                 onClick = {
                     open = false
                     pickImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -1599,10 +1605,12 @@ private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, on
             DropdownMenuItem(
                 text = { Text("📷 Take a photo") },
                 enabled = seesImages,
+                contentPadding = pad,
                 onClick = { open = false; runCatching { camera.launch(shotUri) }.onFailure { onError("No camera app found.") } },
             )
             DropdownMenuItem(
-                text = { Text("📄 File: PDF, Word, Excel, PowerPoint, text") },
+                text = { Text("📄 File: PDF, Office, text") },
+                contentPadding = pad,
                 onClick = { open = false; runCatching { pickFile.launch(Docs.MIMES) }.onFailure { onError("No file picker found.") } },
             )
         }

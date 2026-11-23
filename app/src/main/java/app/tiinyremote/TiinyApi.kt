@@ -53,6 +53,7 @@ data class ModelInfo(
             },
             if (makesThings) "Makes things" else null,
             if (seesImages) "Sees images" else null,
+            if (codes) "Coding" else null,
             "Translates",
         )
 
@@ -134,7 +135,7 @@ data class LogEntry(val ms: Long, val type: String, val text: String, val error:
 /** The app's one log: device API calls, models, unlocking, VPN, chat, web search and the creation tools. */
 object ApiLog {
     /** The kinds of entries, in the order the Activity tab shows its filter buttons. */
-    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create", "Automate")
+    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create", "Automate", "Code")
 
     private val _entries = kotlinx.coroutines.flow.MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: kotlinx.coroutines.flow.StateFlow<List<LogEntry>> = _entries
@@ -533,6 +534,7 @@ class TiinyApi(url: String, private val key: String) {
 
     /** Starts loading; the device answers once the load is accepted and finishes in the background. */
     fun launch(id: String) {
+        NpuGate.awaitQuiet(id) // not while a model is writing (see NpuGate)
         modelCall("POST", id, "/launch", JSONObject().put("model_id", id), timeoutSec = 120)
     }
 

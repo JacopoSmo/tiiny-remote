@@ -76,6 +76,7 @@ object Tools {
             }
         }
         p.update("Loading ${short(target)}", null)
+        NpuGate.awaitQuiet(target)
         val r = c.request("POST", "/api/v1/models/${c.quote(target)}/launch", JSONObject().put("model_id", target), 120)
         if (!r.ok) throw MediaException(r.error())
         waitLoaded(c, target, p)
@@ -89,6 +90,7 @@ object Tools {
         c.request("POST", "/api/v1/models/${c.quote(target)}/stop", null, 120)
         for (m in unloaded) {
             p.update("Loading ${short(m)} back", null)
+            NpuGate.awaitQuiet(m)
             val r = c.request("POST", "/api/v1/models/${c.quote(m)}/launch", JSONObject().put("model_id", m), 120)
             if (!r.ok) throw MediaException("Couldn't load ${short(m)} back: ${r.error()}")
         }

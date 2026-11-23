@@ -47,6 +47,27 @@ object Vpn {
         }
     }
 
+    /**
+     * The addresses of every VPN on the phone right now ("10.8.0.3"…). Android runs one VPN at a time, so this tells
+     * WireGuard from another app's VPN (DuckDuckGo's App Tracking Protection, say) once WireGuard's address is known.
+     */
+    @Suppress("DEPRECATION")
+    fun addresses(ctx: Context): Set<String> {
+        val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return emptySet()
+        return cm.allNetworks.filter { cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true }
+            .flatMap { n -> cm.getLinkProperties(n)?.linkAddresses.orEmpty().mapNotNull { it.address?.hostAddress?.substringBefore('%') } }
+            .toSet()
+    }
+
+    /**
+     * Is WireGuard on: a VPN with WireGuard's address ([own]); while that isn't known yet, any VPN except one already
+     * found not to be WireGuard ([others]: it stayed when WireGuard was asked to go off).
+     */
+    fun wireGuardOn(ctx: Context, own: Set<String>, others: Set<String> = emptySet()): Boolean {
+        val now = addresses(ctx)
+        return if (own.isNotEmpty()) now.any { it in own } else now.isNotEmpty() && !now.all { it in others } || (now.isEmpty() && active(ctx))
+    }
+
     /** Is any VPN active on the phone right now (WireGuard's or another one)? */
     @Suppress("DEPRECATION")
     fun active(ctx: Context): Boolean {

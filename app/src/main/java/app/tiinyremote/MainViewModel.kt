@@ -40,7 +40,12 @@ data class UiState(
 data class VpnStatus(
     val wireguardInstalled: Boolean = false,
     val permitted: Boolean = false,
+    /** WireGuard's VPN is on (once its address is known; until then any VPN counts). */
     val active: Boolean = false,
+    /** Another app's VPN is on instead (DuckDuckGo's App Tracking Protection, say): left alone. */
+    val other: Boolean = false,
+    /** WireGuard's address is known, so another VPN isn't mistaken for it. */
+    val known: Boolean = false,
     /** True on the home network, false elsewhere, null when the app can't tell. */
     val onHome: Boolean? = null,
     val switching: Boolean = false,
@@ -131,6 +136,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val nowRunning = cat.models.filter { it.status == "running" }.map { it.id }.toSet()
             if (_state.value.unavailable.any { it in nowRunning }) setUnavailable(_state.value.unavailable - nowRunning)
             logOccupants(cat.models)
+            keepReady(cat.models)
             _state.update {
                 it.copy(
                     device = DeviceState.ONLINE,
@@ -139,6 +145,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     npuUsed = cat.npuUsed,
                 )
             }
+            // Away from home, the VPN that reaches the Tiiny is WireGuard: learn its address if it isn't known yet.
+            _state.value.vpn.let { v -> if (wgAddrs.isEmpty() && v.onHome == false && v.active) learnWireGuard(Vpn.addresses(app), "as it reaches the Tiiny from away") }
             if (Background.visible) autoVpn(reachable = true) // switching opens WireGuard: only with the app on screen
             connectedNote()
         } catch (e: TiinyException) {
@@ -152,6 +160,49 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (Background.visible) autoVpn(reachable = ds != DeviceState.UNREACHABLE)
             if (ds == DeviceState.LOCKED) maybeAutoUnlock()
             connectedNote()
+        }
+    }
+
+    private var readyTried = 0L
+    private var readyNoRoom = ""
+
+    /**
+     * Settings → Always ready: a speech-to-text and/or OCR model loaded whenever there's room on the NPU, so dictation,
+     * Translate and OCR start at once. Never unloads anything for it; one load at a time, at most once a minute, and not
+     * while a model is writing or loading.
+     */
+    private fun keepReady(models: List<ModelInfo>) {
+        val st = settings
+        if (!st.keepAsr && !st.keepOcr) return
+        val now = System.currentTimeMillis()
+        if (now - readyTried < 60_000 || NpuGate.busy || models.any { it.status == "loading" }) return
+        val free = 100 - models.filter { it.status == "running" }.sumOf { it.npuUsage ?: 0.0 }
+        val wanted = listOfNotNull(
+            if (st.keepAsr) "speech-to-text" to { m: ModelInfo -> m.isAsr } else null,
+            if (st.keepOcr) "OCR" to { m: ModelInfo -> m.isOcr } else null,
+        )
+        for ((what, kind) in wanted) {
+            if (models.any { it.status == "running" && kind(it) }) continue
+            // The smallest of its kind on the Tiiny, leaving the most room for the chat models.
+            val m = models.filter { kind(it) && it.id !in _state.value.unavailable }.minByOrNull { it.npuUsage ?: 100.0 } ?: continue
+            if ((m.npuUsage ?: 100.0) > free) {
+                if (readyNoRoom != m.id) {
+                    readyNoRoom = m.id
+                    ApiLog.add("Always ready: no room for ${m.name} (${Math.round(m.npuUsage ?: 0.0)}% of the NPU) beside the loaded models; it loads once there is.", "Models")
+                }
+                continue
+            }
+            readyTried = now
+            readyNoRoom = ""
+            ApiLog.add("Always ready: loading ${m.name} ($what)", "Models")
+            viewModelScope.launch {
+                try {
+                    withContext(Dispatchers.IO) { api().launch(m.id) }
+                } catch (e: Exception) {
+                    ApiLog.add("Always ready: loading ${m.name} failed: ${e.message}", "Models")
+                }
+            }
+            return
         }
     }
 
@@ -215,6 +266,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     _state.update { it.copy(swap = PendingSwap(model.id, model.name, plan)) }
                     return@launch
                 }
+                if (NpuGate.busy) toast("${model.name} loads once the answer being written is finished")
                 withContext(Dispatchers.IO) { api().launch(model.id) }
                 toast("Loading ${model.name}…")
             } catch (e: TiinyException) {
@@ -259,6 +311,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun unload(model: ModelInfo) {
+        // Unloading an "Always ready" model yourself means you don't want it kept: that setting goes off.
+        val s0 = settings
+        if (s0.keepAsr && model.isAsr || s0.keepOcr && model.isOcr) {
+            setDisplay(s0.copy(keepAsr = s0.keepAsr && !model.isAsr, keepOcr = s0.keepOcr && !model.isOcr))
+            toast("Always ready: ${if (model.isAsr) "speech-to-text" else "OCR"} switched off")
+        }
         viewModelScope.launch {
             setWorking(model.id, true)
             try {
@@ -443,13 +501,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- WireGuard VPN ----------
 
+    private val vpnPrefs = app.getSharedPreferences("vpn", android.content.Context.MODE_PRIVATE)
+
+    /** WireGuard's own address(es), learnt when it came up at the app's request, or when it's what reaches the Tiiny away from home. */
+    private var wgAddrs: Set<String> = vpnPrefs.getStringSet("wg_addresses", null)?.toSet() ?: emptySet()
+
+    /** Addresses of a VPN that stayed when WireGuard was asked to go off: another app's, until WireGuard's own is known. */
+    private var otherAddrs: Set<String> = vpnPrefs.getStringSet("other_addresses", null)?.toSet() ?: emptySet()
+
+    /** A VPN that once didn't go off when asked: if it happens again, it's taken for another app's. */
+    private var stuckOnce: Set<String>? = null
+
+    private fun learnWireGuard(addrs: Set<String>, how: String) {
+        if (addrs.isEmpty() || addrs == wgAddrs) return
+        wgAddrs = addrs
+        otherAddrs = otherAddrs - addrs
+        vpnPrefs.edit().putStringSet("wg_addresses", addrs).putStringSet("other_addresses", otherAddrs).apply()
+        log("WireGuard recognised by its address (${addrs.joinToString(", ")}), $how: another app's VPN isn't taken for it any more.")
+    }
+
     fun updateVpnStatus() {
         val ctx = app
         val st = settings
+        val wg = Vpn.wireGuardOn(ctx, wgAddrs, otherAddrs)
         val status = VpnStatus(
             wireguardInstalled = Vpn.installed(ctx),
             permitted = Vpn.permitted(ctx),
-            active = Vpn.active(ctx),
+            active = wg,
+            other = !wg && Vpn.active(ctx),
+            known = wgAddrs.isNotEmpty(),
             onHome = if (st.tiinyUrl.isBlank()) null else Vpn.onHomeNetwork(ctx, st.tiinyUrl),
             switching = _state.value.vpn.switching,
         )
@@ -514,10 +594,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             log("Switching the VPN $what" + (reason?.let { " because $it" } ?: "") + "…")
             // WireGuard asleep in the background may miss the first command: send it up to three times.
             var done = false
+            val before = Vpn.addresses(app)
             for (attempt in 1..3) {
                 if (attempt > 1) log("  No reaction from WireGuard yet, asking again ($attempt/3)…")
                 Vpn.setTunnel(app, st.wgTunnel, up)
-                done = waitForVpn(up, seconds = 5)
+                done = waitForVpn(up, before, seconds = 5)
                 if (done) break
             }
             // WireGuard is asleep: wake it by opening it, ask once more, then come back here.
@@ -529,7 +610,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 delay(2_000)
                 for (again in 1..3) {
                     Vpn.setTunnel(app, st.wgTunnel, up)
-                    done = waitForVpn(up, seconds = 8)
+                    done = waitForVpn(up, before, seconds = 8)
                     if (done) break
                     if (again < 3) log("  WireGuard is open but hasn't switched yet, asking again…")
                 }
@@ -538,6 +619,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(vpn = it.vpn.copy(switching = false)) }
             updateVpnStatus()
             if (done) {
+                // Android runs one VPN at a time: what's up now at WireGuard's request is WireGuard (and what went away was).
+                if (up) learnWireGuard(Vpn.addresses(app), "now that it came on")
+                else if (wgAddrs.isEmpty() && Vpn.addresses(app).isEmpty()) learnWireGuard(before, "now that it went off")
                 log("VPN is $what.")
                 if (reason == null) toast("VPN $what")
                 refresh()
@@ -548,6 +632,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         "If it works only sometimes, Android is putting WireGuard to sleep: in Android's settings, " +
                         "set WireGuard's battery use to \"Unrestricted\" (and allow Autostart, if your phone has it)."
                 )
+                // Asked to go off, and the same VPN is still there: it isn't WireGuard's (another app's VPN, DuckDuckGo's
+                // App Tracking Protection, say). Remembered, so it's left alone from now on.
+                val still = Vpn.addresses(app)
+                // Twice, so a WireGuard that merely slept through it once isn't mistaken for another VPN.
+                if (!up && wgAddrs.isEmpty() && still.isNotEmpty() && still == before && stuckOnce != still) stuckOnce = still
+                else if (!up && wgAddrs.isEmpty() && still.isNotEmpty() && still == before) {
+                    otherAddrs = otherAddrs + still
+                    vpnPrefs.edit().putStringSet("other_addresses", otherAddrs).apply()
+                    log("The VPN that's on (${still.joinToString(", ")}) didn't go off with WireGuard: it's probably another app's VPN, so it's left alone from now on.")
+                    updateVpnStatus()
+                }
                 if (reason != null) {
                     // Don't keep trying every minute: wait until the network changes, or a tap on the VPN button.
                     autoGaveUp = true
@@ -558,10 +653,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun waitForVpn(up: Boolean, seconds: Int): Boolean {
+    /**
+     * Waits for WireGuard to come up or go down. With its address known, that's what's checked; until then, a change
+     * of the VPN's addresses from [before] counts (so another app's VPN already on isn't taken for WireGuard coming up).
+     */
+    private suspend fun waitForVpn(up: Boolean, before: Set<String>, seconds: Int): Boolean {
         for (i in 0 until seconds * 2) {
             delay(500)
-            if (Vpn.active(app) == up) return true
+            val now = Vpn.addresses(app)
+            val ok = if (wgAddrs.isNotEmpty()) Vpn.wireGuardOn(app, wgAddrs, otherAddrs) == up
+            else if (up) now.isNotEmpty() && now != before else now.isEmpty() || now != before
+            if (ok) return true
         }
         return false
     }
@@ -721,6 +823,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDisplay(s: AppSettings) {
         store.save(s)
         _state.update { it.copy(settings = s) }
+    }
+
+    /**
+     * The sidebar's ⏻: unloads [unload] (if any), stops the background service and its notification, then [done]
+     * closes the app. Stay connected keeps its setting, so it's back the next time the app is opened.
+     */
+    fun quitApp(unload: List<ModelInfo>, done: () -> Unit) {
+        viewModelScope.launch {
+            for (m in unload) {
+                try {
+                    withContext(Dispatchers.IO) { api().stop(m.id) }
+                    ApiLog.add("Unloaded ${m.name} before closing the app", "Models")
+                } catch (e: Exception) {
+                    ApiLog.add("Couldn't unload ${m.name} before closing: ${e.message}", "Models")
+                }
+            }
+            Background.stopAll(app)
+            done()
+        }
     }
 
     /** Settings → "Stay connected in the background": saved, and the notification shown or removed at once. */

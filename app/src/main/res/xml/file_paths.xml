@@ -3,4 +3,6 @@
     <files-path name="results" path="results/" />
     <!-- Translate: a photo taken with the camera app, kept only until it's read. -->
     <cache-path name="camera" path="camera/" />
+    <!-- Code: a project packed as a .zip to share. -->
+    <cache-path name="share" path="share/" />
 </paths>

@@ -48,6 +48,17 @@ object Background {
         running = false
     }
 
+    /** Closing the app (sidebar ⏻): every reason dropped and the service stopped, its notification with it. */
+    fun stopAll(ctx: Context) {
+        synchronized(this) { reasons.clear() }
+        apply(ctx.applicationContext, null)
+        try {
+            ctx.applicationContext.stopService(Intent(ctx.applicationContext, WorkService::class.java))
+        } catch (e: Exception) {
+        }
+        androidx.core.app.NotificationManagerCompat.from(ctx).cancel(Notifier.WORK_ID)
+    }
+
     /** After the setting changed: start or stop the service to match. */
     fun refresh(ctx: Context) = apply(ctx.applicationContext, synchronized(this) { current() })
 

@@ -36,11 +36,13 @@ private val day = DateTimeFormatter.ofPattern("d MMM HH:mm", Locale.ENGLISH)
 private fun n1(v: Double) = if (v.isNaN()) "—" else String.format(Locale.ROOT, "%.1f", v)
 private fun pc(v: Double) = if (v.isNaN()) "—" else "${Math.round(v)}%"
 private fun short(name: String) = name.substringAfterLast('/')
+private fun median(l: List<Double>) = l.sorted().let { s -> if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2 }
 
 /** Settings → History: every speed test in a table, the best pairs, and each model's speed over all tests. */
 @Composable
 fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
     val all by st.speedHistory.collectAsState()
+    val chats by st.chatSpeeds.collectAsState()
     var sort by remember { mutableStateOf("new") }
     var confirmClear by remember { mutableStateOf(false) }
     val rows = when (sort) {
@@ -52,9 +54,31 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 720.dp),
-        title = { ClosableTitle(onClose) { Text("Speed test history") } },
+        title = { ClosableTitle(onClose) { Text("Speed history") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Measured in normal chats, no test needed: alone, and beside another model writing.
+                if (chats.isNotEmpty()) {
+                    Text("From your chats (tokens per second)", style = MaterialTheme.typography.titleSmall)
+                    for ((m, l) in chats.groupBy { it.model }.entries.sortedByDescending { (_, l) -> l.map { it.rate }.average() }) {
+                        val alone = l.filter { it.alone }.map { it.rate }
+                        val beside = l.filter { !it.alone }.map { it.rate }
+                        Text(
+                            "${short(m)}: " + listOfNotNull(
+                                alone.takeIf { it.isNotEmpty() }?.let { "${n1(median(it))} alone (${it.size})" },
+                                beside.takeIf { it.isNotEmpty() }?.let { "${n1(median(it))} beside another model (${it.size})" },
+                            ).joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                    Text(
+                        "Every chat answer of 50 tokens or more is measured (the middle value is shown, so one odd answer " +
+                            "doesn't count much). Thinking counts as writing.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    HorizontalDivider()
+                }
                 if (all.isEmpty()) {
                     Text("No speed tests yet. Run one in Settings → Fast helper model.")
                     return@Column
@@ -116,7 +140,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
         },
         confirmButton = {},
         dismissButton = {
-            if (all.isNotEmpty()) {
+            if (all.isNotEmpty() || chats.isNotEmpty()) {
                 if (confirmClear) TextButton(onClick = { st.clearSpeedHistory(); confirmClear = false }) {
                     Text("Really clear all?", color = MaterialTheme.colorScheme.error)
                 } else TextButton(onClick = { confirmClear = true }) { Text("Clear history") }
