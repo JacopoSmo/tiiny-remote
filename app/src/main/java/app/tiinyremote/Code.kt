@@ -335,7 +335,18 @@ private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
                         // Only this project's folder: the page can load its own files, nothing else of the app's.
                         @Suppress("DEPRECATION")
                         settings.allowFileAccess = true
-                        webViewClient = android.webkit.WebViewClient()
+                        // Only this project's own files, or the web (libraries from a CDN): no other file of the phone's.
+                        val folder = file.parentFile!!.canonicalPath
+                        webViewClient = object : android.webkit.WebViewClient() {
+                            override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
+                                val u = request.url
+                                return when (u.scheme?.lowercase()) {
+                                    "http", "https", "about", "data" -> false
+                                    "file" -> !(java.io.File(u.path ?: "").canonicalPath.startsWith(folder))
+                                    else -> true
+                                }
+                            }
+                        }
                         loadUrl(android.net.Uri.fromFile(file).toString())
                     }
                 },
@@ -358,6 +369,10 @@ private fun GitHubDialog(cv: CodeViewModel, project: String?, onClose: () -> Uni
     var message by remember { mutableStateOf("") }
     var from by remember { mutableStateOf("") }
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
+    // After "New private repository" (or a copy), the fields show where the project now goes.
+    LaunchedEffect(busy) {
+        if (busy == null) cv.gitTarget()?.let { g -> owner = g.owner; repo = g.repo; branch = g.branch }
+    }
     ScaledAlertDialog(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),

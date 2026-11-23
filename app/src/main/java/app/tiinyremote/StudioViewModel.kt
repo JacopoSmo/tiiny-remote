@@ -515,6 +515,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (drafts[chat].orEmpty() == text) return
         if (text.isBlank()) drafts.remove(chat) else drafts[chat] = text
         draftSave?.cancel()
+        // Incognito: drafts stay in memory only, like the chat itself.
+        if (!_saving.value) return
         draftSave = viewModelScope.launch {
             kotlinx.coroutines.delay(400)
             prefs.edit().putString("chat.drafts", JSONObject(drafts.toMap()).toString()).apply()
@@ -531,7 +533,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (on) saveChat(_currentChat.value)
         note(
             if (on) "Chats are saved again, this one too."
-            else "Incognito: new messages aren't saved. This chat is gone once you leave it or close the app; chats saved before stay.",
+            else "Incognito: nothing of your chats is written to the phone from now on (drafts neither). What's new is gone when the app closes; chats saved before stay.",
         )
     }
 

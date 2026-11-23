@@ -23,6 +23,25 @@ object Docs {
         "text/*", "application/json", "application/xml",
     )
 
+    /** Reads at most [max] bytes; null if there's more (a zip bomb or a far too big file isn't read whole). */
+    fun readAtMost(input: java.io.InputStream, max: Long): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > max) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+
+    /** One part of an Office file, at most 40 MB unpacked. */
+    private fun part(z: ZipInputStream, name: String): String =
+        readAtMost(z, 40L * 1024 * 1024)?.toString(Charsets.UTF_8) ?: throw MediaException("$name is too big to read on the phone.")
+
     fun read(ctx: Context, uri: Uri): PickedFile {
         val cr = ctx.contentResolver
         val name = cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
@@ -39,7 +58,8 @@ object Docs {
                 ext == "pptx" -> office(input, Regex("ppt/slides/slide(\\d+)\\.xml"), name, numbered = "Slide") { xml -> paragraphs(xml) }
                 ext == "xlsx" -> xlsx(input, name)
                 ext in setOf("doc", "xls", "ppt") -> throw MediaException("$name is an old Office format: save it as .${ext}x (or PDF) first.")
-                else -> input.readBytes().toString(Charsets.UTF_8)
+                // Text: only the start matters (at most 60,000 characters go along); 4 MB is plenty for that.
+                else -> (readAtMost(input, 4L * 1024 * 1024) ?: throw MediaException("$name is a very large text file: only up to 4 MB can be read.")).toString(Charsets.UTF_8)
             }
         } ?: throw MediaException("Couldn't open $name.")
         val clean = text.replace(Regex("[ \\t]+\\n"), "\n").replace(Regex("\\n{3,}"), "\n\n").trim()
@@ -65,7 +85,7 @@ object Docs {
             var e = z.nextEntry
             while (e != null) {
                 val m = part.matchEntire(e.name)
-                if (m != null) parts += (m.groupValues.getOrNull(1)?.toIntOrNull() ?: parts.size) to text(z.readBytes().toString(Charsets.UTF_8))
+                if (m != null) parts += (m.groupValues.getOrNull(1)?.toIntOrNull() ?: parts.size) to text(part(z, name))
                 e = z.nextEntry
             }
         }
@@ -86,7 +106,7 @@ object Docs {
         ZipInputStream(input).use { z ->
             var e = z.nextEntry
             while (e != null) {
-                val xml = if (e.name == "xl/sharedStrings.xml" || e.name.matches(Regex("xl/worksheets/sheet\\d+\\.xml"))) z.readBytes().toString(Charsets.UTF_8) else null
+                val xml = if (e.name == "xl/sharedStrings.xml" || e.name.matches(Regex("xl/worksheets/sheet\\d+\\.xml"))) part(z, name) else null
                 if (e.name == "xl/sharedStrings.xml" && xml != null) {
                     shared = Regex("(?s)<si>(.*?)</si>").findAll(xml).map { si ->
                         unescape(Regex("(?s)<t[^>]*>(.*?)</t>").findAll(si.groupValues[1]).joinToString("") { it.groupValues[1] })
@@ -115,5 +135,13 @@ object Docs {
         }
     }
 
-    private fun unescape(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+    private val NUMERIC = Regex("&#(x[0-9a-fA-F]+|[0-9]+);")
+
+    private fun unescape(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'")
+        .replace(NUMERIC) { m ->
+            val v = m.groupValues[1]
+            (if (v.startsWith("x")) v.drop(1).toIntOrNull(16) else v.toIntOrNull())?.takeIf { Character.isValidCodePoint(it) }
+                ?.let { String(Character.toChars(it)) } ?: m.value
+        }
+        .replace("&amp;", "&")
 }

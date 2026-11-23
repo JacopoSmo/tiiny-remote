@@ -87,6 +87,15 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
     private fun meta(p: String) = File(dir(p), ".tiiny").apply { mkdirs() }
 
     fun open(p: String?) {
+        // Not while the model works: its answer belongs to the project it was asked in.
+        if (_busy.value != null && p != _current.value) {
+            _note.value = "Wait until the answer is finished (or ■ Stop it) before switching projects."
+            return
+        }
+        switchTo(p)
+    }
+
+    private fun switchTo(p: String?) {
         _current.value = p
         prefs.edit().putString("current", p).apply()
         _msgs.value = if (p == null) emptyList() else loadMsgs(p)
@@ -97,6 +106,10 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
     private fun clean(name: String) = name.trim().replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-', '.').take(60)
 
     fun newProject(name: String): Boolean {
+        if (_busy.value != null) {
+            _note.value = "Wait until the answer is finished first."
+            return false
+        }
         val n = clean(name)
         if (n.isBlank() || dir(n).exists()) {
             _note.value = if (n.isBlank()) "Give the project a name." else "There's already a project called $n."
@@ -111,7 +124,7 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteProject(p: String) {
         dir(p).deleteRecursively()
         _projects.value = listProjects()
-        open(_projects.value.firstOrNull())
+        switchTo(_projects.value.firstOrNull())
     }
 
     fun clearChat() {
@@ -460,14 +473,15 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun ghBytes(path: String): ByteArray? {
+    /** A download from GitHub (following its redirect to codeload), up to [max] bytes; null if it fails or is bigger. */
+    private fun ghBytes(path: String, max: Long): ByteArray? {
         val conn = URL("https://api.github.com$path").openConnection() as HttpURLConnection
         conn.setRequestProperty("Accept", "application/vnd.github.raw")
         githubToken().takeIf { it.isNotBlank() }?.let { conn.setRequestProperty("Authorization", "Bearer $it") }
         conn.connectTimeout = 15_000
         conn.readTimeout = 60_000
         return try {
-            if (conn.responseCode == 200) conn.inputStream.use { it.readBytes() } else null
+            if (conn.responseCode == 200) conn.inputStream.use { Docs.readAtMost(it, max) } else null
         } finally {
             conn.disconnect()
         }
@@ -484,7 +498,10 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun github(label: String, block: suspend () -> String) {
-        if (_busy.value != null) return
+        if (_busy.value != null) {
+            _note.value = "Wait until the answer is finished first."
+            return
+        }
         _busy.value = label
         viewModelScope.launch {
             try {
@@ -580,30 +597,38 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
         val info = gh("GET", "/repos/$owner/$name")
         if (!info.ok) return@github "Couldn't open $owner/$name: ${why(info)}"
         val br = branch.trim().ifBlank { info.json().optString("default_branch", "main") }
-        val tree = gh("GET", "/repos/$owner/$name/git/trees/$br?recursive=1")
-        if (!tree.ok) return@github "Couldn't read $owner/$name: ${why(tree)}"
+        // The whole repository in one download (a .zip), so even without a token GitHub's hourly limit isn't reached.
+        val zip = ghBytes("/repos/$owner/$name/zipball/${java.net.URLEncoder.encode(br, "UTF-8")}", 200L * 1024 * 1024)
+            ?: return@github "Couldn't download $owner/$name (too big, over 200 MB, or no access)."
         var p = clean(name)
         var n = 2
         while (dir(p).exists()) p = clean(name) + "-" + n++
-        val a = tree.json().optJSONArray("tree") ?: JSONArray()
-        val blobs = (0 until a.length()).mapNotNull { a.optJSONObject(it) }
-            .filter { it.optString("type") == "blob" && it.optLong("size") <= 300_000 }.take(400)
         dir(p).mkdirs()
         val got = HashSet<String>()
-        for (b in blobs) {
-            val path = b.optString("path")
-            val f = safe(p, path) ?: continue
-            val bytes = ghBytes("/repos/$owner/$name/contents/${path.split('/').joinToString("/") { java.net.URLEncoder.encode(it, "UTF-8").replace("+", "%20") }}?ref=$br") ?: continue
-            if (bytes.take(4000).any { it == 0.toByte() }) continue // binary
-            f.parentFile?.mkdirs()
-            f.writeBytes(bytes)
-            got.add(path)
+        var skipped = 0
+        java.util.zip.ZipInputStream(zip.inputStream()).use { z ->
+            var e = z.nextEntry
+            while (e != null) {
+                // Entries are "<owner>-<repo>-<commit>/path": the first folder goes.
+                val path = e.name.substringAfter('/', "")
+                if (!e.isDirectory && path.isNotBlank()) {
+                    val bytes = Docs.readAtMost(z, 300_000)
+                    val f = safe(p, path)
+                    if (f == null || bytes == null || got.size >= 400 || bytes.take(4000).any { it == 0.toByte() }) skipped++
+                    else {
+                        f.parentFile?.mkdirs()
+                        f.writeBytes(bytes)
+                        got.add(path)
+                    }
+                }
+                e = z.nextEntry
+            }
         }
         saveTarget(p, GitTarget(owner, name, br, got))
         withContext(Dispatchers.Main) {
             _projects.value = listProjects()
-            open(p)
+            switchTo(p)
         }
-        "$owner/$name copied into the project $p: ${got.size} files" + if (blobs.size < a.length()) " (large, binary or excess files left out)." else "."
+        "$owner/$name copied into the project $p: ${got.size} files" + if (skipped > 0) " ($skipped large, binary or excess files left out)." else "."
     }
 }
