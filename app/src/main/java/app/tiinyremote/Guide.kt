@@ -47,7 +47,7 @@ object Guides {
 
 /** The welcome tour, shown once at the first start (Settings → About ⓘ shows it again). */
 val WELCOME_TOUR = listOf(
-    GuideStep("👋", "Welcome to Tiiny Remote", "Use your Tiiny AI at home from this phone: chat, create pictures, sound and video, translate, code and automate. Everything runs on your own Tiiny; nothing goes to a cloud."),
+    GuideStep("👋", "Welcome to Tiiny Remote", "Use your Tiiny AI at home from this phone: chat, create images, sound and video, translate, code and automate. Everything runs on your own Tiiny; nothing goes to a cloud."),
     GuideStep("⚙", "First: connect your Tiiny", "In Settings, enter your Tiiny's address and its API key (from Tiiny Studio). For use away from home, add your WireGuard tunnel: the app switches it on and off by itself.", "Sidebar → Settings"),
     GuideStep("☰", "The sidebar", "The ☰ top left opens it. At the top are the things you do: Chat, Code, Create, Gallery, Automate, Translate. At the bottom are the ones that look after the Tiiny: Activity, Models, Settings. Its ⚙ sets the start screen and the order; the red ⏻ at the bottom shuts the app down completely.", "Top left"),
     GuideStep("▤", "The status strip", "Under the title: online or not, how many models are loaded, how busy the NPU and CPU are. Tap it for the details. It pulses red when the NPU reports a new fault.", "Below the title"),
@@ -67,7 +67,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🔐", "VPN card", "Shows whether WireGuard is on and whether you're at home. The app switches it by itself; Turn on / Turn off does it by hand.", "Top"),
     )
     1 -> "Create" to listOf(
-        GuideStep("✦", "Make something", "Pictures, speech, music, video, 3D models, text from photos and more, each with a model made for it."),
+        GuideStep("✦", "Make something", "Images, speech, music, video, 3D models, text from photos and more, each with a model made for it."),
         GuideStep("🗂", "Choose what", "The first row picks the kind (3D, Audio, Image, Text, Video), the second the task (Create, Edit, Voice, Song…).", "Top"),
         GuideStep("🧠", "The model", "The model button shows which one is used; ● means loaded. ▶ Load loads it, swapping others out if needed.", "Under the choices"),
         GuideStep("✍", "Describe and start", "Fill in what it asks for (a description, a photo, a text) and start. Long jobs keep running in the background; you get a notice when they're done.", "Middle"),
@@ -75,7 +75,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
     )
     2 -> "Chat" to listOf(
         GuideStep("🧠", "The model", "The button on top picks the chat model (● = loaded); ▶ loads it. A3B models answer fast, 27B ones more carefully.", "Top"),
-        GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth, tools (🛠 make pictures, speak…), web search (🔍), follow-up ideas (💡), and Socratic or Student mode.", "Right of the model"),
+        GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth, tools (🛠 make images, speak…), web search (🔍), follow-up ideas (💡), and Socratic or Student mode.", "Right of the model"),
         GuideStep("＋", "Attach", "＋ adds an image (from the phone or a new photo, for models that see images) or a file: PDF, Word, Excel, PowerPoint, text.", "Left of the message"),
         GuideStep("🎤", "Dictate", "With the message box empty, 🎤 records you; the Tiiny writes it out into the box. ✎ improves your message before sending.", "Right of the message"),
         GuideStep("🕘", "Chats", "🕘 earlier chats (rename or delete them there), 💾 green = saved / red = incognito, ＋ new chat, ⟳ try the last answer again.", "Top right"),
@@ -104,7 +104,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🔗", "Connectors", "Your calendar, your email (read-only, via IMAP) and optionally your NAS, which can run automations even with the phone off.", "Connectors"),
     )
     6 -> "Gallery" to listOf(
-        GuideStep("🖼", "Everything you made", "Pictures, sound, video, 3D and texts from Create, newest first."),
+        GuideStep("🖼", "Everything you made", "Images, sound, video, 3D and texts from Create, newest first."),
         GuideStep("🗂", "Filter and search", "The chips filter by kind and task; search finds words in descriptions.", "Top"),
         GuideStep("📅", "Order", "Newest or oldest first, grouped by day, month, year or not at all.", "Top"),
         GuideStep("⤴", "Open, share, redo", "Tap an item to open it, share it, or go back to Create with the same settings.", "Each item"),

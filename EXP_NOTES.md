@@ -3,7 +3,7 @@
 ## 4.0 (what's new compared with the normal app 3.2)
 - **Automate:** agents (a goal and tools; the model chooses its steps) and processes (at a set time or on tap: news, web search, calendar or email → a model → a notification). Calendar and email (IMAP, read-only) are connected separately. Runs on the phone, or around the clock on your NAS with the NAS agent (`nas-agent/` in this repository, a small Docker service).
 - **Create, redesigned:** 3D · Audio · Image · Text · Video on top, each with its choices (Image: Create, Describe, Edit, OCR; Audio: Voice, Loop, Song, ASR; Text: Classification, Embedding, Reranking). Opens on Image → Create; Back returns to where you were.
-- **Gallery:** everything made, by kind and choice, searchable, newest or oldest first, grouped by day, month or year, pictures as a grid; links to and from Create.
+- **Gallery:** everything made, by kind and choice, searchable, newest or oldest first, grouped by day, month or year, images as a grid; links to and from Create.
 - **Translate:** typed text (language detected), a photo (menu, sign; camera or gallery) or speech; chat models are marked "Translates" in Models.
 - **Speed test:** 1 or 3–5 runs with a quarter-second pause, up to 2 outliers of 5 left out, and a History of all tests (best pairs, model speeds, table).
 - **Chat:** History (clock, top right) with each chat's last model; "Use it" or "Load it" when you reopen one. ＋ beside the message attaches an image (from the phone or a new photo, for models that see images) or a file (PDF, Word, Excel, PowerPoint, text; read on the phone). 🎤 dictates a message with the Tiiny's speech-to-text model. The Save sign (top right) is green while chats are saved and red in incognito.

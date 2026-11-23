@@ -376,7 +376,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun video(model: String, prompt: String, size: String, seconds: Int, steps: Int?, seed: Long?, image: String?) {
-        val title = "Video: " + prompt.ifBlank { "from a picture" }.take(60)
+        val title = "Video: " + prompt.ifBlank { "from an image" }.take(60)
         val details = "$size · $seconds s · ${steps?.let { "$it steps" } ?: "default steps"}" + (seed?.let { " · seed $it" } ?: "")
         run("video") { c, store, p, rj ->
             p.update("Sending the clip to the Tiiny", null)

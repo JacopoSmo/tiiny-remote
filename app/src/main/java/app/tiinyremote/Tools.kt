@@ -159,7 +159,7 @@ object Tools {
                 val data = r.json().optJSONArray("data")
                 if (r.ok && data != null && data.length() > 0) {
                     got = data.getJSONObject(0).optString("b64_json").takeIf { it.isNotEmpty() }
-                    if (got == null) throw MediaException("The Tiiny sent no picture back.")
+                    if (got == null) throw MediaException("The Tiiny sent no image back.")
                     break
                 }
                 // A freshly loaded image model answers "backend fail" for a while: wait and try again.
@@ -244,7 +244,7 @@ object Tools {
 
     /** Describes a picture (or answers a question about it) with a chat model that sees images. */
     fun describe(c: DeviceClient, store: ResultStore, model: String, image: String, question: String, p: Progress): ResultEntry {
-        p.update("Looking at the picture", null)
+        p.update("Looking at the image", null)
         val q = question.ifBlank { "Describe this image in detail." }
         val content = JSONArray()
             .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", image)))

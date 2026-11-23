@@ -104,19 +104,19 @@ import androidx.compose.material3.SmallFloatingActionButton
 private class Tool(val id: String, val type: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
 
 private val TOOLS = listOf(
-    Tool("describe", "Image-Text-to-Text", "Describe image", "Have a picture described, or ask a question about it", { it.seesImages }),
-    Tool("image", "Text-to-Image", "Create image", "A picture from a description", { it.isImageGen }),
+    Tool("describe", "Image-Text-to-Text", "Describe image", "Have an image described, or ask a question about it", { it.seesImages }),
+    Tool("image", "Text-to-Image", "Create image", "An image from a description", { it.isImageGen }),
     Tool("edit", "Text-to-Image", "Edit image", "Change a photo with words", { it.canEditImages }),
     Tool("transcribe", "ASR", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
     Tool("speech", "Text-to-Speech", "Voice", "Text to speech, built-in, described or cloned voices", { it.isSpeech }),
     Tool("ocr", "Image-to-Text", "Read text (OCR)", "Copy the text out of a photo or screenshot", { it.isOcr }),
     Tool("loop", "Music Generation", "Loop", "Short music loops at a set tempo and key", { it.isLoopModel }),
     Tool("song", "Music Generation", "Song", "Full songs with lyrics, or instrumentals", { it.isSongModel }),
-    Tool("mesh", "Image-to-3D", "3D model", "A 3D model (.glb) from one picture", { it.is3d }),
+    Tool("mesh", "Image-to-3D", "3D model", "A 3D model (.glb) from one image", { it.is3d }),
     Tool("embed", "Text Embedding", "Compare texts", "How similar in meaning are a few texts?", { it.isEmbedding }),
     Tool("rerank", "Text Reranking", "Rank documents", "Order texts by how well they answer a question", { it.isReranker }),
     Tool("classify", "Text Classification", "Classify text", "Yes/no, pick-one and score questions about a text", { it.isClassifier }),
-    Tool("video", "Text-to-Video", "Video", "Short clips from a description or a picture", { it.isVideo }),
+    Tool("video", "Text-to-Video", "Video", "Short clips from a description or an image", { it.isVideo }),
 )
 
 internal val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -358,7 +358,7 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
                 onPicked(listOf(withContext(Dispatchers.IO) { Inputs.image(ctx, uri) }))
                 error = null
             } catch (e: Exception) {
-                error = e.message ?: "Couldn't read that picture."
+                error = e.message ?: "Couldn't read that image."
             }
         }
     }
@@ -368,7 +368,7 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
                 onPicked(withContext(Dispatchers.IO) { uris.map { Inputs.image(ctx, it) } })
                 error = null
             } catch (e: Exception) {
-                error = e.message ?: "Couldn't read that picture."
+                error = e.message ?: "Couldn't read that image."
             }
         }
     } else null
@@ -533,7 +533,7 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val tool = if (ocr) "ocr" else "describe"
     var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     var question by rememberSaveable { mutableStateOf("") }
-    ImagePickerRow(images, 1, "Choose a picture") { images = it }
+    ImagePickerRow(images, 1, "Choose an image") { images = it }
     if (!ocr) {
         Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
         Text(
@@ -542,7 +542,7 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    val why = notReady ?: if (images.isEmpty()) "Choose a picture." else null
+    val why = notReady ?: if (images.isEmpty()) "Choose an image." else null
     RunPanel(tool, if (ocr) "Read text" else "Describe", why == null, why, st) {
         val m = model!!.id
         val img = images.first().dataUri
@@ -606,7 +606,7 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Start from a picture", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text("Start from an image", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Text("optional", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     ImagePickerRow(images, 1, "First frame") { images = it }
@@ -676,7 +676,7 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
         }
     }
 
-    val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it a picture to start from." else null
+    val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it an image to start from." else null
     RunPanel("video", "Make video  (~${Tools.fmtDuration(est.toLong())})", why == null, why, st) {
         if (over && !longOk) {
             longOk = true
@@ -760,7 +760,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val plan = listOfNotNull(if (cuts) "cutout" else null, "shape", if (nFaces > 0) "simplify" else null) + (if (tex) listOf("texture", "export") else emptyList())
 
     LabelRow("Source image")
-    ImagePickerRow(images, 1, "Choose a picture") { images = it }
+    ImagePickerRow(images, 1, "Choose an image") { images = it }
     Text("One object, plain background works best.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val recent = results.filter { it.kind == "image" && it.mainFile != null }.take(12)
     if (recent.isNotEmpty()) {
@@ -787,8 +787,8 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
         enabled = cm != null,
         title = "Cut out the subject first",
         detail = when {
-            cm == null -> "Needs an image model that makes transparent pictures (Qwen-Image)."
-            img?.transparent == true -> "This picture already has a transparent background, so it's used as it is."
+            cm == null -> "Needs an image model that makes transparent images (Qwen-Image)."
+            img?.transparent == true -> "This image already has a transparent background, so it's used as it is."
             else -> "${cm.name} puts the subject on a transparent background first, so the background doesn't end up in the model · adds ~1.5 min" +
                 if (cm.running) "" else ", plus loading it (models are swapped back after)"
         },
@@ -851,7 +851,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     }
 
     Text(plan.joinToString(" → "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val why = notReady ?: if (img == null) "Choose a picture." else null
+    val why = notReady ?: if (img == null) "Choose an image." else null
     RunPanel("mesh", "Make 3D model" + if (img != null) "  (~${Tools.fmtDuration(est.toLong())})" else "", why == null, why, st) {
         val id = model!!.id
         val pic = img!!

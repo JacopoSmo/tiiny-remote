@@ -1212,7 +1212,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Thinks" to "Can think before answering (can be switched off); in the chat: thinking on (how deep: the Thinking slider)",
                     "Always thinks" to "Always thinks before answering",
                     "Makes things" to "Can use the chat's tools (images, speech, songs…); in the chat: tools on",
-                    "Sees images" to "Understands pictures you attach",
+                    "Sees images" to "Understands images you attach",
                     "MoE" to "Mixture of experts: writes much faster than its size suggests",
                     "Main chat model" to "The chat's main model (when a helper is loaded)",
                     "Helper" to "The fast helper model",
@@ -1396,7 +1396,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         Text("Changes apply right away.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingDropdown("Layout", LAYOUTS, cur.layout) { vm.setDisplay(cur.copy(layout = it)) }
         Text(
-            "Square · compact puts the sections in the ☰ sidebar instead of a bottom bar, uses a slim top bar and folds the model and chat options into one line, leaving more room for chats, pictures and video.",
+            "Square · compact puts the sections in the ☰ sidebar instead of a bottom bar, uses a slim top bar and folds the model and chat options into one line, leaving more room for chats, images and video.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1899,7 +1899,7 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 AboutBody("Controls your Tiiny AI Pocket Lab from your phone: models, chat with tools and web search, " +
-                    "pictures, speech, music, video and 3D, status, and unlocking after a restart.")
+                    "images, speech, music, video and 3D, status, and unlocking after a restart.")
                 AboutHead("Version")
                 AboutBody("$version${if (exp) " · experimental channel (separate app, newest features first)" else ""}\n${ctx.packageName}\n$device")
                 TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(info)) }) {

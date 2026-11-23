@@ -232,7 +232,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
 
     if (edit) {
         LabelRow("Source image", if (refs > 1) "source + up to ${refs - 1} references" else "pick a photo or one of yours")
-        ImagePickerRow(images, refs, if (refs > 1) "Choose picture(s)" else "Choose a picture") { images = it }
+        ImagePickerRow(images, refs, if (refs > 1) "Choose image(s)" else "Choose an image") { images = it }
         RecentImages(st) { img -> images = (if (refs > 1) images + img else listOf(img)).take(refs) }
         if (refs > 1 && images.size > 1) Hint("Call them “image 1”, “image 2” … in the instruction.")
     }
@@ -383,7 +383,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
     val est = imageEstimate(mid, w, h, stp, n, edit)
     val why = notReady ?: when {
         prompt.text.isBlank() -> if (edit) "Describe the change." else "Describe the image."
-        edit && images.isEmpty() -> "Choose a picture to edit."
+        edit && images.isEmpty() -> "Choose an image to edit."
         else -> null
     }
     val tool = if (edit) "edit" else "image"
@@ -425,10 +425,10 @@ internal fun TextTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
             }
         }
     }
-    LabelRow("Source image", "pick a picture or document")
+    LabelRow("Source image", "pick an image or document")
     OutlinedCard(onClick = { pick.launch(DocText.MIMES) }, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
-            Text(if (opening) "Opening…" else "Choose a picture or document", style = MaterialTheme.typography.titleSmall)
+            Text(if (opening) "Opening…" else "Choose an image or document", style = MaterialTheme.typography.titleSmall)
             Hint("Photos, scans, screenshots, PDF, Word, PowerPoint, Excel, OpenDocument, EPUB, RTF, HTML or text. Documents are read right away.")
         }
     }

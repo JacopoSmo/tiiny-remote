@@ -54,7 +54,7 @@ object DocText {
                     ext == "rtf" || mime.contains("rtf") -> rtf(String(bytes))
                     ext in setOf("doc", "xls", "ppt") -> throw MediaException("Old Office files (.$ext) can't be read here: save it as .${ext}x or PDF.")
                     ext in TEXT_EXT || mime.startsWith("text/") || mime.contains("json") || mime.contains("xml") -> String(bytes)
-                    else -> throw MediaException("That kind of file can't be read: use a picture, PDF or document.")
+                    else -> throw MediaException("That kind of file can't be read: use an image, PDF or document.")
                 }.trim()
                 if (text.isBlank()) throw MediaException("There's no text in that document.")
                 TextSource.Document(name, text)

@@ -420,7 +420,7 @@ private fun GitHubDialog(cv: CodeViewModel, project: String?, onClose: () -> Uni
                 Text("Copy a repository into a new project", style = MaterialTheme.typography.titleSmall)
                 OutlinedTextField(value = from, onValueChange = { from = it }, singleLine = true, label = { Text("owner/repository or its link") }, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = { if (token.isNotBlank()) cv.setGithubToken(token); cv.importRepo(from, "") }, enabled = busy == null && from.isNotBlank()) { Text("⤓ Copy it here") }
-                Text("Text files up to 300 KB (at most 400); pictures and other binary files are left out.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Text files up to 300 KB (at most 400); images and other binary files are left out.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 busy?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
             }
         },
