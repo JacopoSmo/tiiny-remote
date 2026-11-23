@@ -1161,7 +1161,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     data class ChatSpeed(val at: Long, val model: String, val rate: Double, val alone: Boolean)
 
     private val _chatSpeeds = MutableStateFlow(loadChatSpeeds())
-    /** Writing speeds measured in normal chats, newest first (the last 300): Speed History fills up without tests. */
+    /** Writing speeds measured in normal chats, newest first (the last 300): Speed statistics fill up without tests. */
     val chatSpeeds: StateFlow<List<ChatSpeed>> = _chatSpeeds.asStateFlow()
 
     private fun loadChatSpeeds(): List<ChatSpeed> = try {

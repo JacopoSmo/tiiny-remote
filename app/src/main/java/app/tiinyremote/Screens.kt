@@ -1166,7 +1166,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         "▶" to "Run an automation now",
         "🔌" to "Test a connection (email, NAS agent)",
         Icons.Filled.Delete to "Delete",
-        "📊" to "The Tiiny's own request statistics (Activity)",
+        "📊" to "Statistics: the Tiiny's own request counts (Activity), speed tests and chat speeds (Settings → Fast helper model)",
         HistoryIcon to "History: earlier chats, past speed tests",
         GalleryIcon to "Open Gallery",
         Icons.Filled.Add to "New chat; beside the message: attach an image or a file",
@@ -1595,7 +1595,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     cur.speedRuns.toString(),
                 ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
             }
-            TextButton(onClick = { history = true }) { BtnLabel("History", HistoryIcon) }
+            TextButton(onClick = { history = true }) { BtnLabel("Statistics", symbol = "📊") }
         }
         if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {

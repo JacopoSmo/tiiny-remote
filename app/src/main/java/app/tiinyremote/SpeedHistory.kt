@@ -54,7 +54,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 720.dp),
-        title = { ClosableTitle(onClose) { Text("Speed history") } },
+        title = { ClosableTitle(onClose) { Text("Speed statistics") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Measured in normal chats, no test needed: alone, and beside another model writing.
