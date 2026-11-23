@@ -37,7 +37,7 @@ jobs:
 
       - name: Version number
         run: |
-          echo "APP_VERSION=4.0.2-exp.$(( ${{ github.run_number }} - 69 ))" >> "$GITHUB_ENV"
+          echo "APP_VERSION=4.0.2-exp.$(( ${{ github.run_number }} - 70 ))" >> "$GITHUB_ENV"
           echo "APP_CHANNEL=experimental" >> "$GITHUB_ENV"
 
       - name: Build the APK

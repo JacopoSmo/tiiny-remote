@@ -11,7 +11,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -409,7 +408,8 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
             }
             val uri = androidx.compose.ui.platform.LocalUriHandler.current
             var terminal by remember { mutableStateOf(false) }
-            FlowRow {
+            // Side by side (scrolling sideways when the screen is narrow).
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
                 TextButton(onClick = { runCatching { uri.openUri("https://github.com/JacopoSmo/tiiny-remote/tree/main/nas-agent") } }) {
                     Text("How to set it up (GitHub)")
                 }
