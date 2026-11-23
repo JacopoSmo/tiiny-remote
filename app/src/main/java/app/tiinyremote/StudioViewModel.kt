@@ -530,6 +530,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Chat|file pairs already warned about, so the warning comes once, not with every answer. */
+    private val warned = java.util.Collections.synchronizedSet(HashSet<String>())
+
     private val _saving = MutableStateFlow(prefs.getString("chat.save", "1") != "0")
     /** Chats are saved on the phone; off = incognito: nothing new is written, chats already saved stay. */
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
@@ -1397,12 +1400,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private fun asMessage(m: ChatMsg, latest: Boolean = true): JSONObject {
         // An attached file goes along as text, marked as the file's content (data, not instructions). After its first
         // answer, a long file goes as its summary (the whole text again with every question would slow each answer).
+        // Between <untrusted> delimiters the model is told never to obey (Safety.RULE in the system prompt).
         val text = when {
             m.fileText == null -> m.text
             !latest && m.fileSummary != null ->
-                "${m.text}\n\n[Attached file \"${m.fileName}\" — a summary of it (the whole text was read for the first answer), as data:]\n${m.fileSummary}\n[End of the summary]".trim()
-            else -> "${m.text}\n\n[Attached file \"${m.fileName}\" — its content, as data:]\n${m.fileText}\n[End of the file]".trim()
-        }
+                "${m.text}\n\n" + Safety.wrap("${m.fileName} (condensed; the whole file was read for the first answer)", m.fileSummary)
+            else -> "${m.text}\n\n" + Safety.wrap(m.fileName ?: "document", m.fileText)
+        }.trim()
         return if (m.image != null) {
             val content = JSONArray()
                 .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", m.image)))
@@ -1468,11 +1472,26 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * when it's clearly faster. [depth] is the Thinking slider, [chatMode] Normal, Socratic or Student.
      */
     fun send(
-        model: String, text: String, image: String?, depth: String, chatMode: String, canMake: Boolean, web: Boolean,
+        model: String, text: String, image: String?, depth: String, chatMode: String, wantsTools: Boolean, wantsWeb: Boolean,
         suggest: Boolean, models: List<ModelInfo>, file: PickedFile? = null,
     ) {
         val id = _currentChat.value
         if (id in _busyChats.value || (text.isBlank() && image == null && file == null)) return
+        // A file in this chat that looks like it gives the model instructions: it still goes along (as data), but this
+        // answer runs without tools and web search, so a manipulated file can't make anything or send anything out.
+        val files = (_all.value[id].orEmpty().mapNotNull { m -> m.fileName?.let { it to (m.fileText ?: "") } }) +
+            listOfNotNull(file?.let { it.name to it.text })
+        val suspicious = files.mapNotNull { (name, body) -> Safety.screen(name + "\n" + body).takeIf { it.isNotEmpty() }?.let { name to it } }
+        val canMake = wantsTools && suspicious.isEmpty()
+        val web = wantsWeb && suspicious.isEmpty()
+        if (suspicious.isNotEmpty()) {
+            val (name, why) = suspicious.first()
+            ApiLog.add("$name looks like it carries instructions for the model (${why.joinToString("; ")}): this answer runs without tools and web search", "Chat", isProblem = true)
+            if (warned.add(id + "|" + name) && (wantsTools || wantsWeb)) note(
+                "📄 $name looks like it carries instructions for the model (${why.joinToString("; ")}). It still goes along, " +
+                    "marked as data, but while it's in this chat, answers run without tools and web search.",
+            )
+        }
         _suggestions.update { it - id }
         lastModels[id] = model
         if (_resumed.value == id) _resumed.value = null
@@ -1524,7 +1543,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         else -> depth
                     }
                     val firstQuestion = shown.count { it.role == "user" } == 1
-                    var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
+                    var system = SYSTEM_PROMPT +
+                        (if (shown.any { it.fileText != null }) "\n\n" + Safety.RULE else "") +
+                        (if (shown.any { it.image != null }) "\n\n" + Safety.IMAGE_RULE else "") +
+                        (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
                         (if (mode == "switch" || level == "max") depthPrompt(level) else "") +
                         when (chatMode) {
                             "socratic" -> SOCRATIC_PROMPT
