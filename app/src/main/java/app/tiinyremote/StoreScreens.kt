@@ -137,7 +137,10 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Se
             }
             s.storeError != null -> Text(s.storeError, color = MaterialTheme.colorScheme.error)
         }
-        val list = (s.store ?: emptyList()).filter { m -> types.isEmpty() || m.type in types }.filter { m ->
+        val list = (s.store ?: emptyList()).filter { m ->
+            types.isEmpty() || m.type in types ||
+                CODING in types && (m.type == "Text Generation" || m.type == "Image-Text-to-Text") && codesByName(m.id)
+        }.filter { m ->
             query.isBlank() || listOf(m.name, m.id, m.type, m.desc).any { it.contains(query.trim(), true) }
         }
         if (s.store != null) {

@@ -2,8 +2,13 @@
 
 package app.tiinyremote
 
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -99,20 +104,19 @@ import androidx.compose.material3.SmallFloatingActionButton
 private class Tool(val id: String, val type: String, val title: String, val what: String, val fits: (ModelInfo) -> Boolean)
 
 private val TOOLS = listOf(
-    Tool("describe", "Image-Text-to-Text", "Describe image", "Have a picture described, or ask a question about it", { it.seesImages }),
-    Tool("chat", "Text Generation", "Chat", "Talk with the loaded model (also in the Chat tab)", { it.isChat }),
-    Tool("image", "Text-to-Image", "Create image", "A picture from a description", { it.isImageGen }),
+    Tool("describe", "Image-Text-to-Text", "Describe image", "Have an image described, or ask a question about it", { it.seesImages }),
+    Tool("image", "Text-to-Image", "Create image", "An image from a description", { it.isImageGen }),
     Tool("edit", "Text-to-Image", "Edit image", "Change a photo with words", { it.canEditImages }),
     Tool("transcribe", "ASR", "Transcribe", "Speech to text from a recording or file", { it.isAsr }),
     Tool("speech", "Text-to-Speech", "Voice", "Text to speech, built-in, described or cloned voices", { it.isSpeech }),
     Tool("ocr", "Image-to-Text", "Read text (OCR)", "Copy the text out of a photo or screenshot", { it.isOcr }),
     Tool("loop", "Music Generation", "Loop", "Short music loops at a set tempo and key", { it.isLoopModel }),
     Tool("song", "Music Generation", "Song", "Full songs with lyrics, or instrumentals", { it.isSongModel }),
-    Tool("mesh", "Image-to-3D", "3D model", "A 3D model (.glb) from one picture", { it.is3d }),
+    Tool("mesh", "Image-to-3D", "3D model", "A 3D model (.glb) from one image", { it.is3d }),
     Tool("embed", "Text Embedding", "Compare texts", "How similar in meaning are a few texts?", { it.isEmbedding }),
     Tool("rerank", "Text Reranking", "Rank documents", "Order texts by how well they answer a question", { it.isReranker }),
     Tool("classify", "Text Classification", "Classify text", "Yes/no, pick-one and score questions about a text", { it.isClassifier }),
-    Tool("video", "Text-to-Video", "Video", "Short clips from a description or a picture", { it.isVideo }),
+    Tool("video", "Text-to-Video", "Video", "Short clips from a description or an image", { it.isVideo }),
 )
 
 internal val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -123,9 +127,13 @@ internal const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI ke
 
 // ---------------- the Create tab ----------------
 
+/**
+ * Create: the five kinds on top (3D, Audio, Image, Text, Video), the open kind's choices below, and the chosen tool.
+ * It opens on Image → Create; Back goes through what you had open before.
+ */
 @Composable
-fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: String?, setTool: (String?) -> Unit, openChat: () -> Unit) {
-    // The open tool lives in AppRoot, so its ← back button and Android's back gesture can close it.
+fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: String?, setTool: (String?) -> Unit, openGallery: (String) -> Unit) {
+    // The open tool lives in AppRoot, so its ← back button and Android's back gesture can go back through it.
     val openTool by st.openTool.collectAsState()
     LaunchedEffect(openTool) {
         openTool?.let {
@@ -133,217 +141,11 @@ fun CreateScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, toolId: Str
             st.toolOpened()
         }
     }
-    val tool = TOOLS.firstOrNull { it.id == toolId }
-    if (tool == null) {
-        ToolHub(s, st, openChat) { id ->
-            if (id == "chat") openChat()
-            if (id != "chat") setTool(id)
-        }
-    } else {
-        ToolScreen(tool, s, vm, st, { setTool(it) }) { setTool(null) }
-    }
+    val current = toolId?.takeIf { id -> TOOLS.any { it.id == id } } ?: "image"
+    ToolScreen(TOOLS.first { it.id == current }, s, vm, st, setTool, openGallery)
 }
 
 internal fun toolTitle(id: String) = TOOLS.firstOrNull { it.id == id }?.title ?: "Create"
-
-/** The kinds of creation in the order arranged under Create → Create. */
-internal fun createTypeOrder(st: StudioViewModel): List<String> {
-    val all = TOOLS.map { it.type }.distinct()
-    val saved = st.setting("create.order", "").split('|').filter { it in all }
-    return saved + all.filter { it !in saved }
-}
-
-/** Where results land in "Creations". */
-private val CREATION_GROUPS = listOf(
-    "Images" to setOf("image"),
-    "Videos" to setOf("video"),
-    "3D models" to setOf("mesh"),
-    "Voice" to setOf("speech"),
-    "Music" to setOf("loop", "song"),
-    "Transcripts" to setOf("transcript"),
-    "Texts" to setOf("ocr", "description", "classification", "embedding", "rerank"),
-)
-
-/** A bar that opens and closes what's under it. */
-@Composable
-private fun Bar(title: String, detail: String, open: Boolean, onToggle: () -> Unit, action: @Composable () -> Unit = {}) {
-    Card(
-        onClick = onToggle,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(detail, style = MaterialTheme.typography.bodySmall)
-            }
-            action()
-            Text(if (open) "▴" else "▾", style = MaterialTheme.typography.titleMedium)
-        }
-    }
-}
-
-@Composable
-private fun ToolHub(s: UiState, st: StudioViewModel, openChat: () -> Unit, open: (String) -> Unit) {
-    val results by st.results.collectAsState()
-    val chats by st.chatList.collectAsState()
-    val job by st.job.collectAsState()
-    val compact = LocalUi.current.compact
-    var createOpen by rememberSaveable { mutableStateOf(st.setting("hub.create", "1") == "1") }
-    var creationsOpen by rememberSaveable { mutableStateOf(st.setting("hub.creations", "0") == "1") }
-    var arranging by rememberSaveable { mutableStateOf(false) }
-    var openType by remember { mutableStateOf(st.setting("hub.type", "").ifBlank { null }) }
-    var openGroup by remember { mutableStateOf(st.setting("hub.group", "").ifBlank { null }) }
-    // The kinds of creation, in the order you arranged them (new kinds go at the end).
-    var order by remember { mutableStateOf(createTypeOrder(st)) }
-    // The Creations groups, also in your order.
-    var arrangingC by rememberSaveable { mutableStateOf(false) }
-    val defaultGroups = listOf("Chats") + CREATION_GROUPS.map { it.first }
-    var groupOrder by remember {
-        val saved = st.setting("creations.order", "").split('|').filter { it in defaultGroups }
-        mutableStateOf(saved + defaultGroups.filter { it !in saved })
-    }
-    fun moveGroup(i: Int, by: Int) {
-        val j = i + by
-        if (j !in groupOrder.indices) return
-        groupOrder = groupOrder.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t }
-        st.setSetting("creations.order", groupOrder.joinToString("|"))
-    }
-    fun move(i: Int, by: Int) {
-        val j = i + by
-        if (j !in order.indices) return
-        order = order.toMutableList().also { val t = it[i]; it[i] = it[j]; it[j] = t }
-        st.setSetting("create.order", order.joinToString("|"))
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(if (compact) 10.dp else 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (s.device != DeviceState.ONLINE) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
-                Text("The Tiiny isn't online: see the Models tab.", Modifier.padding(14.dp))
-            }
-        }
-        job?.takeIf { it.running }?.let { j ->
-            Card(onClick = { open(j.tool) }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp)) {
-                    Text("Working: ${TOOLS.firstOrNull { it.id == j.tool }?.title ?: j.tool}", style = MaterialTheme.typography.titleSmall)
-                    Text(j.message + "  · tap to open", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-
-        // ---- Create: the kinds of creation; tap one for its tools ----
-        Bar("Create", "${order.size} kinds · tap one to see its tools", createOpen, {
-            createOpen = !createOpen
-            st.setSetting("hub.create", if (createOpen) "1" else "0")
-        }) {
-            if (createOpen) TextButton(onClick = { arranging = !arranging }) { BtnLabel(if (arranging) "Done" else "Arrange", symbol = if (arranging) "✓" else "⇅") }
-        }
-        if (createOpen) {
-            if (arranging) Text("Move the kinds with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
-            for ((i, type) in order.withIndex()) {
-                val tools = TOOLS.filter { it.type == type }
-                val installed = s.models.count { m -> tools.any { it.fits(m) } }
-                val loaded = s.models.count { m -> m.running && tools.any { it.fits(m) } }
-                val expanded = openType == type && !arranging
-                Card(
-                    onClick = { if (!arranging) { openType = if (expanded) null else type; st.setSetting("hub.type", openType ?: "") } },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(type, style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    when {
-                                        installed == 0 -> "No model for this on your Tiiny"
-                                        loaded > 0 -> "$loaded loaded · ${tools.joinToString(", ") { it.title }}"
-                                        else -> tools.joinToString(", ") { it.title }
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (loaded > 0) Color(0xFFE65100) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                            }
-                            if (arranging) {
-                                TextButton(onClick = { move(i, -1) }, enabled = i > 0) { Text("↑") }
-                                TextButton(onClick = { move(i, 1) }, enabled = i < order.size - 1) { Text("↓") }
-                            } else {
-                                Text(if (expanded) "▴" else "▾")
-                            }
-                        }
-                        if (expanded) {
-                            for (t in tools) {
-                                Spacer(Modifier.height(6.dp))
-                                OutlinedCard(onClick = { open(t.id) }, modifier = Modifier.fillMaxWidth()) {
-                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(t.title, style = MaterialTheme.typography.titleSmall)
-                                            Text(t.what, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                        Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- Creations: everything made, by kind, chats included ----
-        Bar("Creations", "${chats.size} chats · ${results.size} results", creationsOpen, {
-            creationsOpen = !creationsOpen
-            st.setSetting("hub.creations", if (creationsOpen) "1" else "0")
-        }) {
-            if (creationsOpen) TextButton(onClick = { arrangingC = !arrangingC }) {
-                BtnLabel(if (arrangingC) "Done" else "Arrange", symbol = if (arrangingC) "✓" else "⇅")
-            }
-        }
-        if (creationsOpen) {
-            if (arrangingC) Text("Move the groups with ↑ and ↓; the order is kept.", style = MaterialTheme.typography.bodySmall)
-            for ((i, name) in groupOrder.withIndex()) {
-                val count = if (name == "Chats") chats.size else CREATION_GROUPS.first { it.first == name }.second.let { k -> results.count { it.kind in k } }
-                val expanded = openGroup == name && !arrangingC
-                Card(onClick = { if (!arrangingC) { openGroup = if (expanded) null else name; st.setSetting("hub.group", openGroup ?: "") } }, modifier = Modifier.fillMaxWidth(), enabled = count > 0 || arrangingC) {
-                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        Text("$count", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.width(8.dp))
-                        if (arrangingC) {
-                            TextButton(onClick = { moveGroup(i, -1) }, enabled = i > 0) { Text("↑") }
-                            TextButton(onClick = { moveGroup(i, 1) }, enabled = i < groupOrder.size - 1) { Text("↓") }
-                        } else Text(if (expanded) "▴" else "▾")
-                    }
-                }
-                if (expanded) {
-                    if (name == "Chats") {
-                        for (c in chats) {
-                            OutlinedCard(onClick = { st.selectChat(c.id); openChat() }, modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                                    Text(
-                                        java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(c.updated)),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        val kinds = CREATION_GROUPS.first { it.first == name }.second
-                        for (e in results.filter { it.kind in kinds }.take(40)) ResultCard(e, st)
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ---------------- shared pieces ----------------
 
@@ -374,7 +176,8 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
-                        val labels = m.abilities + if (m.isMoE) listOf("MoE") else emptyList()
+                        // "Translates" is on every chat model: no news in a chat's model list.
+                        val labels = m.abilities.filter { it != "Translates" } + if (m.isMoE) listOf("MoE") else emptyList()
                         if (labels.isNotEmpty()) {
                             Text(
                                 tags(labels),
@@ -404,7 +207,9 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
         )
         return null
     }
-    var picked by remember(tool) { mutableStateOf(st.pick(tool)) }
+    // Keyed by pickVersion too: a choice made elsewhere ("use this chat's model") shows here at once.
+    val pickVersion by st.pickVersion.collectAsState()
+    var picked by remember(tool, pickVersion) { mutableStateOf(st.pick(tool)) }
     val model = choices.firstOrNull { it.id == picked } ?: choices.firstOrNull { it.running } ?: choices.first()
     var open by remember { mutableStateOf(false) }
     if (LocalUi.current.compact) {
@@ -553,7 +358,7 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
                 onPicked(listOf(withContext(Dispatchers.IO) { Inputs.image(ctx, uri) }))
                 error = null
             } catch (e: Exception) {
-                error = e.message ?: "Couldn't read that picture."
+                error = e.message ?: "Couldn't read that image."
             }
         }
     }
@@ -563,7 +368,7 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
                 onPicked(withContext(Dispatchers.IO) { uris.map { Inputs.image(ctx, it) } })
                 error = null
             } catch (e: Exception) {
-                error = e.message ?: "Couldn't read that picture."
+                error = e.message ?: "Couldn't read that image."
             }
         }
     } else null
@@ -667,7 +472,7 @@ internal fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.n
 // ---------------- the tools ----------------
 
 @Composable
-private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, switchTo: (String) -> Unit, back: () -> Unit) {
+private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioViewModel, switchTo: (String) -> Unit, openGallery: (String) -> Unit) {
     val compact = LocalUi.current.compact
     val scroll = rememberScrollState()
     val job by st.job.collectAsState()
@@ -683,19 +488,21 @@ private fun ToolScreen(tool: Tool, s: UiState, vm: MainViewModel, st: StudioView
             .padding(if (compact) 10.dp else 16.dp),
         verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = back) { Text("‹ Tools") }
-            Spacer(Modifier.width(6.dp))
-            if (compact) {
-                Text(tool.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            } else Column {
-                Text(tool.title, style = MaterialTheme.typography.titleLarge)
-                Text(tool.type, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (s.device != DeviceState.ONLINE) {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
+                Text("The Tiiny isn't online: see the Models tab.", Modifier.padding(12.dp))
             }
         }
-        if (tool.id in setOf("image", "edit", "ocr")) {
-            // Tiiny Studio's image workspace: Create, Edit and Text side by side.
-            Chips(listOf("image" to "✦ Create", "edit" to "✎ Edit", "ocr" to "Aa Text"), tool.id) { if (it != tool.id) switchTo(it) }
+        CreateHeader(tool.id, switchTo, openGallery)
+        // Another tool still working: a tap goes back to it.
+        job?.takeIf { it.running && it.tool != tool.id }?.let { j ->
+            Card(onClick = { switchTo(j.tool) }, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    "Working: ${TOOLS.firstOrNull { it.id == j.tool }?.title ?: j.tool} · ${j.message} · tap to open",
+                    Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
         }
         val model = ModelPicker(tool.id, tool.fits, s, vm, st)
         val notReady = when {
@@ -726,7 +533,7 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val tool = if (ocr) "ocr" else "describe"
     var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     var question by rememberSaveable { mutableStateOf("") }
-    ImagePickerRow(images, 1, "Choose a picture") { images = it }
+    ImagePickerRow(images, 1, "Choose an image") { images = it }
     if (!ocr) {
         Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
         Text(
@@ -735,7 +542,7 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    val why = notReady ?: if (images.isEmpty()) "Choose a picture." else null
+    val why = notReady ?: if (images.isEmpty()) "Choose an image." else null
     RunPanel(tool, if (ocr) "Read text" else "Describe", why == null, why, st) {
         val m = model!!.id
         val img = images.first().dataUri
@@ -799,7 +606,7 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
     }
 
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Start from a picture", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text("Start from an image", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Text("optional", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     ImagePickerRow(images, 1, "First frame") { images = it }
@@ -869,7 +676,7 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
         }
     }
 
-    val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it a picture to start from." else null
+    val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it an image to start from." else null
     RunPanel("video", "Make video  (~${Tools.fmtDuration(est.toLong())})", why == null, why, st) {
         if (over && !longOk) {
             longOk = true
@@ -953,7 +760,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val plan = listOfNotNull(if (cuts) "cutout" else null, "shape", if (nFaces > 0) "simplify" else null) + (if (tex) listOf("texture", "export") else emptyList())
 
     LabelRow("Source image")
-    ImagePickerRow(images, 1, "Choose a picture") { images = it }
+    ImagePickerRow(images, 1, "Choose an image") { images = it }
     Text("One object, plain background works best.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val recent = results.filter { it.kind == "image" && it.mainFile != null }.take(12)
     if (recent.isNotEmpty()) {
@@ -980,8 +787,8 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
         enabled = cm != null,
         title = "Cut out the subject first",
         detail = when {
-            cm == null -> "Needs an image model that makes transparent pictures (Qwen-Image)."
-            img?.transparent == true -> "This picture already has a transparent background, so it's used as it is."
+            cm == null -> "Needs an image model that makes transparent images (Qwen-Image)."
+            img?.transparent == true -> "This image already has a transparent background, so it's used as it is."
             else -> "${cm.name} puts the subject on a transparent background first, so the background doesn't end up in the model · adds ~1.5 min" +
                 if (cm.running) "" else ", plus loading it (models are swapped back after)"
         },
@@ -1044,7 +851,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     }
 
     Text(plan.joinToString(" → "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    val why = notReady ?: if (img == null) "Choose a picture." else null
+    val why = notReady ?: if (img == null) "Choose an image." else null
     RunPanel("mesh", "Make 3D model" + if (img != null) "  (~${Tools.fmtDuration(est.toLong())})" else "", why == null, why, st) {
         val id = model!!.id
         val pic = img!!
@@ -1255,7 +1062,10 @@ fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
 fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val msgs by st.chat.collectAsState()
     val busy by st.chatBusy.collectAsState()
-    var input by rememberSaveable { mutableStateOf("") }
+    val current by st.currentChat.collectAsState()
+    // What's being typed is kept per chat (also when another app, WireGuard say, takes over the screen meanwhile).
+    var input by remember(current) { mutableStateOf(st.draftOf(current)) }
+    LaunchedEffect(input, current) { st.setDraft(current, input) }
     var depth by rememberSaveable { mutableStateOf(st.setting("chat.depth", "auto").takeIf { it in DEPTHS } ?: "auto") }
     var chatMode by rememberSaveable { mutableStateOf(st.setting("chat.mode", "normal")) }
     var suggest by rememberSaveable { mutableStateOf(st.setting("chat.suggest", "1") == "1") }
@@ -1270,6 +1080,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var web by rememberSaveable { mutableStateOf(st.setting("chat.web", "0") == "1") }
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
+    var file by remember { mutableStateOf<PickedFile?>(null) } // a document attached to the next message
+    var attachError by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
     var lastCount by remember { mutableStateOf(0) }
     val ideasNow = st.suggestions.collectAsState().value[st.currentChat.collectAsState().value]
@@ -1280,9 +1092,14 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         lastCount = msgs.size
     }
     val ui = LocalUi.current
-    val current by st.currentChat.collectAsState()
-    // Each chat keeps its own scroll; switching chats jumps to the end.
-    LaunchedEffect(current) { scroll.scrollTo(scroll.maxValue) }
+    // Switching chats (or reopening one from History) jumps to the end; again while the messages are still being laid
+    // out (a long chat takes a moment), so it really lands on the newest message.
+    LaunchedEffect(current) {
+        repeat(8) {
+            scroll.scrollTo(scroll.maxValue)
+            kotlinx.coroutines.delay(120)
+        }
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = if (ui.compact) 8.dp else 12.dp)) {
         Spacer(Modifier.height(if (ui.compact) 4.dp else 8.dp))
         var options by remember { mutableStateOf(false) }
@@ -1405,10 +1222,11 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             val m = model ?: return
             if (busy) return
             val pic = if (typed) image.firstOrNull()?.dataUri else null
-            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models)
+            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models, if (typed) file else null)
             if (typed) {
                 input = ""
                 image = emptyList()
+                file = null
                 undoDraft = null
             }
         }
@@ -1421,7 +1239,9 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         ) {
             if (msgs.isEmpty()) {
                 Text(
-                    "Chat with the loaded model. Earlier chats are in the ☰ sidebar; several can answer at the same time.",
+                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.\n\n" +
+                        "Tip: \"A3B\" models (mixture of experts) answer fast, good for everyday questions. Dense ones like the " +
+                        "27B models are slower but more careful: better for tricky questions, long texts or code.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),
@@ -1434,6 +1254,31 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 ChatBubble(m, live = live, st = st, question = asked, onTranslate = if (live || helperBusy != null) null else { lang ->
                     st.translateText(m.text, lang, s.models) { quick = "Translation ($lang)" to it }
                 })
+            }
+            // Opened from History: which model this chat last used, and a tap to use it again. At the bottom, by the
+            // newest message, where a reopened chat is shown (nobody scrolls up a long chat to find it).
+            val resumed by st.resumed.collectAsState()
+            val lastId = if (resumed == current) st.lastModelOf(current) else null
+            if (lastId != null) {
+                val last = s.models.firstOrNull { it.id == lastId }
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "This chat last used ${last?.name ?: lastId.substringAfterLast('/')}" + when {
+                                last == null -> " (no longer on the Tiiny)."
+                                last.running -> " (loaded)."
+                                else -> " (not loaded)."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (last != null && model?.id != last.id) TextButton(onClick = {
+                            st.setPick("chat", last.id)
+                            if (!last.running) vm.load(last)
+                        }) { Text(if (last.running) "Use it" else "Load it") }
+                        TextButton(onClick = { st.resumedSeen() }) { Text("✕") }
+                    }
+                }
             }
             val ideas = suggestions[current].orEmpty()
             if (suggest && !busy && ideas.isNotEmpty()) {
@@ -1459,10 +1304,27 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 ) { Icon(androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to the newest message") }
             }
         }
-        if (model?.seesImages == true) {
-            ImagePickerRow(image, 1, "Add a picture") { image = it }
+        // What's attached to the next message, only when something is: a small line, not a permanent row.
+        if (image.isNotEmpty() || file != null || attachError != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                image.firstOrNull()?.let { p ->
+                    androidx.compose.foundation.Image(
+                        p.preview.asImageBitmap(), "Attached image",
+                        Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop,
+                    )
+                    TextButton(onClick = { image = emptyList() }) { Text("✕") }
+                }
+                file?.let { f ->
+                    Text(
+                        "📄 ${f.name}" + if (f.cut) " (first ${Docs.MAX_CHARS / 1000}k characters)" else "",
+                        style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    TextButton(onClick = { file = null }) { Text("✕") }
+                }
+                attachError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
         }
-        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty()) && !busy
+        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty() || file != null) && !busy
         fun doSend() = sendText(input, typed = true)
         helperBusy?.let { what ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -1473,6 +1335,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         quick?.let { (title, text) -> QuickResult(title, text) { quick = null } }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
+            AttachButton(
+                seesImages = model?.seesImages == true,
+                onImage = { image = listOf(it); attachError = null },
+                onFile = { file = it; attachError = null },
+                onError = { attachError = it },
+            )
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -1509,10 +1377,12 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     }
                 }
             }
-            if (busy) {
-                OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
-            } else {
-                Button(onClick = { doSend() }, enabled = canSend) { BtnLabel("Send", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
+            when {
+                busy -> OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
+                // Nothing typed or attached yet: the microphone, to dictate the message instead.
+                input.isBlank() && image.isEmpty() && file == null ->
+                    DictateButton(enabled = helperBusy == null, models = s.models, st = st) { said -> input = (input + " " + said).trim() }
+                else -> Button(onClick = { doSend() }, enabled = canSend) { BtnLabel("Send", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
             }
         }
     }
@@ -1534,7 +1404,8 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
             modifier = Modifier.fillMaxWidth(0.88f),
         ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (m.image != null) Text("(picture attached)", style = MaterialTheme.typography.bodySmall)
+                if (m.image != null) Text("🖼 image attached", style = MaterialTheme.typography.bodySmall)
+                m.fileName?.let { Text("📄 $it", style = MaterialTheme.typography.bodySmall) }
                 if (m.reasoning.isNotBlank()) {
                     TextButton(onClick = { showThinking = !showThinking }) {
                         Text(if (showThinking) "Hide thinking" else if (live && m.text.isEmpty()) "Thinking…" else "Show thinking")
@@ -1560,7 +1431,11 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
                         )
                     }
                 }
-                if (!mine && !live && m.text.isNotBlank()) Row {
+                // Bottom right: copy a question; share (or copy) and translate an answer. Words, signs or both, as set in Settings.
+                if (mine && m.text.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(m.text.trim())) }) { BtnLabel("Copy", symbol = "⧉") }
+                }
+                if (!mine && !live && m.text.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     // Copy or share this answer, alone or with the question it answers.
                     val pair = if (question != null) "Question:\n${question.trim()}\n\nAnswer:\n${m.text.trim()}" else m.text.trim()
                     fun share(text: String) = runCatching {
@@ -1568,8 +1443,16 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
                             .putExtra(android.content.Intent.EXTRA_TEXT, text)
                         ctx.startActivity(android.content.Intent.createChooser(send, "Share"))
                     }
+                    if (onTranslate != null && !m.text.startsWith("Error:")) Box {
+                        TextButton(onClick = { langs = true }) { BtnLabel("Translate", TranslateIcon) }
+                        ScaledDropdownMenu(expanded = langs, onDismissRequest = { langs = false }) {
+                            for (lang in TRANSLATE_LANGUAGES) {
+                                DropdownMenuItem(text = { Text(lang) }, onClick = { langs = false; onTranslate(lang) })
+                            }
+                        }
+                    }
                     Box {
-                        TextButton(onClick = { shareMenu = true }) { Text("Share ▾", style = MaterialTheme.typography.labelMedium) }
+                        TextButton(onClick = { shareMenu = true }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                         ScaledDropdownMenu(expanded = shareMenu, onDismissRequest = { shareMenu = false }) {
                             if (question != null) {
                                 DropdownMenuItem(text = { Text("Share question and answer") }, onClick = { shareMenu = false; share(pair) })
@@ -1577,14 +1460,6 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
                             }
                             DropdownMenuItem(text = { Text("Share the answer") }, onClick = { shareMenu = false; share(m.text.trim()) })
                             DropdownMenuItem(text = { Text("Copy the answer") }, onClick = { shareMenu = false; clipboard.setText(AnnotatedString(m.text.trim())) })
-                        }
-                    }
-                    if (onTranslate != null && !m.text.startsWith("Error:")) Box {
-                        TextButton(onClick = { langs = true }) { Text("Translate ▾", style = MaterialTheme.typography.labelMedium) }
-                        ScaledDropdownMenu(expanded = langs, onDismissRequest = { langs = false }) {
-                            for (lang in TRANSLATE_LANGUAGES) {
-                                DropdownMenuItem(text = { Text(lang) }, onClick = { langs = false; onTranslate(lang) })
-                            }
                         }
                     }
                 }
@@ -1689,4 +1564,110 @@ private fun QuickResult(title: String, text: String, onClose: () -> Unit) {
             }
         },
     )
+}
+
+/**
+ * The ＋ beside the message: an image (from the phone, or a new photo; only for models that see images) or a file
+ * (PDF, Word, Excel, PowerPoint, text), whose text is read on the phone and sent along.
+ */
+@Composable
+private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, onFile: (PickedFile) -> Unit, onError: (String) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    fun load(block: suspend () -> Unit) = scope.launch {
+        try {
+            block()
+        } catch (e: Exception) {
+            onError(e.message ?: "Couldn't read it.")
+        }
+    }
+    val pickImage = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) load { onImage(withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.image(ctx, uri, 2048) }) }
+    }
+    val shot = remember { java.io.File(ctx.cacheDir, "camera").apply { mkdirs() }.let { java.io.File(it, "chat.jpg") } }
+    val shotUri = remember { androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", shot) }
+    val camera = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) load {
+            try {
+                onImage(withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.image(ctx, shotUri, 2048) })
+            } finally {
+                shot.delete()
+            }
+        }
+    }
+    val pickFile = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) load { onFile(withContext(kotlinx.coroutines.Dispatchers.IO) { Docs.read(ctx, uri) }) }
+    }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Add, contentDescription = "Attach an image or a file") }
+        ScaledDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp)
+            DropdownMenuItem(
+                text = { Text("🖼 Image from the phone") },
+                enabled = seesImages,
+                contentPadding = pad,
+                onClick = {
+                    open = false
+                    pickImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("📷 Take a photo") },
+                enabled = seesImages,
+                contentPadding = pad,
+                onClick = { open = false; runCatching { camera.launch(shotUri) }.onFailure { onError("No camera app found.") } },
+            )
+            DropdownMenuItem(
+                text = { Text("📄 File: PDF, Office, text") },
+                contentPadding = pad,
+                onClick = { open = false; runCatching { pickFile.launch(Docs.MIMES) }.onFailure { onError("No file picker found.") } },
+            )
+        }
+    }
+}
+
+/**
+ * The microphone for dictating a message: tap to start, tap again to stop; the Tiiny's speech-to-text model writes it
+ * out (nothing goes to Google or anywhere else) and it lands in the message box to check before sending.
+ */
+@Composable
+private fun DictateButton(enabled: Boolean, models: List<ModelInfo>, st: StudioViewModel, onText: (String) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val rec = remember { WavRecorder() }
+    var recording by remember { mutableStateOf(false) }
+    var seconds by remember { mutableStateOf(0) }
+    LaunchedEffect(recording) {
+        while (recording) {
+            kotlinx.coroutines.delay(500)
+            seconds = rec.seconds.toInt()
+        }
+    }
+    DisposableEffect(Unit) { onDispose { if (rec.recording) rec.stop() } }
+    fun start() {
+        seconds = 0
+        rec.start()
+        recording = true
+    }
+    val ask = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok -> if (ok) start() }
+    val hasAsr = models.any { it.isAsr }
+    if (recording) {
+        Button(
+            onClick = {
+                recording = false
+                val wav = rec.stop()
+                if (wav.size > 16_000) st.dictate(wav, models, onText) // under half a second: nothing said
+            },
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+        ) { Text("■ ${seconds}s") }
+    } else {
+        IconButton(
+            onClick = {
+                if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) start() else ask.launch(android.Manifest.permission.RECORD_AUDIO)
+            },
+            enabled = enabled && hasAsr,
+        ) { Icon(MicIcon, contentDescription = if (hasAsr) "Dictate" else "Dictating needs a speech-to-text (ASR) model on the Tiiny") }
+    }
 }

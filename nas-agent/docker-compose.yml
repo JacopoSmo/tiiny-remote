@@ -1,0 +1,22 @@
+# Tiiny Remote NAS agent. On a Ugreen NAS: Docker → Project → Create, paste this, set the two values below, Deploy.
+services:
+  tiiny-agent:
+    # The ready-made image from GitHub. To build it yourself instead, replace this line with:
+    #   build: https://github.com/JacopoSmo/tiiny-remote.git#main:nas-agent
+    image: ghcr.io/jacoposmo/tiiny-remote-agent:latest
+    container_name: tiiny-agent
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      # A long random secret; enter the same one in the app (Automations → Connectors → NAS agent).
+      # Make one with: openssl rand -hex 24
+      AGENT_TOKEN: "change-me-to-a-long-random-secret"
+      # Your time zone, for "every day at 07:00".
+      TZ: "Europe/Zurich"
+    volumes:
+      # A named volume: it keeps the automations and results, and the service (not root) can write to it.
+      - tiiny-agent-data:/data
+
+volumes:
+  tiiny-agent-data:

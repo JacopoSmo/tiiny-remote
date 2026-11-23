@@ -53,6 +53,8 @@ data class ModelInfo(
             },
             if (makesThings) "Makes things" else null,
             if (seesImages) "Sees images" else null,
+            if (codes) "Coding" else null,
+            "Translates",
         )
 
     /**
@@ -133,7 +135,7 @@ data class LogEntry(val ms: Long, val type: String, val text: String, val error:
 /** The app's one log: device API calls, models, unlocking, VPN, chat, web search and the creation tools. */
 object ApiLog {
     /** The kinds of entries, in the order the Activity tab shows its filter buttons. */
-    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create")
+    val TYPES = listOf("Device", "Models", "Unlock", "VPN", "Chat", "Search", "Create", "Automate", "Code")
 
     private val _entries = kotlinx.coroutines.flow.MutableStateFlow<List<LogEntry>>(emptyList())
     val entries: kotlinx.coroutines.flow.StateFlow<List<LogEntry>> = _entries
@@ -151,6 +153,8 @@ object ApiLog {
     /** The same in plain text, as a command line prints it ("token: …", "password=…"), and any JWT-shaped token. */
     private val plainSecret = Regex("(?i)\\b(auth[_ ]?key|token|password|passwd|api[_ ]?key|secret)(\\s*[:=]\\s*)[^\\s\",}]+")
     private val jwt = Regex("eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]*")
+    /** GitHub tokens (Code → GitHub), by their own prefixes. */
+    private val githubToken = Regex("\\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{10,}")
     /** A login written into an address (http://user:password@host). */
     private val urlLogin = Regex("(?i)(https?://)[^/\\s:@]+:[^/\\s@]+@")
     /** File paths from a computer (C:\\Users\\…, /C$/Users/…, /home/…, /Users/…): they name people and folders. */
@@ -167,6 +171,7 @@ object ApiLog {
         t = bearer.replace(t, "$1***")
         t = plainSecret.replace(t, "$1$2***")
         t = jwt.replace(t, "***")
+        t = githubToken.replace(t, "***")
         t = urlLogin.replace(t, "$1***@")
         // "failed to connect to … from /<this phone's address> (port …)": on mobile data that can be a public address.
         t = phoneAddress.replace(t, "from this phone")
@@ -532,6 +537,7 @@ class TiinyApi(url: String, private val key: String) {
 
     /** Starts loading; the device answers once the load is accepted and finishes in the background. */
     fun launch(id: String) {
+        NpuGate.awaitQuiet(id) // not while a model is writing (see NpuGate)
         modelCall("POST", id, "/launch", JSONObject().put("model_id", id), timeoutSec = 120)
     }
 

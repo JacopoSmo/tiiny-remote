@@ -78,6 +78,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
@@ -174,11 +177,21 @@ private fun shareLog(ctx: Context, s: UiState, types: Set<String>? = null, error
 fun AppRoot(vm: MainViewModel) {
     val s by vm.state.collectAsState()
     val st: StudioViewModel = viewModel()
+    val av: AutoViewModel = viewModel()
     val job by st.job.collectAsState()
     val anyChatBusy by st.busyChats.collectAsState()
     val studioNote by st.note.collectAsState()
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    val navPrefs = androidx.compose.ui.platform.LocalContext.current.let { remember { it.getSharedPreferences("nav", android.content.Context.MODE_PRIVATE) } }
+    // The screen the app opens on (Sidebar settings): where you left it, or a chosen one.
+    var tab by rememberSaveable {
+        mutableIntStateOf(
+            s.settings.startScreen.toIntOrNull()?.takeIf { it in ALL_TABS } ?: navPrefs.getInt("last_tab", 0).takeIf { it in ALL_TABS } ?: 0,
+        )
+    }
+    LaunchedEffect(tab) { navPrefs.edit().putInt("last_tab", tab).apply() }
     var toolId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Where the Gallery opens (a tool or a kind, from Create's link), or everything.
+    var galleryStart by rememberSaveable { mutableStateOf<String?>(null) }
     // Where you came from: ← and Android's back gesture go back through it; with nothing left, back closes the app.
     val history = remember { mutableStateListOf<Pair<Int, String?>>() }
     fun goTab(i: Int) {
@@ -188,12 +201,12 @@ fun AppRoot(vm: MainViewModel) {
         tab = i
     }
     fun openToolNav(id: String?) {
-        if (id == toolId) return
-        if (id != null) history.add(tab to toolId)
-        else if (history.lastOrNull() == (tab to null)) history.removeAt(history.size - 1) // "‹ Tools" = back
+        if (id == toolId || (id == "image" && toolId == null)) return // no tool open = Image → Create
+        history.add(tab to toolId)
+        if (history.size > 30) history.removeAt(0)
         toolId = id
     }
-    val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null)
+    val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null && toolId != "image")
     fun back() {
         if (history.isNotEmpty()) {
             val (t, tool) = history.removeAt(history.size - 1)
@@ -202,6 +215,12 @@ fun AppRoot(vm: MainViewModel) {
         } else if (tab == 1 && toolId != null) toolId = null
     }
     BackHandler(enabled = canGoBack) { back() }
+    // A notification can ask for a screen (an automation's result opens Automate).
+    val navRequest by Nav.request.collectAsState()
+    LaunchedEffect(navRequest) {
+        if (navRequest == "automations") goTab(5)
+        Nav.request.value = null
+    }
     val openTool by st.openTool.collectAsState()
     LaunchedEffect(openTool) {
         if (openTool != null) goTab(1) // "Edit this" from the chat or results goes to the Create tab
@@ -246,16 +265,15 @@ fun AppRoot(vm: MainViewModel) {
     val chats by st.chatList.collectAsState()
     val current by st.currentChat.collectAsState()
     val busyChats by st.busyChats.collectAsState()
-    var chatMenu by remember { mutableStateOf<ChatInfo?>(null) }
+    var historyOpen by remember { mutableStateOf(false) }
+    val saving by st.saving.collectAsState()
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
-    val sections = listOf(
-        Triple("Models", Icons.Filled.Home, 0),
-        Triple("Chat", Icons.Filled.Send, 2),
-        Triple("Create", Icons.Filled.Create, 1),
-        Triple("Activity", Icons.Filled.List, 3),
-        Triple("Settings", Icons.Filled.Settings, 4),
-    )
+    // The top part in your order (Sidebar settings); Activity, Models and Settings always below.
+    val sections = topOrder(s.settings.navOrder).map { i -> navEntry(i) } + listOf(3, 0, 4).map { navEntry(it) }
+    var navSettings by remember { mutableStateOf(false) }
+    var quitting by remember { mutableStateOf(false) }
     fun go(i: Int) {
+        if (i == 6) galleryStart = null // from the menu, the Gallery shows everything
         goTab(i)
         scope.launch { drawer.close() }
     }
@@ -270,45 +288,28 @@ fun AppRoot(vm: MainViewModel) {
             drawerState = drawer,
             drawerContent = {
                 ModalDrawerSheet(Modifier.widthIn(max = 300.dp)) {
-                    Column(Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-                        Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-                        for ((label, icon, i) in sections) {
-                            NavigationDrawerItem(
-                                label = { Text(label) },
-                                icon = { Icon(icon, contentDescription = null) },
-                                selected = tab == i && i != 2,
-                                onClick = { go(i) },
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                            )
-                        }
-                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Chats", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { st.newChat(); go(2) }) { Text("+ New chat") }
-                        }
-                        if (chats.isEmpty()) {
-                            Text("No saved chats yet.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp))
-                        }
-                        for (c in chats) {
-                            Box {
+                    Column(Modifier.fillMaxHeight()) {
+                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 20.dp, end = 8.dp)) {
+                                Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { navSettings = true }) { Icon(Icons.Filled.Settings, contentDescription = "Sidebar settings: start screen and order") }
+                            }
+                            for ((label, icon, i) in sections) {
+                                // Using the Tiiny above, looking after it (Activity, Models, Settings) below.
+                                if (i == 3) HorizontalDivider(Modifier.padding(vertical = 6.dp, horizontal = 20.dp))
                                 NavigationDrawerItem(
-                                    label = { Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                                    badge = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (c.id in busyChats) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                                            IconButton(onClick = { chatMenu = c }, modifier = Modifier.size(32.dp)) {
-                                                Icon(Icons.Filled.MoreVert, contentDescription = "Chat options")
-                                            }
-                                        }
-                                    },
-                                    selected = tab == 2 && c.id == current,
-                                    onClick = { st.selectChat(c.id); go(2) },
+                                    label = { Text(label) },
+                                    icon = { Icon(icon, contentDescription = null) },
+                                    selected = tab == i,
+                                    onClick = { go(i) },
                                     modifier = Modifier.padding(horizontal = 8.dp),
                                 )
-                                ScaledDropdownMenu(expanded = chatMenu?.id == c.id, onDismissRequest = { chatMenu = null }) {
-                                    DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Edit, null) }, onClick = { renaming = c; chatMenu = null })
-                                    DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(androidx.compose.material.icons.Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) }, onClick = { st.deleteChat(c.id); chatMenu = null })
-                                }
+                            }
+                        }
+                        // Bottom middle: close the app completely (background connection included).
+                        Box(Modifier.fillMaxWidth().padding(bottom = 8.dp), contentAlignment = Alignment.Center) {
+                            IconButton(onClick = { quitting = true }) {
+                                Icon(PowerIcon, contentDescription = "Shut down the app", tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
@@ -331,10 +332,44 @@ fun AppRoot(vm: MainViewModel) {
                                 tab == 1 && toolId != null -> toolTitle(toolId!!)
                                 else -> sections.first { it.third == tab }.first
                             }
-                            Text(t, maxLines = 1, overflow = TextOverflow.Ellipsis, style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+                            // Compact: a little larger than titleMedium (16 → 19 sp) with its line height kept, so the slim 48 dp bar stays as it is.
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    t, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    style = if (compact) MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp)
+                                    else MaterialTheme.typography.titleLarge,
+                                )
+                                // ?: a walk through this page's basic functions.
+                                Surface(
+                                    onClick = { Guides.request.value = tab },
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.padding(start = 8.dp).size(24.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text("?", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
+                            }
                         },
                         actions = {
-                            if (tab == 2) IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
+                            if (tab == 2) {
+                                // History: earlier chats, newest first; tap one to go back to it.
+                                Box {
+                                    IconButton(onClick = { historyOpen = true }) { Icon(HistoryIcon, contentDescription = "Chat history") }
+                                    ChatHistoryMenu(historyOpen, chats, current, busyChats, { historyOpen = false }, { st.resumeChat(it.id); historyOpen = false },
+                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) })
+                                }
+                                // Save: green, chats are kept in History; red, incognito (nothing is kept from now on).
+                                IconButton(onClick = { st.setSaving(!saving) }) {
+                                    Icon(
+                                        SaveIcon, tint = if (saving) Color(0xFF43A047) else MaterialTheme.colorScheme.error,
+                                        contentDescription = if (saving) "Chats are saved (tap for incognito)" else "Incognito: chats aren't saved (tap to save them)",
+                                    )
+                                }
+                                IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
+                            }
                             IconButton(onClick = { vm.refreshNow() }) {
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                             }
@@ -343,11 +378,12 @@ fun AppRoot(vm: MainViewModel) {
                 },
                 bottomBar = {
                     // On square screens the sidebar replaces the bottom bar, leaving more room for the output.
+                    // Material's bar holds five: the main places; the rest are in the ☰ menu.
                     if (!compact) NavigationBar {
-                        for ((label, icon, i) in sections) {
+                        for ((label, icon, i) in listOf(0, 2, 1, 6, 7).map { n -> sections.first { it.third == n } }) {
                             NavigationBarItem(
                                 selected = tab == i,
-                                onClick = { goTab(i) },
+                                onClick = { if (i == 6) galleryStart = null; goTab(i) },
                                 icon = { Icon(icon, contentDescription = null) },
                                 label = { Text(label, maxLines = 1) },
                             )
@@ -367,15 +403,34 @@ fun AppRoot(vm: MainViewModel) {
                     if (s.settings.tiinyConfigured) StatsStrip(s, vm, st)
                     Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
                         0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
-                        1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openChat = { goTab(2) })
+                        1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openGallery = { galleryStart = it; goTab(6) })
+                        6 -> CreationsScreen(st, galleryStart) { t -> goTab(1); openToolNav(t) }
+                        7 -> TranslateScreen(s, st)
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
+                        5 -> AutomationsScreen(s, st, av, openChat = { goTab(2) })
+                        8 -> CodeScreen(s, vm, st)
                         else -> SettingsScreen(s, vm, st)
                     } }
                 }
             }
         }
     }
+
+    if (navSettings) NavSettingsDialog(s, vm) { navSettings = false }
+    // The welcome tour once at the first start; a page's guide from the ? beside its title.
+    LaunchedEffect(Unit) { if (!navPrefs.getBoolean("tour_seen", false)) Guides.request.value = -1 }
+    val guide by Guides.request.collectAsState()
+    guide?.let { g ->
+        val (title, steps) = if (g == -1) "Welcome" to WELCOME_TOUR else pageGuide(g)
+        CompositionLocalProvider(LocalAppDensity provides appDensity) {
+            GuideOverlay(title, steps) {
+                if (g == -1) navPrefs.edit().putBoolean("tour_seen", true).apply()
+                Guides.request.value = null
+            }
+        }
+    }
+    if (quitting) QuitDialog(s, vm, anyChatBusy.isNotEmpty() || job?.running == true) { quitting = false }
 
     renaming?.let { c ->
         var name by remember(c.id) { mutableStateOf(c.title) }
@@ -468,7 +523,7 @@ private fun VpnCard(s: UiState, vm: MainViewModel, onSettings: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (v.active) "VPN on" else "VPN off",
+                        if (v.active) "VPN on" else if (v.other) "Another VPN is on" else "VPN off",
                         style = MaterialTheme.typography.titleMedium,
                         color = if (v.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
@@ -488,6 +543,13 @@ private fun VpnCard(s: UiState, vm: MainViewModel, onSettings: () -> Unit) {
                     else -> Button(onClick = { vm.toggleVpn() }) { Text("Turn on") }
                 }
             }
+            if (v.other) {
+                Text(
+                    "Another app's VPN (DuckDuckGo's App Tracking Protection, say) is on; WireGuard isn't. Android runs one " +
+                        "VPN at a time, so switching WireGuard on stops the other one.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             if (!v.wireguardInstalled) {
                 Text("The WireGuard app isn't installed on this phone.", style = MaterialTheme.typography.bodySmall)
             } else if (!v.permitted) {
@@ -503,6 +565,7 @@ private val FILTERS = listOf<Triple<String, String, (ModelInfo) -> Boolean>>(
     Triple("sees", "Sees images", { it.isChat && it.seesImages }),
     Triple("thinks", "Thinks", { it.thinks }),
     Triple("moe", "Mixture of experts", { it.isMoE }),
+    Triple("translate", "Translates", { it.isChat }),
 )
 
 private val SORTS = listOf("name" to "Name", "type" to "Type", "npu" to "NPU load")
@@ -524,9 +587,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
     var typeSel by remember { mutableStateOf(prefs.getStringSet("types", emptySet())!!.toSet()) }
     var typesOpen by remember { mutableStateOf(false) }
     val typeOrder = remember(s.models.size) {
-        // The order arranged in Create → Create, then any other type the Tiiny has.
-        val o = createTypeOrder(st)
-        o + s.models.map { it.type }.filter { it.isNotBlank() && it !in o }.distinct()
+        s.models.map { it.type }.filter { it.isNotBlank() }.distinct().sorted()
     }
     val stats by vm.stats.collectAsState()
     var sortOpen by remember { mutableStateOf(false) }
@@ -538,7 +599,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
         else -> compareBy { it.name.lowercase() }
     }
     val list = s.models
-        .filter { m -> active.all { it.third(m) } && (typeSel.isEmpty() || m.type in typeSel) }
+        .filter { m -> active.all { it.third(m) } && (typeSel.isEmpty() || m.type in typeSel || CODING in typeSel && m.codes) }
         .sortedWith(
             compareBy<ModelInfo>(
                 { if (loadedFirst && it.status != "stopped") 0 else 1 }, // loaded models first, when that's on
@@ -576,7 +637,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                         onClick = { storeView = true; if (s.store == null) vm.loadStore() },
                         label = { Text("Store" + (s.store?.let { " ${it.size}" } ?: "")) },
                     )
-                    // Types: the kinds from Create → Create, for both lists.
+                    // Types: every kind of model the Tiiny has, for both lists.
                     Box {
                         FilterChip(
                             selected = typeSel.isNotEmpty(),
@@ -589,6 +650,16 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                                 onClick = { typeSel = emptySet(); prefs.edit().putStringSet("types", typeSel).apply() },
                             )
                             HorizontalDivider()
+                            // Coding: not a type of its own on the Tiiny, but chat models that are good at code (see Code).
+                            val nCode = if (storeView) s.store?.count { (it.type == "Text Generation" || it.type == "Image-Text-to-Text") && codesByName(it.id) } ?: 0
+                                else s.models.count { it.codes }
+                            DropdownMenuItem(
+                                text = { Text((if (CODING in typeSel) "☑ " else "☐ ") + "Coding 💻  ($nCode)") },
+                                onClick = {
+                                    typeSel = if (CODING in typeSel) typeSel - CODING else typeSel + CODING
+                                    prefs.edit().putStringSet("types", typeSel).apply()
+                                },
+                            )
                             for (t in typeOrder) {
                                 val n = if (storeView) s.store?.count { it.type == t } ?: 0 else s.models.count { it.type == t }
                                 DropdownMenuItem(
@@ -917,6 +988,8 @@ private fun logColor(type: String): Color = when (type) {
     "Chat" -> Color(0xFFF4511E)
     "Search" -> Color(0xFF43A047)
     "Create" -> Color(0xFFFFB300)
+    "Automate" -> Color(0xFF6D4C41)
+    "Code" -> Color(0xFF00ACC1)
     else -> Color.Gray
 }
 
@@ -942,7 +1015,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Activity", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("Logs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { vm.unlock() }, enabled = !s.unlocking) {
                 BtnLabel(if (s.unlocking) "Unlocking…" else "Unlock Tiiny", androidx.compose.material.icons.Icons.Filled.Lock)
             }
@@ -1004,7 +1077,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
             if (pickedEntries.isNotEmpty()) "Tap entries to add or remove them. Share and Copy send only the chosen ones."
             else "Share sends what's shown, without keys, passwords or email addresses. Long-press an entry to choose just some. " +
                 "Tiiny stats adds what the Tiiny itself counted.",
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1068,7 +1141,7 @@ private fun LogRow(e: LogEntry, chosen: Boolean, choosing: Boolean, onChoose: ()
 }
 
 @Composable
-private fun SecretField(value: String, onChange: (String) -> Unit, label: String) {
+internal fun SecretField(value: String, onChange: (String) -> Unit, label: String) {
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
@@ -1085,7 +1158,7 @@ private fun SecretField(value: String, onChange: (String) -> Unit, label: String
 }
 
 @Composable
-private fun SettingDropdown(label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
+internal fun SettingDropdown(label: String, options: List<Pair<String, String>>, selected: String, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
@@ -1116,6 +1189,15 @@ private fun PictogramLegend(onClose: () -> Unit) {
         Icons.Filled.Refresh to "Try again, check again, restart the Tiiny",
         Icons.Filled.Lock to "Unlock the Tiiny",
         Icons.Filled.Settings to "Open Settings",
+        "▶" to "Run an automation now",
+        "🔌" to "Test a connection (email, NAS agent)",
+        Icons.Filled.Delete to "Delete",
+        "📊" to "Statistics: the Tiiny's own request counts (Activity), speed tests and chat speeds (Settings → Fast helper model)",
+        HistoryIcon to "History: earlier chats, past speed tests",
+        GalleryIcon to "Open Gallery",
+        Icons.Filled.Add to "New chat; beside the message: attach an image or a file",
+        MicIcon to "Dictate a message (needs a speech-to-text model)",
+        SaveIcon to "Chat: green, chats are saved; red, incognito",
     )
     ScaledAlertDialog(
         onDismissRequest = onClose,
@@ -1130,7 +1212,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Thinks" to "Can think before answering (can be switched off); in the chat: thinking on (how deep: the Thinking slider)",
                     "Always thinks" to "Always thinks before answering",
                     "Makes things" to "Can use the chat's tools (images, speech, songs…); in the chat: tools on",
-                    "Sees images" to "Understands pictures you attach",
+                    "Sees images" to "Understands images you attach",
                     "MoE" to "Mixture of experts: writes much faster than its size suggests",
                     "Main chat model" to "The chat's main model (when a helper is loaded)",
                     "Helper" to "The fast helper model",
@@ -1139,6 +1221,9 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Suggestions" to "Chat: follow-up suggestions on",
                     "Socratic" to "Chat: Socratic mode (guides with questions)",
                     "Student" to "Chat: Student mode (teaches step by step)",
+                    "Translates" to "Can translate (every chat model); also the Translate page",
+                    "Coding" to "Good at code (made for it, or 20B parameters or more); also Models → Types → Coding",
+                    "Automate" to "Automate: agents and processes",
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1155,8 +1240,24 @@ private fun PictogramLegend(onClose: () -> Unit) {
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
+                Text("Create and Gallery", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                for (c in CATEGORIES) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.icon, modifier = Modifier.width(36.dp))
+                        Text(c.label + ": " + c.tools.joinToString(", ") { t -> CHOICES[t]?.let { (i, w) -> if (i.isEmpty()) w else "$i $w" } ?: t },
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                for ((icon, what) in listOf(GalleryIcon to "Gallery: everything made", TranslateIcon to "Translate: text, photos, speech",
+                    AutomationIcon to "Automate: 🤖 agents, 📋 processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
+                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 Text(
-                    "A button with no pictogram always shows its word. Others: ● loaded, ▾ opens a menu, ★ favourite.",
+                    "A button with no pictogram always shows its word (OCR, ASR). Others: ● loaded, ▾ opens a menu, ★ favourite.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1227,10 +1328,11 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                 )
                 Text("Test runs", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "Run the test once for each chat model you pair with the helper. With 2–4 runs the results are " +
+                    "Run the test once for each chat model you pair with the helper. With 3–5 runs the results are " +
                         "averaged, the spread is shown, and the rules apply to the average, so one lucky or unlucky run " +
-                        "doesn't decide. With 3 or 4 runs, a clear outlier (far from the others, e.g. a hiccup on the " +
-                        "Tiiny) is left out of the average, and the result says which.",
+                        "doesn't decide. Clear outliers (far from the others, e.g. a hiccup on the Tiiny) are left out: " +
+                        "1 of 3 or 4 runs, up to 2 of 5, so at least 3 always count. A short pause comes before every " +
+                        "measurement. History keeps every test, to compare pairs and models over time.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -1243,7 +1345,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "")
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1263,7 +1365,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var helper by remember(formKey) { mutableStateOf(cur.helperModel) }
     val scope = rememberCoroutineScope()
 
-    fun current() = AppSettings(
+    // From the saved settings: fields this form doesn't show (speed test runs, helper options…) are kept as they are.
+    fun current() = cur.copy(
         tiinyUrl = url.trim(),
         apiKey = key.trim(),
         nasHost = host.trim(),
@@ -1279,15 +1382,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         searxUrl = searx.trim(),
         searchMode = searchMode,
         tavilyKey = tavily.trim(),
-        layout = cur.layout,
-        uiScale = cur.uiScale,
-        textScale = cur.textScale,
-        enterSends = cur.enterSends,
         helperModel = helper,
-        keepRunning = cur.keepRunning,
-        notifyDone = cur.notifyDone,
-        labels = cur.labels,
-        dailyUpdateCheck = cur.dailyUpdateCheck,
     )
 
     Column(
@@ -1301,7 +1396,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         Text("Changes apply right away.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingDropdown("Layout", LAYOUTS, cur.layout) { vm.setDisplay(cur.copy(layout = it)) }
         Text(
-            "Square · compact puts the sections in the ☰ sidebar instead of a bottom bar, uses a slim top bar and folds the model and chat options into one line, leaving more room for chats, pictures and video.",
+            "Square · compact puts the sections in the ☰ sidebar instead of a bottom bar, uses a slim top bar and folds the model and chat options into one line, leaving more room for chats, images and video.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1399,6 +1494,22 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
+                Text("Stay connected in the background", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "The app keeps running while you're elsewhere, with a silent notification showing the Tiiny's state. " +
+                        "It checks the Tiiny every minute, so it unlocks it after a restart even with the app closed. " +
+                        "Uses a little battery.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = cur.stayConnected, onCheckedChange = {
+                vm.setStayConnected(it)
+                if (it) askIfNeeded()
+            })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
                 Text("Keep working in the background", style = MaterialTheme.typography.bodyLarge)
                 Text(
                     "While a tool job, chat answer, speed test or download is going on, the app keeps working when you " +
@@ -1430,6 +1541,36 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("Always ready", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Small models kept loaded whenever there's room on the NPU, so they start at once instead of loading first. " +
+                "Nothing is unloaded for them; they come back by themselves once there's room again. Unloading one yourself " +
+                "switches it off here.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        for ((label, on, kind) in listOf(
+            Triple("Speech-to-text (dictation, Translate speech, ASR)", cur.keepAsr) { m: ModelInfo -> m.isAsr },
+            Triple("OCR (text from photos)", cur.keepOcr) { m: ModelInfo -> m.isOcr },
+        )) {
+            val m = s.models.filter(kind).minByOrNull { it.npuUsage ?: 100.0 }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        m?.let { "${it.name} · ${Math.round(it.npuUsage ?: 0.0)}% of the NPU" + if (it.running) " · loaded" else "" }
+                            ?: "No such model on the Tiiny (Models → Store).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = on, enabled = m != null || on, onCheckedChange = {
+                    vm.setDisplay(if (label.startsWith("Speech")) cur.copy(keepAsr = it) else cur.copy(keepOcr = it))
+                })
+            }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Fast helper model", style = MaterialTheme.typography.titleMedium)
         val chatModels = s.models.filter { it.isChat }
         SettingDropdown(
@@ -1446,8 +1587,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             vm.setDisplay(cur.copy(helperModel = it))
         }
         Text(
-            "A quick chat model kept loaded beside your main one. While it's loaded it names new chats (while the main model " +
-                "answers), suggests follow-up questions, condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
+            "A quick chat model kept loaded beside your main one. While it's loaded it names new chats, suggests follow-up questions and condenses long attached files (all after the answer, so it " +
+                "doesn't slow it down), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
                 "only when the speed test found it at least 25% faster than the chat model (details can get lost, see ⓘ); otherwise the chat model reads " +
                 "them itself. It's never swapped in: when it isn't loaded, the chat model does everything.",
             style = MaterialTheme.typography.bodySmall,
@@ -1471,11 +1612,18 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
             ?: chatModels.firstOrNull { it.running && it.id != helper }
         var speedInfo by remember { mutableStateOf(false) }
-        SettingDropdown(
-            "Test runs",
-            (1..4).map { n -> n.toString() to if (n == 1) "1 (quick)" else "$n, averaged" },
-            cur.speedRuns.toString(),
-        ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
+        var history by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                SettingDropdown(
+                    "Test runs",
+                    listOf(1, 3, 4, 5).map { n -> n.toString() to if (n == 1) "1 (quick, no statistics)" else "$n, averaged" },
+                    cur.speedRuns.toString(),
+                ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
+            }
+            TextButton(onClick = { history = true }) { BtnLabel("Statistics", symbol = "📊") }
+        }
+        if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(
                 onClick = { if (big != null && small != null) st.speedTest(big, small, cur.speedRuns) },
@@ -1493,8 +1641,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 small == null -> "Load the helper and your chat model to run the speed test."
                 big == null -> "Load your chat model too to run the speed test."
                 else -> "Tests ${big.name} and ${small.name}, alone and at the same time, " +
-                    (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary by a few percent from run to run: more runs give a steadier average."
-                    else "${cur.speedRuns} times and averages the results (about ${cur.speedRuns * 2} minutes).")
+                    (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary from run to run: 3–5 runs give a steadier average."
+                    else "${cur.speedRuns} times with short pauses between, and averages the results (about ${cur.speedRuns * 2} minutes).")
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1718,6 +1866,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
+            TextButton(onClick = { Guides.request.value = -1 }) { Text("Welcome tour") }
             IconButton(onClick = { about = true }) {
                 Icon(Icons.Filled.Info, contentDescription = "About this app", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -1750,7 +1899,7 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 AboutBody("Controls your Tiiny AI Pocket Lab from your phone: models, chat with tools and web search, " +
-                    "pictures, speech, music, video and 3D, status, and unlocking after a restart.")
+                    "images, speech, music, video and 3D, status, and unlocking after a restart.")
                 AboutHead("Version")
                 AboutBody("$version${if (exp) " · experimental channel (separate app, newest features first)" else ""}\n${ctx.packageName}\n$device")
                 TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(info)) }) {
@@ -1779,8 +1928,9 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
                     "• Installed from GitHub, not Google Play: updates come through Settings → App updates.\n" +
                     "• AI answers can be wrong. Check what matters, especially facts, figures and medical, legal or financial advice.")
                 AboutHead("Built with")
-                AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0) and JSch (BSD) for SSH. " +
-                    "Made by JacopoSmo, written with Claude (Anthropic).")
+                AboutBody("Kotlin and Jetpack Compose (Android), AndroidX WorkManager, Kotlin coroutines (Apache 2.0), JSch (BSD) for SSH, " +
+                    "and JavaMail (EPL 2.0 / GPL 2.0 with Classpath Exception) for reading email. The NAS agent is Python's standard library only. " +
+                    "Made by JacopoSmo, built with Claude (Anthropic), supported by his home Tiiny AI.")
             }
         },
         confirmButton = {},
@@ -1800,3 +1950,168 @@ private fun AboutLink(label: String, onClick: () -> Unit) = Text(
     color = MaterialTheme.colorScheme.primary,
     modifier = Modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
 )
+
+private val historyTime = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
+
+/** Chat → History: every saved chat, newest first, with when and which model; rename or delete from here too. */
+@Composable
+private fun ChatHistoryMenu(
+    open: Boolean, chats: List<ChatInfo>, current: String, busy: Set<String>,
+    onDismiss: () -> Unit, onOpen: (ChatInfo) -> Unit, onRename: (ChatInfo) -> Unit, onDelete: (ChatInfo) -> Unit,
+) {
+    var confirm by remember { mutableStateOf<String?>(null) }
+    ScaledDropdownMenu(expanded = open, onDismissRequest = { confirm = null; onDismiss() }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 480.dp)) {
+        if (chats.isEmpty()) DropdownMenuItem(text = { Text("No saved chats yet.") }, onClick = onDismiss, enabled = false)
+        for (c in chats) {
+            DropdownMenuItem(
+                modifier = if (c.id == current) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier,
+                text = {
+                    Column {
+                        Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            historyTime.format(java.time.Instant.ofEpochMilli(c.updated).atZone(java.time.ZoneId.systemDefault())) +
+                                (c.model.takeIf { it.isNotBlank() }?.let { " · " + it.substringAfterLast('/') } ?: ""),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (c.id in busy) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                        IconButton(onClick = { onRename(c) }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
+                        }
+                        // Delete asks once more: a second tap on the red bin.
+                        IconButton(onClick = { if (confirm == c.id) { onDelete(c); confirm = null } else confirm = c.id }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                Icons.Filled.Delete, contentDescription = if (confirm == c.id) "Tap again to delete" else "Delete",
+                                tint = if (confirm == c.id) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                },
+                onClick = { onOpen(c) },
+            )
+        }
+    }
+}
+
+/** Every section's number: 0 Models, 1 Create, 2 Chat, 3 Activity, 4 Settings, 5 Automate, 6 Gallery, 7 Translate, 8 Code. */
+private val ALL_TABS = 0..8
+
+/** The sidebar's top part, default order. */
+private val DEFAULT_TOP = listOf(2, 8, 1, 6, 5, 7)
+
+/** The top part in the order saved in Settings (numbers missing there, new sections say, go at the end). */
+internal fun topOrder(saved: String): List<Int> {
+    val mine = saved.split(',').mapNotNull { it.trim().toIntOrNull() }.filter { it in DEFAULT_TOP }.distinct()
+    return mine + DEFAULT_TOP.filter { it !in mine }
+}
+
+internal fun navEntry(i: Int): Triple<String, androidx.compose.ui.graphics.vector.ImageVector, Int> = when (i) {
+    0 -> Triple("Models", Icons.Filled.Home, 0)
+    1 -> Triple("Create", Icons.Filled.Create, 1)
+    2 -> Triple("Chat", Icons.Filled.Send, 2)
+    3 -> Triple("Activity", Icons.Filled.List, 3)
+    5 -> Triple("Automate", AutomationIcon, 5)
+    6 -> Triple("Gallery", GalleryIcon, 6)
+    7 -> Triple("Translate", TranslateIcon, 7)
+    8 -> Triple("Code", CodeIcon, 8)
+    else -> Triple("Settings", Icons.Filled.Settings, 4)
+}
+
+/** The sidebar's ⚙: which screen the app opens on, and the order of its top part. */
+@Composable
+private fun NavSettingsDialog(s: UiState, vm: MainViewModel, onClose: () -> Unit) {
+    val cur = s.settings
+    val order = topOrder(cur.navOrder)
+    fun move(i: Int, by: Int) {
+        val l = order.toMutableList()
+        val j = i + by
+        if (j !in l.indices) return
+        l[i] = l[j].also { l[j] = l[i] }
+        vm.setDisplay(cur.copy(navOrder = l.joinToString(",")))
+    }
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        title = { ClosableTitle(onClose) { Text("Sidebar") } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SettingDropdown(
+                    "Start with",
+                    listOf("last" to "Where you left off") + (order + listOf(3, 0, 4)).map { it.toString() to navEntry(it).first },
+                    cur.startScreen,
+                ) { vm.setDisplay(cur.copy(startScreen = it)) }
+                Text("Order", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                for ((i, t) in order.withIndex()) {
+                    val (label, icon, _) = navEntry(t)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(icon, null, Modifier.size(20.dp))
+                        Text(label, modifier = Modifier.weight(1f).padding(start = 12.dp))
+                        TextButton(onClick = { move(i, -1) }, enabled = i > 0) { Text("↑") }
+                        TextButton(onClick = { move(i, 1) }, enabled = i < order.lastIndex) { Text("↓") }
+                    }
+                }
+                Text(
+                    "Activity, Models and Settings stay at the bottom. On taller phones the bottom bar keeps its five.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (cur.navOrder.isNotBlank()) TextButton(onClick = { vm.setDisplay(cur.copy(navOrder = "")) }) { Text("Back to the usual order") }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+/**
+ * The sidebar's ⏻: closes the app completely, background connection included. With models loaded on the Tiiny, asks
+ * whether to unload them first (they'd otherwise keep their room on the NPU).
+ */
+@Composable
+private fun QuitDialog(s: UiState, vm: MainViewModel, working: Boolean, onClose: () -> Unit) {
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    val loaded = s.models.filter { it.running }
+    var closing by remember { mutableStateOf(false) }
+    fun quit(unload: Boolean) {
+        closing = true
+        vm.quitApp(if (unload) loaded else emptyList()) {
+            activity?.finishAndRemoveTask()
+            android.os.Process.killProcess(android.os.Process.myPid())
+        }
+    }
+    ScaledAlertDialog(
+        onDismissRequest = { if (!closing) onClose() },
+        title = { Text("Shut down Tiiny Remote?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    "The app closes completely, its background connection too. Scheduled automations still run at their time." +
+                        if (working) " Something is still being made or answered: it stops." else "",
+                )
+                if (loaded.isNotEmpty()) Text(
+                    "Loaded on the Tiiny: ${loaded.joinToString(", ") { it.name }}. Unload ${if (loaded.size == 1) "it" else "them"} first?",
+                    fontWeight = FontWeight.Bold,
+                )
+                if (closing) Text("Closing…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            if (loaded.isNotEmpty()) {
+                Button(onClick = { quit(true) }, enabled = !closing) { Text("Unload and close") }
+            } else {
+                Button(onClick = { quit(false) }, enabled = !closing) { Text("Close") }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (loaded.isNotEmpty()) TextButton(onClick = { quit(false) }, enabled = !closing) { Text("Keep loaded, close") }
+                TextButton(onClick = onClose, enabled = !closing) { Text("Cancel") }
+            }
+        },
+    )
+}

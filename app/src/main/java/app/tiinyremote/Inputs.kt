@@ -65,7 +65,7 @@ object Inputs {
             while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
             val opts = BitmapFactory.Options().apply { inSampleSize = sample }
             val b = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                ?: throw MediaException("Couldn't read that picture.")
+                ?: throw MediaException("Couldn't read that image.")
             val scale = minOf(1.0, maxSide.toDouble() / maxOf(b.width, b.height))
             val scaled = if (scale < 1.0) Bitmap.createScaledBitmap(b, (b.width * scale).toInt(), (b.height * scale).toInt(), true) else b
             // Android 8 doesn't turn photos upright by itself (ImageDecoder above does): apply the camera's orientation.
