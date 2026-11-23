@@ -1431,7 +1431,11 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
                         )
                     }
                 }
-                if (!mine && !live && m.text.isNotBlank()) Row {
+                // Bottom right: copy a question; share (or copy) and translate an answer. Words, signs or both, as set in Settings.
+                if (mine && m.text.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(m.text.trim())) }) { BtnLabel("Copy", symbol = "⧉") }
+                }
+                if (!mine && !live && m.text.isNotBlank()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     // Copy or share this answer, alone or with the question it answers.
                     val pair = if (question != null) "Question:\n${question.trim()}\n\nAnswer:\n${m.text.trim()}" else m.text.trim()
                     fun share(text: String) = runCatching {
@@ -1439,8 +1443,16 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
                             .putExtra(android.content.Intent.EXTRA_TEXT, text)
                         ctx.startActivity(android.content.Intent.createChooser(send, "Share"))
                     }
+                    if (onTranslate != null && !m.text.startsWith("Error:")) Box {
+                        TextButton(onClick = { langs = true }) { BtnLabel("Translate", TranslateIcon) }
+                        ScaledDropdownMenu(expanded = langs, onDismissRequest = { langs = false }) {
+                            for (lang in TRANSLATE_LANGUAGES) {
+                                DropdownMenuItem(text = { Text(lang) }, onClick = { langs = false; onTranslate(lang) })
+                            }
+                        }
+                    }
                     Box {
-                        TextButton(onClick = { shareMenu = true }) { Text("Share ▾", style = MaterialTheme.typography.labelMedium) }
+                        TextButton(onClick = { shareMenu = true }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                         ScaledDropdownMenu(expanded = shareMenu, onDismissRequest = { shareMenu = false }) {
                             if (question != null) {
                                 DropdownMenuItem(text = { Text("Share question and answer") }, onClick = { shareMenu = false; share(pair) })
@@ -1448,14 +1460,6 @@ private fun ChatBubble(m: ChatMsg, live: Boolean, st: StudioViewModel, question:
                             }
                             DropdownMenuItem(text = { Text("Share the answer") }, onClick = { shareMenu = false; share(m.text.trim()) })
                             DropdownMenuItem(text = { Text("Copy the answer") }, onClick = { shareMenu = false; clipboard.setText(AnnotatedString(m.text.trim())) })
-                        }
-                    }
-                    if (onTranslate != null && !m.text.startsWith("Error:")) Box {
-                        TextButton(onClick = { langs = true }) { Text("Translate ▾", style = MaterialTheme.typography.labelMedium) }
-                        ScaledDropdownMenu(expanded = langs, onDismissRequest = { langs = false }) {
-                            for (lang in TRANSLATE_LANGUAGES) {
-                                DropdownMenuItem(text = { Text(lang) }, onClick = { langs = false; onTranslate(lang) })
-                            }
                         }
                     }
                 }
