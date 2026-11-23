@@ -43,6 +43,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.semantics.contentDescription
