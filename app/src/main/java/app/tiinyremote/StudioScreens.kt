@@ -1231,9 +1231,27 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // Opened from History: which model this chat last used, and a tap to use it again.
+            if (msgs.isEmpty()) {
+                Text(
+                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.\n\n" +
+                        "Tip: \"A3B\" models (mixture of experts) answer fast, good for everyday questions. Dense ones like the " +
+                        "27B models are slower but more careful: better for tricky questions, long texts or code.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            }
+            for ((i, m) in msgs.withIndex()) {
+                val live = busy && i == msgs.lastIndex
+                // The question an answer belongs to, for "Share question and answer".
+                val asked = msgs.getOrNull(i - 1)?.takeIf { m.role == "assistant" && it.role == "user" }?.text
+                ChatBubble(m, live = live, st = st, question = asked, onTranslate = if (live || helperBusy != null) null else { lang ->
+                    st.translateText(m.text, lang, s.models) { quick = "Translation ($lang)" to it }
+                })
+            }
+            // Opened from History: which model this chat last used, and a tap to use it again. At the bottom, by the
+            // newest message, where a reopened chat is shown (nobody scrolls up a long chat to find it).
             val resumed by st.resumed.collectAsState()
-            val current by st.currentChat.collectAsState()
             val lastId = if (resumed == current) st.lastModelOf(current) else null
             if (lastId != null) {
                 val last = s.models.firstOrNull { it.id == lastId }
@@ -1255,24 +1273,6 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         TextButton(onClick = { st.resumedSeen() }) { Text("✕") }
                     }
                 }
-            }
-            if (msgs.isEmpty()) {
-                Text(
-                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.\n\n" +
-                        "Tip: \"A3B\" models (mixture of experts) answer fast, good for everyday questions. Dense ones like the " +
-                        "27B models are slower but more careful: better for tricky questions, long texts or code.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 12.dp),
-                )
-            }
-            for ((i, m) in msgs.withIndex()) {
-                val live = busy && i == msgs.lastIndex
-                // The question an answer belongs to, for "Share question and answer".
-                val asked = msgs.getOrNull(i - 1)?.takeIf { m.role == "assistant" && it.role == "user" }?.text
-                ChatBubble(m, live = live, st = st, question = asked, onTranslate = if (live || helperBusy != null) null else { lang ->
-                    st.translateText(m.text, lang, s.models) { quick = "Translation ($lang)" to it }
-                })
             }
             val ideas = suggestions[current].orEmpty()
             if (suggest && !busy && ideas.isNotEmpty()) {
