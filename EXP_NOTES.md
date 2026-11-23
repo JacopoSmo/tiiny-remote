@@ -2,4 +2,10 @@
 
 ## 4.0.2-exp
 - **SearXNG from the terminal:** Settings → Web search now has **How to set it up (Terminal)**: the commands to set up your own SearXNG in Docker on the NAS over SSH, each with Copy (JSON answers on, the bot limiter off, port 8888), and how to check it.
+- **Fixes from Tiiny Studio 0.6.2–0.7.2** (where its developer found how the Tiiny really behaves):
+  - **Voice:** speaks through the voice model's own port first (at home or over the VPN). Through TiinyOS's gateway, VoxCPM2, OmniVoice, MOSS-TTS-Nano, Qwen3-TTS CustomVoice and VibeVoice-Realtime often fail or drop the last sentence. Every piece also ends with punctuation and a space, and the error message names the models that work through the gateway.
+  - **Speech-to-text:** recordings over 80 s go in ~60 s parts cut at quiet moments (the Tiiny fails past ~90 s): long dictations, transcriptions and spoken translations now work.
+  - **3D:** every picture with see-through parts (a cut-out or your own) is cleaned of faint pixels and its subject cropped and centred: no more flat cards or big floors.
+  - **Model Store:** a paused download (the Tiiny says "download_stop") now shows Resume instead of Pause; a download stopped by an error (no internet on the Tiiny's Wi-Fi) shows Retry; a model being unloaded isn't taken for a download.
+  - **Improve prompt:** uses a loaded Qwen-Image prompt enhancer (PE-T2I for prompts, PE-I2I for edits) first, and keeps only its text; helper models that claim not to think are told not to (the enhancer otherwise reasons until its tokens run out).
 - **Starting point:** the same as the normal app 4.0.1 (see its release; 4.0.1 adds the NAS agent's terminal guide under Automate → Connectors). New experimental features will be listed here as they come.

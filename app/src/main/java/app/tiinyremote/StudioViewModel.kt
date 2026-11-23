@@ -772,10 +772,24 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             Tools.transcribe(c, store, m, clip.bytes, clip.mime, clip.name, "", Progress({ _, _ -> }, { false })).text
         }, onDone)
 
-    fun improvePrompt(text: String, edit: Boolean, models: List<ModelInfo>, onDone: (String) -> Unit) =
-        helperRun(if (edit) "Improving the instruction…" else "Improving the prompt…", "chat", models, { it.isChat }, { c, m ->
-            Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200)
+    /**
+     * The prompt (or edit instruction) rewritten. A loaded Qwen-Image prompt enhancer is used first (-PE-T2I for
+     * prompts, -PE-I2I for edits; made for exactly this), else the helper or a chat model.
+     */
+    fun improvePrompt(text: String, edit: Boolean, models: List<ModelInfo>, onDone: (String) -> Unit) {
+        val pe = models.firstOrNull { it.running && it.id.contains(if (edit) "-PE-I2I" else "-PE-T2I", true) }
+        helperRun(if (edit) "Improving the instruction…" else "Improving the prompt…", "chat", models, { if (pe != null) it.id == pe.id else it.isChat }, { c, m ->
+            unwrapEnhancer(Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200))
         }, onDone)
+    }
+
+    /** PE-I2I answers an edit as a small JSON object ({"action", "description"}): only its text is kept. */
+    private fun unwrapEnhancer(text: String): String = try {
+        val o = JSONObject(text)
+        listOf("description", "prompt", "instruction", "text").firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() } } ?: text
+    } catch (e: Exception) {
+        text
+    }
 
     /** The current chat summarised by the helper (or the chat model), for a dialog. */
     fun summariseChat(models: List<ModelInfo>, onDone: (String) -> Unit) {

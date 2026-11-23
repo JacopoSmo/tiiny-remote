@@ -98,6 +98,52 @@ object Wav {
         return null
     }
 
+    /**
+     * The Tiiny's speech-to-text fails on long audio (90 s works, 120 s doesn't). A 16 kHz mono 16-bit WAV over 80 s
+     * comes back in ~60 s parts, each cut at the quietest tenth of a second between its 50th and 60th second; anything
+     * else comes back whole (Tiiny Studio's asr_parts, the same cuts).
+     */
+    fun asrParts(wav: ByteArray): List<ByteArray> {
+        val (fmt, data) = split(wav) ?: return listOf(wav)
+        if (fmt.size < 16) return listOf(wav)
+        val f = ByteBuffer.wrap(fmt).order(ByteOrder.LITTLE_ENDIAN)
+        val rate = 16_000
+        if (f.getShort(0).toInt() != 1 || f.getShort(2).toInt() != 1 || f.getInt(4) != rate || f.getShort(14).toInt() != 16) return listOf(wav)
+        val s = ShortArray(data.size / 2)
+        ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(s)
+        val one = 80 * rate
+        val piece = 60 * rate
+        val look = 10 * rate
+        val win = rate / 10
+        if (s.size <= one) return listOf(wav)
+        val out = ArrayList<ByteArray>()
+        var start = 0
+        fun pcm(from: Int, to: Int): ByteArray {
+            val b = ByteBuffer.allocate((to - from) * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (i in from until to) b.putShort(s[i])
+            return b.array()
+        }
+        while (s.size - start > one) {
+            var bestAt = start + piece - look
+            var best = Long.MAX_VALUE
+            var at = start + piece - look
+            while (at <= start + piece - win) {
+                var e = 0L
+                for (i in at until at + win) e += kotlin.math.abs(s[i].toInt())
+                if (e < best) {
+                    best = e
+                    bestAt = at
+                }
+                at += win
+            }
+            val cut = bestAt + win / 2
+            out.add(build(pcm(start, cut), rate, 1))
+            start = cut
+        }
+        out.add(build(pcm(start, s.size), rate, 1))
+        return out
+    }
+
     /** Joins WAV pieces of the same format into one (speech made in parts). */
     fun join(parts: List<ByteArray>): ByteArray {
         if (parts.size == 1) return parts[0]
