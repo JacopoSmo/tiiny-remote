@@ -27,7 +27,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
-VERSION = "1.2"
+VERSION = "1.3"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -281,15 +281,43 @@ def ics_time(value, params, ZONE):
 
 
 def read_calendar(rng="today"):
-    url = config().get("ics_url", "")
-    if not url:
+    """Every calendar link the app sent (one or several), merged into one list by time, each event with its calendar."""
+    cfg = config()
+    urls = [u for u in (cfg.get("ics_urls") or [cfg.get("ics_url", "")]) if isinstance(u, str) and u.strip()]
+    if not urls:
         raise RuntimeError("No calendar link: add your calendar's private iCal link in the app (Connectors → NAS agent).")
-    _, _, raw = http(url, timeout=30, max_bytes=8_000_000)
-    lines = raw.decode("utf-8", "replace").replace("\r\n ", "").replace("\n ", "").splitlines()
     ZONE = zone()
     today = dt.datetime.now(ZONE).replace(hour=0, minute=0, second=0, microsecond=0)
     start, end = {"tomorrow": (today + dt.timedelta(days=1), today + dt.timedelta(days=2)),
                   "week": (today, today + dt.timedelta(days=7))}.get(rng, (today, today + dt.timedelta(days=1)))
+    events, problems = [], []
+    for i, url in enumerate(urls[:10], 1):
+        try:
+            _, _, raw = http(url.strip(), timeout=30, max_bytes=8_000_000)
+            name, found = parse_ics(raw, start, end, ZONE)
+            name = name or f"Calendar {i}"
+            events += [ev + (name,) for ev in found]
+        except Exception as e:  # one calendar failing doesn't hide the others (the link itself isn't repeated: it's a secret)
+            problems.append(f"calendar {i} couldn't be read ({e.__class__.__name__})")
+    if problems and not events and len(problems) == len(urls[:10]):
+        raise RuntimeError("The calendar couldn't be read: " + "; ".join(problems))
+    events.sort(key=lambda x: x[0])
+    label = {"tomorrow": "tomorrow", "week": "the next 7 days"}.get(rng, "today")
+    note = ("\n(" + "; ".join(problems) + ")") if problems else ""
+    if not events:
+        return f"No events {label}." + note
+    several = len(urls) > 1
+    out = []
+    for b, e, allday, title, loc, cal in events[:120]:
+        when = "all day" if allday else f"{b:%H:%M}" if e == b else f"{b:%H:%M}–{e:%H:%M}"
+        out.append(f"{b:%a %d %b} {when}: {title}" + (f" @ {loc}" if loc else "") + (f" [{cal}]" if several else ""))
+    return f"Events {label}" + (" (from several calendars, each marked in brackets)" if several else "") + ":\n" + "\n".join(out) + note
+
+
+def parse_ics(raw, start, end, ZONE):
+    """The calendar's own name (X-WR-CALNAME, if it has one) and its events between start and end."""
+    lines = raw.decode("utf-8", "replace").replace("\r\n ", "").replace("\n ", "").splitlines()
+    cal_name = next((l.split(":", 1)[1].strip() for l in lines if l.startswith("X-WR-CALNAME") and ":" in l), "")
     events, ev = [], None
     for line in lines:
         if line == "BEGIN:VEVENT":
@@ -297,7 +325,8 @@ def read_calendar(rng="today"):
         elif line == "END:VEVENT" and ev is not None:
             if "start" in ev:
                 b, allday = ev["start"]
-                e = ev.get("end", (b, allday))[0]
+                # Without an end: an all-day event lasts its day, another one is a moment (both are shown).
+                e = ev.get("end", (b + dt.timedelta(days=1) if allday else b, allday))[0]
                 # Daily and weekly repeats are expanded into the range (until UNTIL); other rules show their first date.
                 rule = ev.get("rrule", "")
                 freq = re.search(r"FREQ=(\w+)", rule)
@@ -309,7 +338,7 @@ def read_calendar(rng="today"):
                     b += ((start - b - dur) // step + 1) * step  # jump to the first repeat that can reach the range
                 n = 0
                 while b < end and n < 400 and (until is None or b < until):
-                    if b + dur > start:
+                    if b + dur > start or (not dur and b >= start):
                         events.append((b, b + dur, allday, ev.get("summary", "(no title)"), ev.get("location", "")))
                     if not step:
                         break
@@ -328,15 +357,7 @@ def read_calendar(rng="today"):
                 ev["location"] = value.replace("\\,", ",")
             elif name == "RRULE":
                 ev["rrule"] = value
-    events.sort(key=lambda x: x[0])
-    label = {"tomorrow": "tomorrow", "week": "the next 7 days"}.get(rng, "today")
-    if not events:
-        return f"No events {label}."
-    out = []
-    for b, e, allday, title, loc in events[:80]:
-        when = "all day" if allday else f"{b:%H:%M}–{e:%H:%M}"
-        out.append(f"{b:%a %d %b} {when}: {title}" + (f" @ {loc}" if loc else ""))
-    return f"Events {label}:\n" + "\n".join(out)
+    return cal_name.replace("\\,", ","), events
 
 
 # ---------- the model ----------

@@ -355,11 +355,12 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
     var ssl by remember(conn) { mutableStateOf(conn.imapSsl) }
     var nasUrl by remember(conn) { mutableStateOf(conn.nasUrl) }
     var token by remember(conn) { mutableStateOf(conn.nasToken) }
-    var ics by remember(conn) { mutableStateOf(conn.icsUrl) }
+    // One field per calendar; at least one (empty) field.
+    var ics by remember(conn) { mutableStateOf(conn.icsLinks.ifEmpty { listOf("") }) }
     var ntfy by remember(conn) { mutableStateOf(conn.ntfyUrl) }
     fun current() = Connectors(
         host.trim(), port.toIntOrNull()?.takeIf { it in 1..65535 } ?: if (ssl) 993 else 143, user.trim(), pw, ssl,
-        ics.trim(), nasUrl.trim(), token.trim(), ntfy.trim(),
+        ics.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n"), nasUrl.trim(), token.trim(), ntfy.trim(),
     )
     Text(
         "Choose how much to connect: nothing, the calendar, email, or both. Everything stays between your phone, your " +
@@ -417,8 +418,28 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
             )
             OutlinedTextField(nasUrl, { nasUrl = it }, label = { Text("Address, e.g. http://192.168.3.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             SecretField(token, { token = it }, "Token (AGENT_TOKEN on the NAS)")
-            Text("The NAS can't read this phone's calendar: give it your calendar's private iCal link instead (optional).", style = MaterialTheme.typography.bodySmall)
-            SecretField(ics, { ics = it }, "Private iCal (.ics) link")
+            Text(
+                "The NAS can't read this phone's calendar: give it your calendars' private iCal links instead (optional, one per " +
+                    "calendar, up to 10).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            ics.forEachIndexed { i, link ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SecretField(
+                        link,
+                        { v ->
+                            // Several links pasted at once (one per line) become several fields.
+                            val parts = v.split('\n', '\r', ' ').filter { it.isNotBlank() }
+                            ics = if (parts.size > 1) (ics.take(i) + parts + ics.drop(i + 1)).take(10)
+                            else ics.toMutableList().also { it[i] = v.trim() }
+                        },
+                        if (ics.size > 1) "Private iCal (.ics) link ${i + 1}" else "Private iCal (.ics) link",
+                        Modifier.weight(1f),
+                    )
+                    if (ics.size > 1) TextButton(onClick = { ics = ics.filterIndexed { j, _ -> j != i } }) { Text("✕") }
+                }
+            }
+            if (ics.size < 10 && ics.last().isNotBlank()) TextButton(onClick = { ics = ics + "" }) { BtnLabel("Another calendar", symbol = "＋") }
             OutlinedTextField(ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row {
                 TextButton(onClick = { av.saveConnectors(current()) }) { BtnLabel("Save", symbol = "✓") }
@@ -427,22 +448,75 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
                 }
             }
             TestAnswer("nas", testing, tests, openLogs)
-            val uri = androidx.compose.ui.platform.LocalUriHandler.current
-            var terminal by remember { mutableStateOf(false) }
-            // Side by side (scrolling sideways when the screen is narrow).
+            var guide by remember { mutableStateOf<String?>(null) }
+            // The three set-up guides, side by side (scrolling sideways when the screen is narrow).
             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                TextButton(onClick = { runCatching { uri.openUri("https://github.com/JacopoSmo/tiiny-remote/tree/main/nas-agent") } }) {
-                    Text("How to set it up (GitHub)")
-                }
-                TextButton(onClick = { terminal = true }) { Text("How to set it up (Terminal)") }
+                TextButton(onClick = { guide = "nas" }) { Text("Set up NAS") }
+                TextButton(onClick = { guide = "ical" }) { Text("Set up iCal") }
+                TextButton(onClick = { guide = "ntfy" }) { Text("Set up ntfy") }
             }
-            if (terminal) TerminalGuide(
-                "NAS agent from the terminal", NAS_STEPS,
-                "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
-            ) { terminal = false }
+            when (guide) {
+                "nas" -> TerminalGuide(
+                    "Set up the NAS agent", NAS_STEPS,
+                    "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
+                    link = "The same guide on GitHub →" to "https://github.com/JacopoSmo/tiiny-remote/tree/main/nas-agent",
+                ) { guide = null }
+                "ical" -> TerminalGuide(
+                    "Set up iCal (your calendar for the NAS)", ICAL_STEPS,
+                    "The link is as good as a password: anyone with it can read your calendar. The app keeps it encrypted and sends " +
+                        "it only to your NAS. Automations on the phone don't need it: they read the phone's calendar directly.",
+                ) { guide = null }
+                "ntfy" -> TerminalGuide(
+                    "Set up ntfy (results as push messages)", NTFY_STEPS,
+                    "Without ntfy, NAS results are under Automate → Results; with it, they also come to your phone as a notification, " +
+                        "failures too.",
+                    link = "ntfy's own documentation →" to "https://docs.ntfy.sh/",
+                ) { guide = null }
+            }
         }
     }
 }
+
+/** Where to find a calendar's private iCal link: it comes from the service the calendar syncs with, not from Android. */
+private val ICAL_STEPS = listOf(
+    "## Google Calendar" to "",
+    "1. On the phone, open calendar.google.com in Chrome, and in Chrome's ⋮ menu tick \"Desktop site\" (the mobile view hides the settings)." to "",
+    "2. ⚙ Settings → on the left, under \"Settings for my calendars\", your calendar → \"Integrate calendar\"." to "",
+    "3. Copy \"Secret address in iCal format\" (it ends in /basic.ics). Each calendar has its own; the same page can reset it." to "",
+    "## Outlook.com / Microsoft 365" to "",
+    "outlook.live.com (or outlook.office.com) in the browser → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → your " +
+        "calendar, \"Can view all details\" → Publish → copy the ICS link. Work accounts sometimes have publishing switched off." to "",
+    "## iCloud" to "",
+    "Only from an iPhone, iPad or Mac: Calendar → the calendar's ⓘ → Public Calendar on → share the link. This link is public, not secret." to "",
+    "## Then here" to "",
+    "Paste the link into \"Private iCal (.ics) link\" above, then Save. For more calendars, tap \"＋ Another calendar\" and paste " +
+        "the next link (up to 10). The NAS reads them whenever an automation needs your calendar, merges them by time and marks " +
+        "each event with its calendar's name." to "",
+)
+
+/** ntfy: push messages for NAS results, from the public ntfy.sh or from ntfy on the NAS itself. */
+private val NTFY_STEPS = listOf(
+    "ntfy (\"notify\") is a free, open-source service for push messages: the NAS agent posts each result to your topic, and the " +
+        "ntfy app on the phone shows it as a notification, also when Tiiny Remote isn't running." to "",
+    "## Quick: the public server ntfy.sh" to "",
+    "1. Install the ntfy app (Play Store or F-Droid), tap ＋ and subscribe to a topic with a long, random name, e.g. tiiny-7f3k9q2x-results " +
+        "(anyone who knows the name can read it, so treat it like a password). Or make a name in the terminal:" to "echo tiiny-$(openssl rand -hex 6)",
+    "2. Here, in \"Push via ntfy\" above: https://ntfy.sh/<your topic>, then Save. Results pass through ntfy.sh's server." to "",
+    "## Private: ntfy on your NAS" to "",
+    "1. Connect to the NAS with your SSH app, make a folder and the setup file (paste the whole block; it puts the NAS's address in):" to
+        "mkdir -p ~/ntfy && cd ~/ntfy\nIP=$(hostname -I | awk '{print $1}'); echo \$IP\ncat > docker-compose.yml <<EOF\nservices:\n" +
+        "  ntfy:\n    image: binwiederhier/ntfy:latest\n    container_name: ntfy\n    command: serve\n    restart: unless-stopped\n" +
+        "    ports:\n      - \"8090:80\"\n    environment:\n      NTFY_BASE_URL: \"http://\$IP:8090\"\n" +
+        "      NTFY_CACHE_FILE: \"/var/cache/ntfy/cache.db\"\n    volumes:\n      - ntfy-cache:/var/cache/ntfy\nvolumes:\n  ntfy-cache:\nEOF\ncat docker-compose.yml",
+    "2. Start it (if \"compose\" isn't known: sudo docker-compose up -d):" to "sudo docker compose up -d",
+    "3. In the ntfy app: ＋ → topic \"tiiny\" → \"Use another server\" → http://<NAS address>:8090 → Subscribe. In the subscription's " +
+        "settings, turn on instant delivery (your own server has no Google push). Then send a test; it should pop up on the phone:" to
+        "curl -d \"Hello from the NAS\" http://localhost:8090/tiiny",
+    "4. Here, in \"Push via ntfy\" above: http://<NAS address>:8090/tiiny, then Save. Nothing leaves your home network; away from home " +
+        "the phone gets the messages once WireGuard is on." to "",
+    "5. Later, to update ntfy (and optionally delete the old image afterwards):" to
+        "cd ~/ntfy && sudo docker compose pull && sudo docker compose up -d\nsudo docker image prune -f",
+)
 
 /** The commands to set up the NAS agent over SSH (Termius, Termux…), step by step, each with Copy. */
 private val NAS_STEPS = listOf(

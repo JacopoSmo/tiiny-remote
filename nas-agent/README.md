@@ -13,13 +13,14 @@ It's one small Python file using only the standard library, in a Docker containe
    put your secret in `AGENT_TOKEN` and deploy. (No time zone to set: the app sends your phone's.)
 3. In the app: **Automate → Connectors → NAS agent**: address `http://<your NAS's IP>:8765`, the same token,
    **Save**, then **Test**. It should say the Tiiny is reachable.
-4. Optional, in the same card: your calendar's **private iCal link** (the NAS can't read the phone's calendar;
+4. Optional, in the same card: your calendars' **private iCal links** (one field per calendar, up to 10; agent 1.3 or newer
+   reads them all, older ones only the first; the NAS can't read the phone's calendar;
    Google Calendar: Settings → your calendar → "Secret address in iCal format") and an **ntfy** topic URL for push.
 5. Edit an automation, set **Runs on → The NAS agent**, save. The app sends it to the NAS.
 
 ### From a terminal instead (SSH from the phone: Termius, Termux…)
 
-The app shows these steps with a Copy button each: **Automate → Connectors → NAS agent → How to set it up (Terminal)**.
+The app shows these steps with a Copy button each: **Automate → Connectors → NAS agent → Set up NAS**.
 
 ```
 mkdir -p ~/tiiny-agent && cd ~/tiiny-agent
