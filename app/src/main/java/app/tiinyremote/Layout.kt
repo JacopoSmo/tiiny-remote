@@ -316,6 +316,8 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize()) {
+                var page by remember(e.id) { mutableStateOf(0) }
+                val name = if (e.kind == "image") e.files.getOrNull(page) else null
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 8.dp))
                     var askDelete by remember(e.id) { mutableStateOf(false) }
@@ -332,28 +334,30 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                         dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
                     )
                     TextButton(onClick = { askDelete = true }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
-                    if (e.kind != "image" && st.canSendToChat(e)) TextButton(onClick = { onClose(); st.sendToChat(e) }) {
+                    if (name != null) TextButton(onClick = { onClose(); st.sendToChat(e, name) }) {
                         BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send)
+                    } else if (e.kind != "image" && st.canSendToChat(e)) TextButton(onClick = { onClose(); st.sendToChat(e) }) {
+                        BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send)
+                    }
+                    if (name != null) TextButton(onClick = { onClose(); st.editThis(name) }) {
+                        BtnLabel("Edit", androidx.compose.material.icons.Icons.Filled.Edit)
                     }
                     TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                     TextButton(onClick = onClose) { Text("Close") }
                 }
                 when (e.kind) {
                     "image" -> {
-                        var page by remember(e.id) { mutableStateOf(0) }
-                        val name = e.files.getOrNull(page)
-                        if (name != null) ZoomImage(st.store.file(name), Modifier.weight(1f).fillMaxWidth())
-                        // Clear of the phone's own buttons at the bottom, with room to tap.
-                        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 12.dp)) {
-                            if (e.files.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { page = (page - 1 + e.files.size) % e.files.size }) { Text("‹ Previous") }
-                                Text("${page + 1} / ${e.files.size}")
-                                TextButton(onClick = { page = (page + 1) % e.files.size }) { Text("Next ›") }
-                            }
-                            if (name != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                TextButton(onClick = { onClose(); st.sendToChat(e, name) }) { Text("Send to chat") }
-                                TextButton(onClick = { onClose(); st.editThis(name) }) { Text("Edit this") }
-                            }
+                        if (name != null) Box(Modifier.weight(1f).fillMaxWidth()) {
+                            ZoomImage(st.store.file(name), Modifier.fillMaxSize())
+                            ZoomHint(Modifier.align(Alignment.BottomEnd).padding(12.dp))
+                        }
+                        if (e.files.size > 1) Row(
+                            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextButton(onClick = { page = (page - 1 + e.files.size) % e.files.size }) { Text("‹ Previous") }
+                            Text("${page + 1} / ${e.files.size}")
+                            TextButton(onClick = { page = (page + 1) % e.files.size }) { Text("Next ›") }
                         }
                     }
                     "video" -> e.mainFile?.let { n ->
@@ -583,4 +587,20 @@ fun TerminalGuide(
         },
         confirmButton = {},
     )
+}
+
+/** A faint magnifier in the image's corner: pinch or double-tap to zoom. */
+@Composable
+private fun ZoomHint(modifier: Modifier) {
+    val c = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+    androidx.compose.foundation.Canvas(modifier.size(28.dp).semantics { contentDescription = "Pinch or double-tap to zoom" }) {
+        val w = size.minDimension
+        val r = w * 0.32f
+        val cx = w * 0.4f
+        val stroke = w * 0.09f
+        drawCircle(c, r, androidx.compose.ui.geometry.Offset(cx, cx), style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx + r * 0.7f, cx + r * 0.7f), androidx.compose.ui.geometry.Offset(w * 0.95f, w * 0.95f), stroke * 1.3f, androidx.compose.ui.graphics.StrokeCap.Round)
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx - r * 0.5f, cx), androidx.compose.ui.geometry.Offset(cx + r * 0.5f, cx), stroke)
+        drawLine(c, androidx.compose.ui.geometry.Offset(cx, cx - r * 0.5f), androidx.compose.ui.geometry.Offset(cx, cx + r * 0.5f), stroke)
+    }
 }

@@ -1,5 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.22 (test build)
+- **Full view of an image:** Send to chat and Edit sit at the top with Delete and Share; a faint magnifier in the image's corner hints at zooming (pinch or double-tap).
+
 ## What's new in 4.0.21 (test build)
 - **Style chips** (song style, image description) mark what's already in the text (✓); tapping again takes it out instead of adding it twice.
 - **Settings:** shorter explanations.
