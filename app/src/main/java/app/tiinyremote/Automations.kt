@@ -668,6 +668,17 @@ class AutoWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
  * connectors from here, runs them around the clock, and keeps their results for the app to fetch.
  */
 object NasAgent {
+    /**
+     * Which app this is for the NAS: "normal", or "exp" for Tiiny Remote Exp. Agent 1.5 and newer keep each app's
+     * automations, connectors and results apart, so the two apps no longer overwrite each other on the same NAS.
+     */
+    @Volatile var app = "normal"
+        private set
+
+    fun init(ctx: Context) {
+        app = if (ctx.packageName.endsWith(".exp")) "exp" else "normal"
+    }
+
     private const val REFUSED = "The NAS agent refused the token: it must be exactly the AGENT_TOKEN in the setup file on the NAS " +
         "(on the NAS: grep AGENT_TOKEN ~/tiiny-agent/docker-compose.yml)."
 
@@ -676,7 +687,7 @@ object NasAgent {
         // Spaces or a line break copied along with the address or the token would break the request.
         val base = c.nasUrl.trim().trimEnd('/')
         if (!base.startsWith("http://") && !base.startsWith("https://")) throw MediaException("The NAS agent's address must start with http:// (e.g. http://192.168.3.10:8765).")
-        val conn = URL(base + path).openConnection() as HttpURLConnection
+        val conn = URL(base + path + (if ('?' in path) "&" else "?") + "app=$app").openConnection() as HttpURLConnection
         conn.connectTimeout = 8_000
         conn.readTimeout = timeoutSec * 1000
         conn.requestMethod = method
@@ -717,11 +728,13 @@ object NasAgent {
 
     /** Sends the NAS automations and what they need (Tiiny address and key, search, email, calendar link, push). */
     fun push(ctx: Context) {
+        init(ctx)
         val store = AutoStore(ctx)
         val c = store.connectors()
         if (!c.nasReady) return
         val s = Store(ctx).load()
         val cfg = JSONObject()
+            .put("app", app)
             // The address as the app itself uses it (http:// added, a trailing /v1 taken off), else the NAS can't use it.
             .put("tiiny", JSONObject().put("url", TiinyApi.normalize(s.tiinyUrl)).put("api_key", s.apiKey))
             .put("searx_url", s.searxUrl)

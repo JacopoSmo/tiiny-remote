@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NasAgent.init(this) // which app this is for the NAS agent (normal or exp)
         // The daily update check (Settings) is kept scheduled, or cancelled, to match the setting.
         AppUpdate.schedule(this, Store(this).load().dailyUpdateCheck)
         // Scheduled automations stay queued (after an update, say); what's already waiting is kept.

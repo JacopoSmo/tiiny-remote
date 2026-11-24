@@ -63,6 +63,10 @@ import java.util.Locale
 
 /** Automations: the list, running one now, results (phone and NAS), and the connectors. */
 class AutoViewModel(app: Application) : AndroidViewModel(app) {
+    init {
+        NasAgent.init(app)
+    }
+
     private val store = AutoStore(app)
     private val _list = MutableStateFlow(store.automations())
     val list: StateFlow<List<Automation>> = _list.asStateFlow()
@@ -572,6 +576,14 @@ private fun AutomationEditor(
     var a by remember(start) { mutableStateOf(start) }
     // Its own switch: emptying the time field to retype it doesn't turn "At a set time" off.
     var timed by remember(start) { mutableStateOf(start.time.isNotBlank()) }
+    var confirmDelete by remember(start) { mutableStateOf(false) }
+    if (confirmDelete) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { confirmDelete = false },
+        title = { Text("Delete \"${start.name}\"?") },
+        text = { Text("The automation is removed${if (start.where == "nas") " from this app and the NAS" else ""}. This can't be undone; its results stay under Results.") },
+        confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete(start) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+    )
     val chatModels = models.filter { it.isChat }
     val dayNames = listOf("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
     ScaledAlertDialog(
@@ -674,7 +686,7 @@ private fun AutomationEditor(
                 (a.kind != "agent" || a.tools.isNotEmpty()) && (a.where != "nas" || conn.nasReady)
             TextButton(onClick = { onSave(a.copy(time = if (timed) normTime(a.time) ?: "" else "")) }, enabled = valid) { BtnLabel("Save", symbol = "✓") }
         },
-        dismissButton = if (start.id.isNotBlank()) ({ TextButton(onClick = { onDelete(start) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }) else null,
+        dismissButton = if (start.id.isNotBlank()) ({ TextButton(onClick = { confirmDelete = true }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }) else null,
     )
 }
 
