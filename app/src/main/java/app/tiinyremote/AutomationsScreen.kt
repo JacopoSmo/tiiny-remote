@@ -150,31 +150,37 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         if (c.nasReady) pushNas()
     }
 
-    fun testEmail(c: Connectors) = viewModelScope.launch {
-        _testing.value = "Testing the email connection…"
-        _note.value = try {
-            withContext(Dispatchers.IO) { Mail.test(c) }.also { ApiLog.add("Email test: $it", "Automate") }
+    fun testEmail(c: Connectors) = test("email", "Email") {
+        try {
+            Mail.test(c)
         } catch (e: Exception) {
-            "Email didn't work: ${e.message ?: e.javaClass.simpleName}".also { ApiLog.add(it, "Automate", isProblem = true) }
-        } finally {
-            _testing.value = null
+            throw MediaException("Email didn't work: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
-    /** A test in progress ("Testing the NAS agent…"), shown under the buttons until its answer comes. */
-    private val _testing = MutableStateFlow<String?>(null)
-    val testing: StateFlow<String?> = _testing.asStateFlow()
+    /** A test's answer, shown under its Test button (ok: it worked). */
+    data class TestResult(val ok: Boolean, val text: String)
 
-    fun testNas(c: Connectors) = viewModelScope.launch {
-        _testing.value = "Testing the NAS agent…"
-        _note.value = try {
-            withContext(Dispatchers.IO) { NasAgent.test(c) }.also { ApiLog.add("NAS agent test: $it", "Automate") }
+    /** Tests in progress or answered, per connector ("email", "nas"): null = not tested since the screen opened. */
+    private val _tests = MutableStateFlow<Map<String, TestResult?>>(emptyMap())
+    val tests: StateFlow<Map<String, TestResult?>> = _tests.asStateFlow()
+    private val _testing = MutableStateFlow<Set<String>>(emptySet())
+    val testing: StateFlow<Set<String>> = _testing.asStateFlow()
+
+    private fun test(key: String, label: String, block: () -> String) = viewModelScope.launch {
+        _testing.value = _testing.value + key
+        _tests.value = _tests.value + (key to null)
+        val r = try {
+            TestResult(true, withContext(Dispatchers.IO) { block() })
         } catch (e: Exception) {
-            (e.message ?: e.javaClass.simpleName).also { ApiLog.add("NAS agent test failed: $it", "Automate", isProblem = true) }
-        } finally {
-            _testing.value = null
+            TestResult(false, e.message ?: e.javaClass.simpleName)
         }
+        ApiLog.add("$label test: ${r.text}", "Automate", isProblem = !r.ok)
+        _tests.value = _tests.value + (key to r)
+        _testing.value = _testing.value - key
     }
+
+    fun testNas(c: Connectors) = test("nas", "NAS agent") { NasAgent.test(c) }
 
     private fun pushNas() {
         if (!_conn.value.nasReady) return
@@ -194,7 +200,7 @@ private fun fmtTime(ms: Long) = runTime.format(Instant.ofEpochMilli(ms).atZone(Z
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openChat: () -> Unit) {
+fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openChat: () -> Unit, openLogs: () -> Unit = {}) {
     val list by av.list.collectAsState()
     val runs by av.runs.collectAsState()
     val nasRuns by av.nasRuns.collectAsState()
@@ -222,7 +228,7 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
         }
         when (section) {
             "results" -> ResultsList((runs + nasRuns).sortedByDescending { it.at }, st, av, openChat)
-            "connectors" -> ConnectorsCard(conn, av)
+            "connectors" -> ConnectorsCard(conn, av, openLogs)
             else -> {
                 Text(
                     "A process fetches something (news, your calendar, email), a model works on it, and you get the result. " +
@@ -336,9 +342,10 @@ private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewMo
 }
 
 @Composable
-private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
+private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> Unit) {
     val ctx = LocalContext.current
     val testing by av.testing.collectAsState()
+    val tests by av.tests.collectAsState()
     var calOk by remember { mutableStateOf(PhoneCalendar.allowed(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { calOk = it }
     var host by remember(conn) { mutableStateOf(conn.imapHost) }
@@ -396,7 +403,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                     BtnLabel("Test", symbol = "🔌")
                 }
             }
-            testing?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            TestAnswer("email", testing, tests, openLogs)
         }
     }
     Card(Modifier.fillMaxWidth()) {
@@ -419,7 +426,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                     BtnLabel("Test", symbol = "🔌")
                 }
             }
-            testing?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+            TestAnswer("nas", testing, tests, openLogs)
             val uri = androidx.compose.ui.platform.LocalUriHandler.current
             var terminal by remember { mutableStateOf(false) }
             // Side by side (scrolling sideways when the screen is narrow).
@@ -595,4 +602,25 @@ private fun AgentInfo(onClose: () -> Unit) {
         },
         confirmButton = {},
     )
+}
+
+/** Under a Test button: "Testing…" while it runs, then its answer (green if it worked, red if not) and a way to the log. */
+@Composable
+private fun TestAnswer(key: String, testing: Set<String>, tests: Map<String, AutoViewModel.TestResult?>, openLogs: () -> Unit) {
+    if (key in testing) {
+        Text("Testing…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        return
+    }
+    val r = tests[key] ?: return
+    Column(
+        Modifier.fillMaxWidth()
+            .background(
+                (if (r.ok) androidx.compose.ui.graphics.Color(0xFF43A047) else MaterialTheme.colorScheme.error).copy(alpha = 0.15f),
+                androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+            )
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text((if (r.ok) "✓ " else "⚠ ") + r.text, style = MaterialTheme.typography.bodyMedium)
+        TextButton(onClick = openLogs, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("Open the log (Automate) →") }
+    }
 }
