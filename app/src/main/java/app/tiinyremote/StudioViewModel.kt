@@ -543,7 +543,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (on) saveChat(_currentChat.value)
         note(
             if (on) "Chats are saved again, this one too."
-            else "Incognito: nothing of your chats is written to the phone from now on (drafts neither). What's new is gone when the app closes; chats saved before stay.",
+            else "Incognito: nothing of your chats is written to the phone from now on (drafts neither). What's new is gone when the app closes; chats saved before stay. " +
+                "The Tiiny itself still keeps a copy of every chat in its vault, as TiinyOS does for all apps.",
         )
     }
 
@@ -1547,7 +1548,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         (if (shown.any { it.fileText != null }) "\n\n" + Safety.RULE else "") +
                         (if (shown.any { it.image != null }) "\n\n" + Safety.IMAGE_RULE else "") +
                         (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
-                        (if (mode == "switch" || level == "max") depthPrompt(level) else "") +
                         when (chatMode) {
                             "socratic" -> SOCRATIC_PROMPT
                             "student" -> STUDENT_PROMPT
@@ -1567,6 +1567,17 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         convo.put(JSONObject().put("role", "system").put("content", system))
                         for (m in shown) convo.put(asMessage(m, m === shown.last()))
+                    }
+                    // How deep to think goes with this question, at the end of its message, not in the system prompt: the
+                    // Tiiny keeps one prompt cache per model, keyed on the exact start of the conversation, so a system
+                    // prompt that changes from question to question would make it read the whole chat again each time.
+                    val depthText = if (mode == "switch" || level == "max") depthPrompt(level).trim() else ""
+                    if (depthText.isNotEmpty() && convo.length() > 0) {
+                        val last = convo.getJSONObject(convo.length() - 1)
+                        if (last.optString("role") == "user") when (val content = last.opt("content")) {
+                            is String -> last.put("content", "$content\n\n($depthText)")
+                            is JSONArray -> content.put(JSONObject().put("type", "text").put("text", "($depthText)"))
+                        }
                     }
                     val tools = JSONArray()
                     if (canMake) toolSpecs().let { a -> for (i in 0 until a.length()) tools.put(a.get(i)) }

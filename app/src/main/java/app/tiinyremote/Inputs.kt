@@ -109,7 +109,79 @@ object Inputs {
         } catch (e: Exception) {
             null
         }
+        // FLAC gets no answer at all from the Tiiny's speech-to-text (the request just hangs, found by Tiiny's API
+        // notes); Ogg/Opus isn't on its list either. Those are decoded here into a WAV it reads.
+        val lower = name.lowercase()
+        if ("flac" in mime || "ogg" in mime || "opus" in mime || lower.endsWith(".flac") || lower.endsWith(".ogg") || lower.endsWith(".opus")) {
+            val wav = decodeToWav(ctx, uri) ?: throw MediaException("Couldn't read $name: please convert it to WAV or MP3 first.")
+            return PickedAudio(wav, "audio/wav", name.substringBeforeLast('.') + ".wav", secs)
+        }
         return PickedAudio(bytes, mime, name, secs)
+    }
+
+    /** An audio file decoded by the phone into a 16-bit WAV (at most ~10 minutes), or null if it can't be. */
+    private fun decodeToWav(ctx: Context, uri: Uri): ByteArray? = try {
+        decodeOrNull(ctx, uri)
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun decodeOrNull(ctx: Context, uri: Uri): ByteArray? {
+        val ex = android.media.MediaExtractor()
+        try {
+            ex.setDataSource(ctx, uri, null)
+            val track = (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+                ?: return null
+            ex.selectTrack(track)
+            val fmt = ex.getTrackFormat(track)
+            val codec = android.media.MediaCodec.createDecoderByType(fmt.getString(android.media.MediaFormat.KEY_MIME)!!)
+            var rate = fmt.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE)
+            var channels = fmt.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)
+            val pcm = java.io.ByteArrayOutputStream()
+            val limit = 600L * 48_000 * 2 * 2 // ~10 minutes of 48 kHz stereo
+            try {
+                codec.configure(fmt, null, null, 0)
+                codec.start()
+                val info = android.media.MediaCodec.BufferInfo()
+                var inputDone = false
+                while (pcm.size() < limit) {
+                    if (!inputDone) {
+                        val i = codec.dequeueInputBuffer(10_000)
+                        if (i >= 0) {
+                            val n = ex.readSampleData(codec.getInputBuffer(i)!!, 0)
+                            if (n < 0) {
+                                codec.queueInputBuffer(i, 0, 0, 0, android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                inputDone = true
+                            } else {
+                                codec.queueInputBuffer(i, 0, n, ex.sampleTime, 0)
+                                ex.advance()
+                            }
+                        }
+                    }
+                    val o = codec.dequeueOutputBuffer(info, 10_000)
+                    if (o == android.media.MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        codec.outputFormat.let { f ->
+                            rate = f.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE)
+                            channels = f.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)
+                        }
+                    } else if (o >= 0) {
+                        val buf = codec.getOutputBuffer(o)!!
+                        val chunk = ByteArray(info.size)
+                        buf.position(info.offset)
+                        buf.get(chunk)
+                        pcm.write(chunk)
+                        codec.releaseOutputBuffer(o, false)
+                        if (info.flags and android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
+                    }
+                }
+            } finally {
+                codec.stop()
+                codec.release()
+            }
+            return if (pcm.size() == 0) null else Wav.build(pcm.toByteArray(), rate, channels)
+        } finally {
+            ex.release()
+        }
     }
 
     /** A picture from the app's own results, to build on (e.g. a 3D model from a generated image). */

@@ -67,10 +67,37 @@ class DeviceClient(url: String, private val key: String) {
 
     private fun looksLikeText(b: ByteArray) = b.take(64).all { it >= 9 || it < 0 }
 
+    /**
+     * The Tiiny answers "busy" for a while, not "broken", in three ways: error 150004 (it's already doing an inference,
+     * for another app say; it can even come with HTTP 200), "xh2a backend fail" (a model that has just loaded, ~10 s),
+     * and 502 "Upstream model server request failed" (~20 s after another model began loading). Such a request is
+     * tried again after 5, 10 and 20 s (found by Story Lantern and Tiiny's API notes on TiinyVerse).
+     */
+    private fun busy(code: Int, bytes: ByteArray): Boolean {
+        if (bytes.size > 4000) return false
+        val t = String(bytes, Charsets.UTF_8)
+        return "150004" in t || "xh2a backend fail" in t || (code == 502 && "upstream model server request failed" in t.lowercase())
+    }
+
+    private fun <T> retryBusy(path: String, call: () -> T, check: (T) -> Pair<Int, ByteArray>?): T {
+        var wait = 5_000L
+        repeat(3) {
+            val r = call()
+            val (code, bytes) = check(r) ?: return r
+            if (!busy(code, bytes)) return r
+            ApiLog.add("$path: the Tiiny is busy (HTTP $code); trying again in ${wait / 1000} s")
+            Thread.sleep(wait)
+            wait *= 2
+        }
+        return call()
+    }
+
     /** log = false for frequent polls (device stats), so they don't push the useful entries out of the log. */
     fun request(method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 60, log: Boolean = true): Reply =
         // A POST to /v1/… has a model at work: loads wait for it (NpuGate).
-        if (method == "POST" && path.startsWith("/v1/")) NpuGate.work { send(method, path, body, timeoutSec, log) }
+        if (method == "POST" && path.startsWith("/v1/")) NpuGate.work {
+            retryBusy(path, { send(method, path, body, timeoutSec, log) }) { it.code to it.bytes }
+        }
         else send(method, path, body, timeoutSec, log)
 
     private fun send(method: String, path: String, body: JSONObject?, timeoutSec: Int, log: Boolean): Reply {
@@ -97,7 +124,7 @@ class DeviceClient(url: String, private val key: String) {
     class Part(val field: String, val filename: String, val mime: String, val data: ByteArray)
 
     fun multipart(path: String, fields: List<Pair<String, String>>, files: List<Part>, timeoutSec: Int): Reply =
-        NpuGate.work { sendParts(path, fields, files, timeoutSec) }
+        NpuGate.work { retryBusy(path, { sendParts(path, fields, files, timeoutSec) }) { it.code to it.bytes } }
 
     private fun sendParts(path: String, fields: List<Pair<String, String>>, files: List<Part>, timeoutSec: Int): Reply {
         val boundary = UUID.randomUUID().toString().replace("-", "")
@@ -149,7 +176,24 @@ class DeviceClient(url: String, private val key: String) {
      * tool calls are collected and returned at the end. `stop()` returning true ends it early.
      */
     fun streamChat(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion =
-        NpuGate.work { stream(body, onDelta, stop) }
+        NpuGate.work {
+            // A "busy" answer comes before any text, so trying again can't repeat what was shown.
+            var wait = 5_000L
+            var tries = 0
+            while (true) {
+                try {
+                    return@work stream(body, onDelta, stop)
+                } catch (e: Busy) {
+                    if (++tries > 3 || stop()) throw MediaException(e.message ?: "The Tiiny is busy.")
+                    ApiLog.add("/v1/chat/completions: the Tiiny is busy; trying again in ${wait / 1000} s")
+                    Thread.sleep(wait)
+                    wait *= 2
+                }
+            }
+            throw IllegalStateException()
+        }
+
+    private class Busy(msg: String) : Exception(msg)
 
     private fun stream(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion {
         val conn = open("POST", "/v1/chat/completions", 900)
@@ -174,6 +218,7 @@ class DeviceClient(url: String, private val key: String) {
                 val err = conn.errorStream?.use { it.readBytes() } ?: ByteArray(0)
                 val r = Reply(code, err)
                 ApiLog.add("POST /v1/chat/completions -> HTTP $code: ${r.text.take(400)}")
+                if (busy(code, err)) throw Busy(r.error())
                 throw MediaException(r.error())
             }
             ApiLog.add("POST /v1/chat/completions -> HTTP $code (streaming)")
@@ -226,6 +271,8 @@ class DeviceClient(url: String, private val key: String) {
                 }
             }
         } catch (e: MediaException) {
+            throw e
+        } catch (e: Busy) {
             throw e
         } catch (e: Exception) {
             if (!stop()) {

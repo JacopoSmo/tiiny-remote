@@ -1,5 +1,12 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.11 (test build)
+Found in Tiiny Studio's API notes and on TiinyVerse:
+- **Busy Tiiny:** when the Tiiny answers "busy" (error 150004: it's already working, for another app say; "xh2a backend fail" right after a load; 502 while another model loads), the app waits and tries again (after 5, 10, 20 s) instead of failing.
+- **Faster follow-up answers:** the Tiiny keeps one prompt cache per model, keyed on the exact start of the chat. The thinking depth chosen per question now goes with the question instead of into the system prompt, so the earlier chat isn't read again for every answer.
+- **FLAC, Ogg and Opus files** are decoded on the phone before transcribing (the Tiiny never answers FLAC).
+- **Incognito** says that the Tiiny itself still keeps a copy of every chat in its vault.
+
 ## What's new in 4.0.10 (test build)
 - **Enter sends, also through the keyboard app:** some keyboard apps take a hardware Enter themselves and type a line break, so the message didn't go out. A line break typed at the end now sends too (Shift+Enter still makes a new line).
 
