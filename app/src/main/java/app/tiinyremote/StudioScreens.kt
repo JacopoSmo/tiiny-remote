@@ -5,6 +5,8 @@ package app.tiinyremote
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
@@ -974,14 +976,24 @@ private val TEXT_KINDS = setOf("ocr", "description", "transcript", "embedding", 
 private val dateFmt = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
 
 @Composable
-fun ResultCard(e: ResultEntry, st: StudioViewModel, expanded: Boolean = false) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun ResultCard(
+    e: ResultEntry, st: StudioViewModel, expanded: Boolean = false,
+    marked: Boolean = false, selecting: Boolean = false, onMark: (() -> Unit)? = null,
+) {
     var open by remember(e.id) { mutableStateOf(expanded) }
     var confirmDelete by remember(e.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var full by remember(e.id) { mutableStateOf(false) }
     if (full) FullView(e, st) { full = false }
     val canFull = e.kind == "image" || e.kind == "video" || (e.kind in TEXT_KINDS && e.text.isNotBlank())
-    Card(onClick = { open = !open }, modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth()
+            .then(if (marked) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium) else Modifier)
+            .clip(MaterialTheme.shapes.medium)
+            // In the Gallery: a long press marks it; while some are marked, a tap marks or unmarks.
+            .combinedClickable(onClick = { if (selecting && onMark != null) onMark() else open = !open }, onLongClick = onMark),
+    ) {
         Column(Modifier.padding(if (LocalUi.current.compact) 10.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = if (open) 4 else 1, modifier = Modifier.weight(1f))

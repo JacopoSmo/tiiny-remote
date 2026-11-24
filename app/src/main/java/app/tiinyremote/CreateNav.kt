@@ -2,6 +2,9 @@ package app.tiinyremote
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -134,6 +137,10 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     var newest by rememberSaveable { mutableStateOf(true) }
     var group by rememberSaveable { mutableStateOf("day") }
     var full by remember { mutableStateOf<ResultEntry?>(null) }
+    // Long-press marks results; then a tap marks or unmarks, and the bar on top shares or deletes them.
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var askDelete by remember { mutableStateOf(false) }
+    fun toggle(e: ResultEntry) { selected = if (e.id in selected) selected - e.id else selected + e.id }
     val q = query.trim().lowercase()
     val shown = results
         .filter { e ->
@@ -151,7 +158,28 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     val sections = if (fmt == null) listOf("" to shown)
     else shown.groupBy { fmt.format(Instant.ofEpochMilli(it.created).atZone(ZoneId.systemDefault())) }.toList()
 
-    LazyColumn(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val marked = results.filter { it.id in selected }
+    if (askDelete) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { askDelete = false },
+        title = { Text("Delete ${marked.size} result${if (marked.size == 1) "" else "s"}?") },
+        text = { Text("They're deleted from this phone. This can't be undone; copies saved to the phone's own folders stay.") },
+        confirmButton = {
+            TextButton(onClick = { askDelete = false; st.deleteMany(marked); selected = emptySet() }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
+    )
+    Column(Modifier.fillMaxSize()) {
+    if (selected.isNotEmpty()) Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${marked.size} marked", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        TextButton(onClick = { selected = shown.map { it.id }.toSet() }) { Text("All") }
+        TextButton(onClick = { st.shareMany(marked) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
+        TextButton(onClick = { askDelete = true }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
+        TextButton(onClick = { selected = emptySet() }) { Text("✕") }
+    }
+    LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 8.dp)) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -204,22 +232,42 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
             val pics = list.filter { it.kind == "image" && it.mainFile != null }
             for (row in pics.chunked(3)) item(key = "g-" + row.joinToString("-") { it.id }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (e in row) Thumb(e, st, Modifier.weight(1f)) { full = e }
+                    for (e in row) Thumb(e, st, Modifier.weight(1f), e.id in selected, onLongPress = { toggle(e) }) {
+                        if (selected.isNotEmpty()) toggle(e) else full = e
+                    }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
-            items(list.filter { it !in pics }, key = { it.id }) { e -> ResultCard(e, st) }
+            items(list.filter { it !in pics }, key = { it.id }) { e ->
+                ResultCard(e, st, marked = e.id in selected, selecting = selected.isNotEmpty(), onMark = { toggle(e) })
+            }
         }
-        item { Spacer(Modifier.padding(8.dp)) }
+        item {
+            if (results.isNotEmpty() && selected.isEmpty()) Text(
+                "Long-press to mark several, then share or delete them.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.padding(8.dp))
+        }
+    }
     }
     full?.let { e -> FullView(e, st) { full = null } }
 }
 
 @Composable
-private fun Thumb(e: ResultEntry, st: StudioViewModel, modifier: Modifier, onOpen: () -> Unit) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Thumb(e: ResultEntry, st: StudioViewModel, modifier: Modifier, marked: Boolean, onLongPress: () -> Unit, onOpen: () -> Unit) {
     val bmp = rememberThumbnail(st.store.file(e.mainFile ?: return), 384)
-    Box(modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp)).clickable(onClick = onOpen)) {
+    Box(
+        modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp))
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
+            .then(if (marked) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)) else Modifier),
+    ) {
         if (bmp != null) Image(bmp.asImageBitmap(), e.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Text(e.title, style = MaterialTheme.typography.labelSmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(6.dp))
+        if (marked) Text(
+            "✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)).padding(horizontal = 6.dp),
+        )
     }
 }

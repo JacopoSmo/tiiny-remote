@@ -443,6 +443,75 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun share(e: ResultEntry) = store.share(e)
 
+    fun shareMany(list: List<ResultEntry>) = store.shareMany(list)
+
+    // ---------- the copies of chats the Tiiny keeps (TiinyOS's vault, per day, from every app) ----------
+
+    /** The days the Tiiny keeps chats for (yyyy-MM-dd, oldest first), or the reason it couldn't tell. */
+    fun tiinyChatDays(onDone: (List<String>?, String?) -> Unit) {
+        viewModelScope.launch {
+            val out = withContext(Dispatchers.IO) {
+                try {
+                    val r = client().request("GET", "/kb/conversation_days?limit=1000", null, 30)
+                    if (!r.ok) null to r.error()
+                    else {
+                        val t = r.text.trim()
+                        val arr = when {
+                            t.startsWith("[") -> JSONArray(t)
+                            else -> JSONObject(t).let { o ->
+                                o.optJSONArray("items") ?: o.optJSONArray("days") ?: o.optJSONArray("data") ?: o.optJSONArray("conversation_days") ?: JSONArray()
+                            }
+                        }
+                        val day = Regex("\\d{4}-\\d{2}-\\d{2}")
+                        val days = (0 until arr.length()).mapNotNull { i ->
+                            when (val it = arr.opt(i)) {
+                                is String -> day.find(it)?.value
+                                is JSONObject -> listOf("day", "date", "conversation_day", "id").firstNotNullOfOrNull { k -> day.find(it.optString(k))?.value }
+                                else -> null
+                            }
+                        }.distinct().sorted()
+                        days to null
+                    }
+                } catch (e: Exception) {
+                    null to (e.message ?: e.javaClass.simpleName)
+                }
+            }
+            onDone(out.first, out.second)
+        }
+    }
+
+    /** Deletes those days' chats from the Tiiny's vault (whole days; can't be undone). */
+    fun deleteTiinyChatDays(days: List<String>) {
+        viewModelScope.launch {
+            val failed = withContext(Dispatchers.IO) {
+                days.filterNot { d ->
+                    try {
+                        client().request("DELETE", "/kb/conversation_days/$d", null, 60).ok
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+            }
+            note(
+                when {
+                    failed.isEmpty() -> "Deleted from the Tiiny: ${if (days.size == 1) "the chats of ${days[0]}" else "${days.size} days of chats"}."
+                    failed.size == days.size -> "The Tiiny didn't delete them (see Activity for its answer)."
+                    else -> "Deleted ${days.size - failed.size} of ${days.size} days; not: ${failed.joinToString(", ")}."
+                },
+            )
+        }
+    }
+
+    fun deleteMany(list: List<ResultEntry>) {
+        for (e in list) {
+            Player.playing?.let { if (it in e.files) Player.stop() }
+            store.delete(e)
+            if (_job.value?.result?.id == e.id) _job.value = null
+        }
+        _results.value = store.all()
+        note(if (list.size == 1) "Deleted." else "${list.size} results deleted.")
+    }
+
     fun open(name: String) {
         if (!store.open(name)) {
             note(if (name.endsWith(".glb")) "No app on this phone opens 3D models (.glb). Install a 3D viewer, or Share the file." else "No app on this phone opens this file.")

@@ -126,6 +126,23 @@ class ResultStore(private val ctx: Context) {
         ctx.startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    /** Several results shared at once: all their files (texts joined, for results without files). */
+    fun shareMany(list: List<ResultEntry>) {
+        if (list.size == 1) return share(list[0])
+        val files = list.flatMap { it.files }
+        val texts = list.filter { it.files.isEmpty() && it.text.isNotBlank() }.joinToString("\n\n———\n\n") { "${it.title}\n\n${it.text}" }
+        val send = if (files.isEmpty()) {
+            Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, texts)
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE)
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(files.map { uri(it) }))
+                .setType(files.map { mime(it).substringBefore('/') }.distinct().singleOrNull()?.let { "$it/*" } ?: "*/*")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                .also { if (texts.isNotBlank()) it.putExtra(Intent.EXTRA_TEXT, texts) }
+        }
+        ctx.startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
     /** Opens a file in another app (e.g. a 3D viewer for .glb). False when no app on the phone can open it. */
     fun open(name: String): Boolean {
         val i = Intent(Intent.ACTION_VIEW)

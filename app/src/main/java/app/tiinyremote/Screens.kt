@@ -271,6 +271,7 @@ fun AppRoot(vm: MainViewModel) {
     val current by st.currentChat.collectAsState()
     val busyChats by st.busyChats.collectAsState()
     var historyOpen by remember { mutableStateOf(false) }
+    var tiinyCopies by remember { mutableStateOf(false) }
     val saving by st.saving.collectAsState()
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     // The top part in your order (Sidebar settings); Activity, Models and Settings always below.
@@ -364,7 +365,9 @@ fun AppRoot(vm: MainViewModel) {
                                 Box {
                                     IconButton(onClick = { historyOpen = true }) { Icon(HistoryIcon, contentDescription = "Chat history") }
                                     ChatHistoryMenu(historyOpen, chats, current, busyChats, { historyOpen = false }, { st.resumeChat(it.id); historyOpen = false },
-                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) })
+                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) },
+                                        onTiinyCopies = { tiinyCopies = true })
+                                    if (tiinyCopies) TiinyCopiesDialog(st) { tiinyCopies = false }
                                 }
                                 // Save: green, chats are kept in History; red, incognito (nothing is kept from now on).
                                 IconButton(onClick = { st.setSaving(!saving) }) {
@@ -1975,6 +1978,7 @@ private val historyTime = java.time.format.DateTimeFormatter.ofPattern("EEE d MM
 private fun ChatHistoryMenu(
     open: Boolean, chats: List<ChatInfo>, current: String, busy: Set<String>,
     onDismiss: () -> Unit, onOpen: (ChatInfo) -> Unit, onRename: (ChatInfo) -> Unit, onDelete: (ChatInfo) -> Unit,
+    onTiinyCopies: () -> Unit = {},
 ) {
     var confirm by remember { mutableStateOf<String?>(null) }
     ScaledDropdownMenu(expanded = open, onDismissRequest = { confirm = null; onDismiss() }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 480.dp)) {
@@ -2014,7 +2018,75 @@ private fun ChatHistoryMenu(
                 onClick = { onOpen(c) },
             )
         }
+        // The Tiiny keeps its own copy of every chat (TiinyOS's vault, from every app): deletable here, by whole days.
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text("Copies kept on the Tiiny…", color = MaterialTheme.colorScheme.error) },
+            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) },
+            onClick = { onDismiss(); onTiinyCopies() },
+        )
     }
+}
+
+/**
+ * The chats the Tiiny keeps in its vault, per day, from every app (TiinyOS does this; incognito here doesn't stop it).
+ * Only whole days can be deleted: the warning says so before anything is deleted.
+ */
+@Composable
+private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
+    var days by remember { mutableStateOf<List<String>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var ask by remember { mutableStateOf<List<String>?>(null) } // the days about to be deleted (the confirmation)
+    LaunchedEffect(Unit) { st.tiinyChatDays { d, e -> days = d; error = e } }
+    val today = java.time.LocalDate.now().toString()
+    val list = ask
+    if (list != null) {
+        AlertDialog(
+            onDismissRequest = { ask = null },
+            title = { Text(if (list.size == 1) "Delete the whole of ${list[0]}?" else "Delete all ${list.size} days?") },
+            text = {
+                Text(
+                    "The Tiiny only deletes whole days: every chat of ${if (list.size == 1) "that day" else "those days"} goes, from all apps " +
+                        "(TiinyOS, this app, others), and the memory facts the Tiiny drew from them. TiinyOS's own chat list stays. " +
+                        "This can't be undone.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { st.deleteTiinyChatDays(list); ask = null; onClose() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { ask = null }) { Text("Cancel") } },
+        )
+        return
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Copies kept on the Tiiny") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "The Tiiny keeps a copy of every chat in its vault, sorted by day, from every app (TiinyOS does this; " +
+                        "incognito here doesn't stop it). It can be deleted only a whole day at a time.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                val d = days
+                when {
+                    error != null -> Text("Couldn't ask the Tiiny: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    d == null -> Text("Asking the Tiiny…", style = MaterialTheme.typography.bodySmall)
+                    d.isEmpty() -> Text("It keeps no chats right now.", style = MaterialTheme.typography.bodyMedium)
+                    else -> Text(
+                        "It keeps chats of ${d.size} day${if (d.size == 1) "" else "s"}" + (if (d.size > 1) ", from ${d.first()} to ${d.last()}." else ": ${d[0]}."),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            val d = days.orEmpty()
+            Row {
+                if (today in d) TextButton(onClick = { ask = listOf(today) }) { Text("Delete today", color = MaterialTheme.colorScheme.error) }
+                if (d.isNotEmpty()) TextButton(onClick = { ask = d }) { Text("Delete all", color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 /** Every section's number: 0 Models, 1 Create, 2 Chat, 3 Activity, 4 Settings, 5 Automate, 6 Gallery, 7 Translate, 8 Code. */

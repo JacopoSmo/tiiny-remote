@@ -316,6 +316,20 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                    var askDelete by remember(e.id) { mutableStateOf(false) }
+                    if (askDelete) androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { askDelete = false },
+                        title = { Text("Delete this result?") },
+                        text = {
+                            Text(
+                                (if (e.files.size > 1) "All ${e.files.size} pictures of \"${e.title}\" are deleted from this phone." else "\"${e.title}\" is deleted from this phone.") +
+                                    " This can't be undone; copies saved to the phone's own folders stay.",
+                            )
+                        },
+                        confirmButton = { TextButton(onClick = { askDelete = false; onClose(); st.delete(e) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+                        dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
+                    )
+                    TextButton(onClick = { askDelete = true }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
                     TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                     TextButton(onClick = onClose) { Text("Close") }
                 }
