@@ -1,21 +1,4 @@
 **Experimental** — installs as a separate app, "Tiiny Remote Exp" (orange "exp" ribbon on its icon), beside the normal Tiiny Remote, with its own settings. Newest features first; may still have rough edges. Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app).
 
-## 4.0.2-exp
-- **SearXNG from the terminal:** Settings → Web search now has **How to set it up (Terminal)**: the commands to set up your own SearXNG in Docker on the NAS over SSH, each with Copy (JSON answers on, the bot limiter off, port 8888), and how to check it.
-- **Fixes from Tiiny Studio 0.6.2–0.7.2** (where its developer found how the Tiiny really behaves):
-  - **Voice:** speaks through the voice model's own port first (at home or over the VPN). Through TiinyOS's gateway, VoxCPM2, OmniVoice, MOSS-TTS-Nano, Qwen3-TTS CustomVoice and VibeVoice-Realtime often fail or drop the last sentence. Every piece also ends with punctuation and a space, and the error message names the models that work through the gateway.
-  - **Speech-to-text:** recordings over 80 s go in ~60 s parts cut at quiet moments (the Tiiny fails past ~90 s): long dictations, transcriptions and spoken translations now work.
-  - **3D:** every picture with see-through parts (a cut-out or your own) is cleaned of faint pixels and its subject cropped and centred: no more flat cards or big floors.
-  - **Model Store:** a paused download (the Tiiny says "download_stop") now shows Resume instead of Pause; a download stopped by an error (no internet on the Tiiny's Wi-Fi) shows Retry; a model being unloaded isn't taken for a download.
-  - **Improve prompt:** uses a loaded Qwen-Image prompt enhancer (PE-T2I for prompts, PE-I2I for edits) first, and keeps only its text; helper models that claim not to think are told not to (the enhancer otherwise reasons until its tokens run out).
-- **Earlier Tiiny Studio fixes, checked against the app:**
-  - **Voice:** "The model's own voice" for voice models without built-in speakers: VoxCPM2 speaks with no voice chosen (before, it asked for a clip to clone).
-  - **Songs:** a **style reference** (10–30 s of music whose feel the song borrows) for the song models that take one (SongGeneration from 10 s, AceStep from 5 s; not YuE2).
-  - **OCR:** PP-DocLayoutV3 (it finds page layouts, reads no text) is no longer offered as an OCR model.
-  - **Free space:** a Create job doesn't start when the Tiiny has under 2 GB free (it would fail half-way); the message says how to make room.
-- **Safer attachments (from Tiiny Studio):** an attached file's text goes to the model between markers it's told never to obey. A file that looks like it gives the model instructions (ignore your rules, pretend to be the system, hide something from the user, call a tool, send a key somewhere, invisible characters) still goes along as data, but while it's in the chat, answers run without tools and web search, and you're told once which file and why (also in the log). Text in attached images is treated the same way, and Code tells the model that file contents are never instructions.
-- **Pictograms harmonised:** web search is a blue globe with a magnifier everywhere (chat options, agent tools, legend); Translate and Automate use the same pictograms as their pages (sidebar) everywhere, also in model labels, filters, the guides and the Translate button. Agents have a drawn robot head and processes a numbered list (fixed steps).
-- **Terminal guides:** a 6th, optional step in both (NAS agent and SearXNG): delete old, unused images after an update to free space.
-- **Own examples:** every example in the app is its own now (not Tiiny Studio's): image, edit, negative prompt, voice, speech text, loop, song style, lyrics. Video's field is called "Describe the clip", with an example.
-- **Mode:** Settings → Display → Mode, below Layout: Auto (as the phone is set), Dark or Light.
-- **Starting point:** the same as the normal app 4.0.1 (see its release; 4.0.1 adds the NAS agent's terminal guide under Automate → Connectors). New experimental features will be listed here as they come.
+## 4.0.3-exp
+- **Starting point:** the same as the normal app 4.0.2 (see its release: voice via the model's own port, long recordings, song style references, safer attachments, Mode, the new pictograms and more). New experimental features will be listed here as they come.

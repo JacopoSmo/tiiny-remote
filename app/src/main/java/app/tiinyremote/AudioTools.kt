@@ -593,8 +593,8 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
 
     // Style reference: a clip of music whose feel the song borrows (models that take one)
     if (sm.styleRef) {
-        LabelRow("Style reference", "optional · 10–30 s of music whose feel the song borrows")
-        AudioInput(styleRef, arrayOf("audio/*"), "Upload…") { styleRef = it }
+        LabelRow("Style reference", "optional · a WAV, ${if (sm.ace) "5" else "10"}–30 s of music whose feel the song borrows")
+        AudioInput(styleRef, arrayOf("audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"), "Upload a WAV…") { styleRef = it }
     }
 
     // Length
@@ -629,8 +629,11 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     val refSecs = styleRef?.seconds
     val why = notReady ?: when {
         caption.isBlank() -> "Describe the style."
-        sm.styleRef && styleRef != null && refSecs != null && refSecs < (if (sm.plain) 5.0 else 10.0) ->
-            "The style reference must be at least ${if (sm.plain) 5 else 10} s long."
+        // The Tiiny takes a WAV clip only: 10 s at least for SongGeneration, 5 s for AceStep (Tiiny Studio's check).
+        sm.styleRef && styleRef != null && !(styleRef!!.bytes.size > 12 && String(styleRef!!.bytes, 0, 4) == "RIFF") ->
+            "The style reference must be a WAV file."
+        sm.styleRef && styleRef != null && refSecs != null && refSecs < (if (sm.ace) 5.0 else if (sm.yue) 0.0 else 10.0) ->
+            "The style reference must be at least ${if (sm.ace) 5 else 10} s long."
         sm.styleRef && styleRef != null && refSecs != null && refSecs > 120.0 -> "The style reference can be at most 120 s long (30 s is plenty)."
         sm.styleRef && (styleRef?.bytes?.size ?: 0) > 25 * 1024 * 1024 -> "The style reference is too big: use a shorter clip (up to 25 MB)."
         vocals && lyrics.text.isBlank() -> "Add lyrics, or switch to Instrumental."

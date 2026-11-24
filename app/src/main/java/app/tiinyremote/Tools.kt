@@ -337,6 +337,7 @@ object Tools {
      */
     private fun ttsText(piece: String): String {
         var t = piece.trimEnd()
+        if (t.isBlank()) return piece
         val core = t.trimEnd('"', '\'', '\u201d', '\u2019', ')', ']', '\u00bb', '\u300d', '\u300f')
         if (core.isNotEmpty() && core.last() !in ".!?\u2026\u3002\uff01\uff1f") {
             val ch = core.last()

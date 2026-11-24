@@ -1484,10 +1484,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val suspicious = files.mapNotNull { (name, body) -> Safety.screen(name + "\n" + body).takeIf { it.isNotEmpty() }?.let { name to it } }
         val canMake = wantsTools && suspicious.isEmpty()
         val web = wantsWeb && suspicious.isEmpty()
-        if (suspicious.isNotEmpty()) {
+        if (suspicious.isNotEmpty() && (wantsTools || wantsWeb)) {
             val (name, why) = suspicious.first()
             ApiLog.add("$name looks like it carries instructions for the model (${why.joinToString("; ")}): this answer runs without tools and web search", "Chat", isProblem = true)
-            if (warned.add(id + "|" + name) && (wantsTools || wantsWeb)) note(
+            if (warned.add(id + "|" + name)) note(
                 "📄 $name looks like it carries instructions for the model (${why.joinToString("; ")}). It still goes along, " +
                     "marked as data, but while it's in this chat, answers run without tools and web search.",
             )
