@@ -2039,7 +2039,7 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
     if (list != null) {
         AlertDialog(
             onDismissRequest = { ask = null },
-            title = { Text(if (list.size == 1) (if (list[0] == java.time.LocalDate.now().toString()) "Delete all of today's chats?" else "Delete all chats of ${list[0]}?") else "Delete all ${list.size} days?") },
+            title = { Text(if (list.size == 1) (if (list[0] == today) "Delete all of today's chats?" else "Delete all chats of ${list[0]}?") else "Delete all ${list.size} days?") },
             text = {
                 Text(
                     "Every chat of ${if (list.size == 1) "that day" else "those days"} goes, from all apps, with what the Tiiny " +

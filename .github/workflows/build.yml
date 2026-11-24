@@ -33,7 +33,7 @@ jobs:
           echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
 
       - name: Version number
-        run: echo "APP_VERSION=4.0.$(( ${{ github.run_number }} - 50 ))" >> "$GITHUB_ENV"
+        run: echo "APP_VERSION=4.1.$(( ${{ github.run_number }} - 75 ))" >> "$GITHUB_ENV"
 
       - name: Build the APK
         env:

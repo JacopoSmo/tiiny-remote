@@ -161,6 +161,8 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     else shown.groupBy { fmt.format(Instant.ofEpochMilli(it.created).atZone(ZoneId.systemDefault())) }.toList()
 
     val marked = results.filter { it.id in selected }
+    // Back leaves marking first.
+    androidx.activity.compose.BackHandler(enabled = marked.isNotEmpty()) { selected = emptySet() }
     if (askDelete) androidx.compose.material3.AlertDialog(
         onDismissRequest = { askDelete = false },
         title = { Text("Delete ${marked.size} result${if (marked.size == 1) "" else "s"}?") },
@@ -171,7 +173,7 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
         dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
     )
     Column(Modifier.fillMaxSize()) {
-    if (selected.isNotEmpty()) Row(
+    if (marked.isNotEmpty()) Row(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -235,17 +237,17 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
             for (row in pics.chunked(3)) item(key = "g-" + row.joinToString("-") { it.id }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (e in row) Thumb(e, st, Modifier.weight(1f), e.id in selected, onLongPress = { toggle(e) }) {
-                        if (selected.isNotEmpty()) toggle(e) else full = e
+                        if (marked.isNotEmpty()) toggle(e) else full = e
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
             items(list.filter { it !in pics }, key = { it.id }) { e ->
-                ResultCard(e, st, marked = e.id in selected, selecting = selected.isNotEmpty(), onMark = { toggle(e) })
+                ResultCard(e, st, marked = e.id in selected, selecting = marked.isNotEmpty(), onMark = { toggle(e) })
             }
         }
         item {
-            if (results.isNotEmpty() && selected.isEmpty()) Text(
+            if (results.isNotEmpty() && marked.isEmpty()) Text(
                 "Long-press to mark several, then share or delete them.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

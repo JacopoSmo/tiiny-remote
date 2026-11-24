@@ -131,23 +131,26 @@ object Tools {
     /** The picture forming, while an image is made with live preview on (and the step it shows); null otherwise. */
     val livePreview = kotlinx.coroutines.flow.MutableStateFlow<Pair<ByteArray, Int>?>(null)
 
-    /**
-     * One picture through the streaming route, with a preview every `every` steps (TiinyPaint's way: each preview is
-     * a decode of the picture so far, ~2.5 s per megapixel, so it makes the picture slower). Returns the picture as
-     * base64, or null when the device doesn't offer the route (then the normal one is used).
-     */
     /** Each image model's own step count, as its live route tells it ("… between 1 and steps (40)"). */
     private val modelSteps = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    /**
+     * One image through the streaming route, with a preview every `every` steps (TiinyPaint's way: each preview is
+     * a decode of the image so far, ~2.5 s per megapixel, so it makes the image slower). Returns the image as
+     * base64, or null when that route can't make it (then the normal one is used).
+     */
 
     private fun imageStreamed(c: DeviceClient, body: JSONObject, steps0: Int?, every: Int, p: Progress, again: Boolean = true): String? {
         val steps = steps0 ?: modelSteps[body.optString("model")]
         val (w, h) = body.optString("size").split("x").mapNotNull { it.trim().toIntOrNull() }.let { if (it.size == 2) it[0] to it[1] else return null }
         val s = JSONObject(body.toString()).put("width", w).put("height", h).put("app_id", "tiinyremote")
         s.remove("size"); s.remove("n"); s.remove("response_format")
-        // Which steps to show: every `every` up to the step count (the model's own when not set: up to 60, those past
-        // its last step simply don't come).
+        // Which steps to show: every `every` up to the step count. The model's own isn't known until its first refusal
+        // names it; until then up to 30 (a model with fewer steps refuses, and the retry uses its count).
         val last = steps ?: 30
-        s.put("stream_return_steps", JSONArray((every until last step every).toList()))
+        val shown = (every until last step every).toList()
+        if (shown.isEmpty()) return null // too few steps for previews
+        s.put("stream_return_steps", JSONArray(shown))
         var image: String? = null
         var failed: String? = null
         val r = c.sse("/v1/image/generate/stream", s, 3600, { p.cancelled() }) { event, data ->

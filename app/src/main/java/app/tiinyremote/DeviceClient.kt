@@ -76,8 +76,11 @@ class DeviceClient(url: String, private val key: String) {
     private fun busy(code: Int, bytes: ByteArray): Boolean {
         if (bytes.size > 4000) return false
         val t = String(bytes, Charsets.UTF_8)
-        return "150004" in t || "xh2a backend fail" in t || (code == 502 && "upstream model server request failed" in t.lowercase())
+        // 150004 as the error code, or anywhere in an answer that isn't a model's reply (that may mention the number).
+        return BUSY_CODE.containsMatchIn(t) || ("150004" in t && "\"choices\"" !in t && "\"data\"" !in t) || "xh2a backend fail" in t || (code == 502 && "upstream model server request failed" in t.lowercase())
     }
+
+    private val BUSY_CODE = Regex("\"(?:code|error_code|err_code)\"\\s*:\\s*\"?150004")
 
     private fun <T> retryBusy(path: String, call: () -> T, check: (T) -> Pair<Int, ByteArray>?): T {
         var wait = 5_000L

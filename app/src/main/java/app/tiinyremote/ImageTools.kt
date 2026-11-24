@@ -574,7 +574,7 @@ private fun CharacterDialog(ch: PicCharacter, onClose: () -> Unit, onDelete: () 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(PicCharacter(name.trim(), desc.trim(), seed.toLongOrNull() ?: ch.seed)) },
+                onClick = { onSave(PicCharacter(name.trim(), desc.trim(), (seed.toLongOrNull() ?: ch.seed).coerceIn(0, Int.MAX_VALUE.toLong()))) },
                 enabled = name.isNotBlank() && desc.isNotBlank(),
             ) { Text("Save") }
         },
