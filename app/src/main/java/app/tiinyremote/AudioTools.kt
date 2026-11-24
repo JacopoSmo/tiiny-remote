@@ -247,7 +247,7 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
                 clip?.seconds?.let { s ->
                     if (s < 3 || s > 20) Hint("Works best between 3 and 20 seconds; this one is %.0f s.".format(s), warn = true)
                 }
-                Field(clipText, { clipText = it }, "Transcript", lines = 3, placeholder = "Exactly what's said in the clip (makes the clone much better)")
+                Field(clipText, { clipText = it }, "Transcript", lines = 3, placeholder = "Word for word what the clip says (the clone gets much better)")
                 if (models.any { it.isAsr }) {
                     OutlinedButton(
                         enabled = clip != null && helper == null,
@@ -269,18 +269,18 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
             }
         }
         cur == "design" -> {
-            Field(design, { design = it }, "Describe the voice", lines = 2, placeholder = "e.g. a calm, warm narrator with a slight British accent")
+            Field(design, { design = it }, "Describe the voice", lines = 2, placeholder = "e.g. a cheerful young radio host, bright and quick")
             TagChips(DESIGN_CHIPS, { design == it }) { design = it }
         }
     }
 
     LabelRow("What to say", "${text.length} characters")
-    Field(text, { text = it }, "Text", lines = 5, placeholder = "Type what the voice should say…")
+    Field(text, { text = it }, "Text", lines = 5, placeholder = "e.g. Good morning! Today will be sunny, with a light breeze on the lake.")
     if (text.length > 320) Hint("Long text is read in ${(text.length + 299) / 300} parts and joined.")
 
     if (saved != null && c?.instruct == true) {
         LabelRow("Delivery", "optional")
-        Field(instruct, { instruct = it }, "How to say it", placeholder = "e.g. calm and warm, a little slower")
+        Field(instruct, { instruct = it }, "How to say it", placeholder = "e.g. whispering, as if telling a secret")
         TagChips(STYLE_CHIPS, { instruct == it }) { instruct = if (instruct == it) "" else it }
     }
 
@@ -366,7 +366,7 @@ internal fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
 
     // Describe it: a chat model maps your words to the tag vocabulary.
     LabelRow("Describe it", "optional")
-    Field(desc, { desc = it }, "In your own words", lines = 2, placeholder = "e.g. a dreamy, shimmering pad for a night drive")
+    Field(desc, { desc = it }, "In your own words", lines = 2, placeholder = "e.g. warm lo-fi piano with soft vinyl crackle, for studying")
     if (models.any { it.isChat }) {
         OutlinedButton(
             enabled = desc.isNotBlank() && helper == null,
@@ -517,7 +517,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
 
     // Style
     LabelRow("Style")
-    Field(caption, { caption = it }, "Genre, mood, instruments, voice", lines = 2, placeholder = "e.g. upbeat indie pop, female vocals, jangly guitars")
+    Field(caption, { caption = it }, "Genre, mood, instruments, voice", lines = 2, placeholder = "e.g. alpine folk-rock, male choir, accordion and stomping drums")
     TagChips(SONG_CHIPS, { Regex("\\b${Regex.escape(it)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(caption) }, { "+ $it" }) { chip ->
         caption = caption.trimEnd().trimEnd(',').let { if (it.isBlank()) chip else "$it, $chip" }
     }
@@ -540,7 +540,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         OutlinedTextField(
             value = lyrics,
             onValueChange = { lyrics = it },
-            placeholder = { Text("[verse]\nYour first verse…\n\n[chorus]\nThe hook…") },
+            placeholder = { Text("[verse]\nThe first lines…\n\n[chorus]\nThe part everyone sings…") },
             minLines = 8,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -585,7 +585,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
                     Dropdown("Key", listOf("" to "Auto") + KEYS.map { it to it }, keyScale) { keyScale = it }
                     Dropdown("Time signature", TIME_SIGS, timeSig) { timeSig = it }
                     if (vocals) Dropdown("Sung in", ACE_LANGS, vocalLang) { vocalLang = it }
-                    Field(avoid, { avoid = it }, "Avoid (optional)", placeholder = "e.g. drums, distortion")
+                    Field(avoid, { avoid = it }, "Avoid (optional)", placeholder = "e.g. vocals, heavy bass")
                 }
             }
         }
