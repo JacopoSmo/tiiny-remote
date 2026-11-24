@@ -430,7 +430,8 @@ object AutoRunner {
     private fun now(): String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, HH:mm", Locale.ENGLISH))
 
     private fun system() = "You are running an automation for the user of Tiiny Remote, on their own Tiiny AI device. " +
-        "Now: ${now()} (${ZoneId.systemDefault().id}). Be concise and useful; use Markdown. Write in the language of the task."
+        "Now: ${now()} (${ZoneId.systemDefault().id}). Be concise and useful; use Markdown. Write in the language of the task. " +
+        "The result is read later, not answered: no questions and no offers of further help at the end."
 
     /** Input → model → result. */
     private fun process(
@@ -710,7 +711,7 @@ object NasAgent {
         val (_, t) = call(c, "GET", "/status")
         val o = JSONObject(t)
         val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
-        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations")} automation(s), Tiiny " +
+        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
             if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
     }
 
@@ -747,14 +748,14 @@ object NasAgent {
     }
 }
 
-/** Ready-made starting points for the editor. */
+/** Ready-made starting points for the editor, alphabetical. */
 val AUTOMATION_TEMPLATES: List<Automation> = listOf(
     Automation("", "Morning news", source = "news", sourceArg = "Switzerland", time = "07:00",
         instruction = "Give me the 5 most important news items in short bullet points, each with its link."),
+    Automation("", "Research agent", kind = "agent", time = "", tools = setOf("web", "pages"),
+        instruction = "Find the latest news about Tiiny AI and summarise what's new, with links."),
     Automation("", "Today's emails", source = "email", sourceArg = "24", time = "18:00",
         instruction = "Summarise today's emails: what needs an answer or action from me first, then the rest in one line each."),
     Automation("", "Tomorrow's meetings", source = "calendar", sourceArg = "tomorrow", time = "20:00", days = setOf(7, 1, 2, 3, 4),
         instruction = "List tomorrow's meetings with time and place, and point out clashes or tight gaps."),
-    Automation("", "Research agent", kind = "agent", time = "", tools = setOf("web", "pages"),
-        instruction = "Find the latest news about Tiiny AI and summarise what's new, with links."),
 )

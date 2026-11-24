@@ -62,7 +62,7 @@ import kotlin.random.Random
  * The image workspace, laid out like Tiiny Studio's (static/image.js): Create, Edit and Text.
  */
 
-private val CREATE_CHIPS = listOf("cinematic lighting", "35mm photo", "watercolor", "isometric 3D", "studio product shot", "golden hour")
+private val CREATE_CHIPS = listOf("35mm photo", "cinematic lighting", "golden hour", "isometric 3D", "studio product shot", "watercolor")
 private val EDIT_CHIPS = listOf("Change the background to ", "Make it night time", "Turn it into a watercolor painting", "Remove the ", "Add ", "Change the color of the ")
 
 // ---------------- size math (Tiiny Studio's) ----------------

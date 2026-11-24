@@ -78,6 +78,17 @@ fun AppTheme(theme: String = "auto", content: @Composable () -> Unit) {
         dark -> darkColorScheme()
         else -> lightColorScheme()
     }
+    // The phone's status and navigation bar icons follow the chosen mode too (dark icons on a light app), else
+    // Light on a phone set to dark leaves white icons on a light bar.
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) androidx.compose.runtime.SideEffect {
+        (view.context as? android.app.Activity)?.window?.let { w ->
+            androidx.core.view.WindowCompat.getInsetsController(w, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
     MaterialTheme(colorScheme = scheme, content = content)
 }
 

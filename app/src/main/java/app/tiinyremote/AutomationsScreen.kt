@@ -147,14 +147,22 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
     fun saveConnectors(c: Connectors) {
         store.saveConnectors(c)
         _conn.value = store.connectors()
-        if (c.nasReady) pushNas()
+        if (c.nasReady) pushNas(announce = true) else _note.value = "Saved."
     }
 
     fun testEmail(c: Connectors) = test("email", "Email") {
         try {
             Mail.test(c)
         } catch (e: Exception) {
-            throw MediaException("Email didn't work: ${e.message ?: e.javaClass.simpleName}")
+            val why = generateSequence<Throwable>(e) { it.cause }.toList()
+            throw MediaException("Email didn't work: " + when {
+                why.any { it is java.net.UnknownHostException } -> "the server ${c.imapHost} wasn't found. Check its address."
+                why.any { it is java.net.SocketTimeoutException || it is java.net.ConnectException } ->
+                    "no answer from ${c.imapHost} on port ${c.imapPort}. Check the address, port and SSL/TLS."
+                why.any { it is javax.mail.AuthenticationFailedException } ->
+                    "the server refused the user or password. Most services need an app password, not your normal one."
+                else -> e.message ?: e.javaClass.simpleName
+            })
         }
     }
 
@@ -182,11 +190,12 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun testNas(c: Connectors) = test("nas", "NAS agent") { NasAgent.test(c) }
 
-    private fun pushNas() {
+    private fun pushNas(announce: Boolean = false) {
         if (!_conn.value.nasReady) return
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { NasAgent.push(getApplication()) }
+                if (announce) _note.value = "Saved and sent to the NAS agent."
             } catch (e: Exception) {
                 _note.value = "Couldn't update the NAS agent: ${e.message}"
             }
@@ -357,6 +366,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
     var token by remember(conn) { mutableStateOf(conn.nasToken) }
     // One field per calendar; at least one (empty) field.
     var ics by remember(conn) { mutableStateOf(conn.icsLinks.ifEmpty { listOf("") }) }
+    var dropped by remember(conn) { mutableStateOf(0) }
     var ntfy by remember(conn) { mutableStateOf(conn.ntfyUrl) }
     fun current() = Connectors(
         host.trim(), port.toIntOrNull()?.takeIf { it in 1..65535 } ?: if (ssl) 993 else 143, user.trim(), pw, ssl,
@@ -430,16 +440,27 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
                         { v ->
                             // Several links pasted at once (one per line) become several fields.
                             val parts = v.split('\n', '\r', ' ').filter { it.isNotBlank() }
-                            ics = if (parts.size > 1) (ics.take(i) + parts + ics.drop(i + 1)).take(10)
-                            else ics.toMutableList().also { it[i] = v.trim() }
+                            if (parts.size > 1) {
+                                val all = ics.take(i) + parts + ics.drop(i + 1)
+                                dropped = (all.size - 10).coerceAtLeast(0)
+                                ics = all.take(10)
+                            } else ics = ics.toMutableList().also { it[i] = v.trim() }
                         },
                         if (ics.size > 1) "Private iCal (.ics) link ${i + 1}" else "Private iCal (.ics) link",
                         Modifier.weight(1f),
                     )
-                    if (ics.size > 1) TextButton(onClick = { ics = ics.filterIndexed { j, _ -> j != i } }) { Text("✕") }
+                    // ✕ removes a field; on the last one left it empties it.
+                    if (ics.size > 1 || link.isNotBlank()) TextButton(onClick = {
+                        ics = if (ics.size > 1) ics.filterIndexed { j, _ -> j != i } else listOf("")
+                        dropped = 0
+                    }) { Text("✕") }
                 }
             }
             if (ics.size < 10 && ics.last().isNotBlank()) TextButton(onClick = { ics = ics + "" }) { BtnLabel("Another calendar", symbol = "＋") }
+            if (dropped > 0) Text(
+                "Up to 10 calendars: the last $dropped pasted link${if (dropped == 1) " was" else "s were"} left out.",
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+            )
             OutlinedTextField(ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row {
                 TextButton(onClick = { av.saveConnectors(current()) }) { BtnLabel("Save", symbol = "✓") }
@@ -549,6 +570,8 @@ private fun AutomationEditor(
     onSave: (Automation) -> Unit, onDelete: (Automation) -> Unit, onClose: () -> Unit,
 ) {
     var a by remember(start) { mutableStateOf(start) }
+    // Its own switch: emptying the time field to retype it doesn't turn "At a set time" off.
+    var timed by remember(start) { mutableStateOf(start.time.isNotBlank()) }
     val chatModels = models.filter { it.isChat }
     val dayNames = listOf("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
     ScaledAlertDialog(
@@ -562,14 +585,14 @@ private fun AutomationEditor(
                 // 1. When
                 Text("When", style = MaterialTheme.typography.titleSmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(checked = a.time.isNotBlank(), onCheckedChange = { a = a.copy(time = if (it) "07:00" else "") })
+                    Switch(checked = timed, onCheckedChange = { timed = it; a = a.copy(time = if (it) a.time.ifBlank { "07:00" } else "") })
                     Spacer(Modifier.width(8.dp))
-                    Text(if (a.time.isNotBlank()) "At a set time" else "Only when I tap Run", style = MaterialTheme.typography.bodyMedium)
+                    Text(if (timed) "At a set time" else "Only when I tap Run", style = MaterialTheme.typography.bodyMedium)
                 }
-                if (a.time.isNotBlank()) {
+                if (timed) {
                     OutlinedTextField(
                         a.time, { t -> a = a.copy(time = t.filter { it.isDigit() || it == ':' }.take(5)) },
-                        label = { Text("Time (HH:MM)") }, singleLine = true, isError = runCatching { java.time.LocalTime.parse(a.time) }.isFailure,
+                        label = { Text("Time (HH:MM)") }, singleLine = true, isError = normTime(a.time) == null,
                         modifier = Modifier.width(160.dp),
                     )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -647,9 +670,9 @@ private fun AutomationEditor(
         },
         confirmButton = {
             val valid = a.name.isNotBlank() && a.instruction.isNotBlank() &&
-                (a.time.isBlank() || runCatching { java.time.LocalTime.parse(a.time) }.isSuccess) &&
+                (!timed || normTime(a.time) != null) &&
                 (a.kind != "agent" || a.tools.isNotEmpty()) && (a.where != "nas" || conn.nasReady)
-            TextButton(onClick = { onSave(a) }, enabled = valid) { BtnLabel("Save", symbol = "✓") }
+            TextButton(onClick = { onSave(a.copy(time = if (timed) normTime(a.time) ?: "" else "")) }, enabled = valid) { BtnLabel("Save", symbol = "✓") }
         },
         dismissButton = if (start.id.isNotBlank()) ({ TextButton(onClick = { onDelete(start) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } }) else null,
     )
@@ -697,4 +720,11 @@ private fun TestAnswer(key: String, testing: Set<String>, tests: Map<String, Aut
         Text((if (r.ok) "✓ " else "⚠ ") + r.text, style = MaterialTheme.typography.bodyMedium)
         TextButton(onClick = openLogs, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("Open the log (Automate) →") }
     }
+}
+
+/** A typed time as HH:MM ("7:00", "0700" and "07:00" all work), or null if it isn't one. */
+private fun normTime(t: String): String? {
+    val m = Regex("""^(\d{1,2}):?(\d{2})$""").matchEntire(t.trim()) ?: return null
+    val h = m.groupValues[1].toInt(); val min = m.groupValues[2].toInt()
+    return if (h in 0..23 && min in 0..59) String.format(java.util.Locale.ROOT, "%02d:%02d", h, min) else null
 }
