@@ -1,7 +1,8 @@
-# Tiiny Remote NAS agent: runs your NAS automations around the clock. Standard library only.
+# Tiiny Remote NAS agent: runs your NAS automations around the clock. Standard library only (plus Python's time-zone data).
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 DATA_DIR=/data PORT=8765
-RUN useradd --uid 10001 --create-home agent && mkdir -p /data && chown agent /data
+# Time zones: the slim image may come without the system's zone database; Python's own copy is the fallback.
+RUN pip install --no-cache-dir tzdata && useradd --uid 10001 --create-home agent && mkdir -p /data && chown agent /data
 COPY agent.py /app/agent.py
 USER agent
 EXPOSE 8765

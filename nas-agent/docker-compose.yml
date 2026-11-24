@@ -12,8 +12,7 @@ services:
       # A long random secret; enter the same one in the app (Automate → Connectors → NAS agent).
       # Make one with: openssl rand -hex 24
       AGENT_TOKEN: "change-me-to-a-long-random-secret"
-      # Your time zone, for "every day at 07:00".
-      TZ: "Europe/Zurich"
+      # No time zone needed: the app sends your phone's, so "every day at 07:00" is 07:00 where you are.
     volumes:
       # A named volume: it keeps the automations and results, and the service (not root) can write to it.
       - tiiny-agent-data:/data

@@ -431,7 +431,7 @@ private val NAS_STEPS = listOf(
     "2. Write the setup file (paste the whole block; it puts the token in). The last line shows it: AGENT_TOKEN must not be empty." to
         "cat > docker-compose.yml <<EOF\nservices:\n  tiiny-agent:\n    image: ghcr.io/jacoposmo/tiiny-remote-agent:latest\n" +
         "    container_name: tiiny-agent\n    restart: unless-stopped\n    ports:\n      - \"8765:8765\"\n    environment:\n" +
-        "      AGENT_TOKEN: \"\$TOKEN\"\n      TZ: \"Europe/Zurich\"\n    volumes:\n      - tiiny-agent-data:/data\nvolumes:\n" +
+        "      AGENT_TOKEN: \"\$TOKEN\"\n    volumes:\n      - tiiny-agent-data:/data\nvolumes:\n" +
         "  tiiny-agent-data:\nEOF\ncat docker-compose.yml",
     "3. Start it (if \"compose\" isn't known: sudo docker-compose up -d):" to "sudo docker compose up -d",
     "If it says denied or unauthorized while pulling the image, let the NAS build it itself instead:" to
