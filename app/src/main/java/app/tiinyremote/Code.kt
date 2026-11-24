@@ -84,7 +84,13 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val note by cv.note.collectAsState()
     var mode by rememberSaveable { mutableStateOf(st.setting("code.mode", "ask")) }
     var think by rememberSaveable { mutableStateOf(st.setting("code.think", "0") == "1") }
-    var input by rememberSaveable(current) { mutableStateOf("") }
+    // Kept when the first project is made (a question typed before it isn't lost); cleared when switching projects.
+    var input by rememberSaveable { mutableStateOf("") }
+    var inputFor by rememberSaveable { mutableStateOf(current) }
+    if (inputFor != current) {
+        if (inputFor != null) input = ""
+        inputFor = current
+    }
     var showFiles by rememberSaveable { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var projMenu by remember { mutableStateOf(false) }
@@ -180,12 +186,27 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
+        if (input.isNotBlank() && (current == null || model?.running != true)) Text(
+            if (current == null) "To send, start a project first: ＋ New project (or pick one under 📁)." else "To send, load the model first (▶ above).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             OutlinedTextField(
                 value = input,
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f).heightIn(max = 160.dp),
-                placeholder = { Text(if (mode == "build") "What should it build or change?" else "Your question") },
+                // Send needs a project and a loaded model: the placeholder says what's missing instead of a silent grey button.
+                placeholder = {
+                    Text(
+                        when {
+                            current == null -> "Start a project first (＋ New project)"
+                            model?.running != true -> "Load the model first (▶ above)"
+                            mode == "build" -> "What should it build or change?"
+                            else -> "Your question"
+                        },
+                    )
+                },
             )
             Spacer(Modifier.width(6.dp))
             if (busy != null) {

@@ -3,6 +3,8 @@
 ## 4.0.6-exp
 - **Normal app and Exp app on the same NAS:** with **NAS agent 1.5** (image `:exp`) each app keeps its own automations, connectors (calendars, email, push) and results on the NAS; saving in one no longer replaces the other's. Your earlier setup counts as the normal app's. Agents before 1.5 still keep only one setup for both (and keep working: 4.0.6-exp.4 and .5 made them answer "HTTP 404", fixed).
 - **Deleting an automation asks first.**
+- **Code:** Send needs a project and a loaded model; the field now says which is missing instead of a silent grey button. A question typed before making the first project is kept. Project names keep umlauts and accents as plain letters ("über" → "ueber") instead of dropping them.
+- **Automate from the side menu** while it's already open also goes back to its list.
 - **Back means back:** going back (← or the back gesture) to Automate, e.g. from the log opened by a test answer, returns to the same section (e.g. Connectors) at the same place on the page. Opening Automate from the side menu starts on its list, at the top.
 - **Image shapes:** only the usual ones (1:1, 4:3, 3:2, 16:10, 16:9, 21:9 and their upright versions); a model's sizes are listed under the nearest one instead of odd ratios like 75:56.
 - **Fixes from a full test on the phone:**

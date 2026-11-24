@@ -75,6 +75,11 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
     val scroll = androidx.compose.foundation.ScrollState(0)
     var cameBack = false
 
+    fun openFresh() {
+        section = "list"
+        viewModelScope.launch { scroll.scrollTo(0) }
+    }
+
     private val store = AutoStore(app)
     private val _list = MutableStateFlow(store.automations())
     val list: StateFlow<List<Automation>> = _list.asStateFlow()

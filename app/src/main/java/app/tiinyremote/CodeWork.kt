@@ -103,7 +103,13 @@ class CodeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** A folder-safe name: letters, digits, - and _ (the name of a GitHub repository fits too). */
-    private fun clean(name: String) = name.trim().replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-', '.').take(60)
+    // Umlauts and accents become plain letters ("über" → "ueber", "café" → "cafe") instead of disappearing.
+    private fun clean(name: String): String {
+        val de = name.trim().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("Ä", "Ae").replace("Ö", "Oe")
+            .replace("Ü", "Ue").replace("ß", "ss")
+        val plain = java.text.Normalizer.normalize(de, java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+        return plain.replace(Regex("[^A-Za-z0-9._-]+"), "-").trim('-', '.').take(60)
+    }
 
     fun newProject(name: String): Boolean {
         if (_busy.value != null) {

@@ -196,7 +196,10 @@ fun AppRoot(vm: MainViewModel) {
     // Where you came from: ← and Android's back gesture go back through it; with nothing left, back closes the app.
     val history = remember { mutableStateListOf<Pair<Int, String?>>() }
     fun goTab(i: Int) {
-        if (i == tab) return
+        if (i == tab) {
+            if (i == 5) av.openFresh() // Automate chosen again while open: back to its list, at the top
+            return
+        }
         history.add(tab to toolId)
         if (history.size > 30) history.removeAt(0)
         tab = i
