@@ -151,18 +151,28 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun testEmail(c: Connectors) = viewModelScope.launch {
+        _testing.value = "Testing the email connection…"
         _note.value = try {
-            withContext(Dispatchers.IO) { Mail.test(c) }
+            withContext(Dispatchers.IO) { Mail.test(c) }.also { ApiLog.add("Email test: $it", "Automate") }
         } catch (e: Exception) {
-            "Email didn't work: ${e.message ?: e.javaClass.simpleName}"
+            "Email didn't work: ${e.message ?: e.javaClass.simpleName}".also { ApiLog.add(it, "Automate", isProblem = true) }
+        } finally {
+            _testing.value = null
         }
     }
 
+    /** A test in progress ("Testing the NAS agent…"), shown under the buttons until its answer comes. */
+    private val _testing = MutableStateFlow<String?>(null)
+    val testing: StateFlow<String?> = _testing.asStateFlow()
+
     fun testNas(c: Connectors) = viewModelScope.launch {
+        _testing.value = "Testing the NAS agent…"
         _note.value = try {
-            withContext(Dispatchers.IO) { NasAgent.test(c) }
+            withContext(Dispatchers.IO) { NasAgent.test(c) }.also { ApiLog.add("NAS agent test: $it", "Automate") }
         } catch (e: Exception) {
-            e.message
+            (e.message ?: e.javaClass.simpleName).also { ApiLog.add("NAS agent test failed: $it", "Automate", isProblem = true) }
+        } finally {
+            _testing.value = null
         }
     }
 
@@ -328,6 +338,7 @@ private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewMo
 @Composable
 private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
     val ctx = LocalContext.current
+    val testing by av.testing.collectAsState()
     var calOk by remember { mutableStateOf(PhoneCalendar.allowed(ctx)) }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { calOk = it }
     var host by remember(conn) { mutableStateOf(conn.imapHost) }
@@ -385,6 +396,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                     BtnLabel("Test", symbol = "🔌")
                 }
             }
+            testing?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         }
     }
     Card(Modifier.fillMaxWidth()) {
@@ -407,6 +419,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                     BtnLabel("Test", symbol = "🔌")
                 }
             }
+            testing?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
             val uri = androidx.compose.ui.platform.LocalUriHandler.current
             var terminal by remember { mutableStateOf(false) }
             // Side by side (scrolling sideways when the screen is narrow).
