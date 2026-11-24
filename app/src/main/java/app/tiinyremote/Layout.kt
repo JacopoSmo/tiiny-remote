@@ -323,7 +323,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                         title = { Text("Delete this result?") },
                         text = {
                             Text(
-                                (if (e.files.size > 1) "All ${e.files.size} pictures of \"${e.title}\" are deleted from this phone." else "\"${e.title}\" is deleted from this phone.") +
+                                (if (e.files.size > 1) "All ${e.files.size} images of \"${e.title}\" are deleted from this phone." else "\"${e.title}\" is deleted from this phone.") +
                                     " This can't be undone; copies saved to the phone's own folders stay.",
                             )
                         },

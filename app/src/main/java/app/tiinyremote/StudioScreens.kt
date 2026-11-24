@@ -1627,7 +1627,7 @@ private fun AttachButton(seesImages: Boolean, st: StudioViewModel, onImage: (Pic
         fromGallery = false
         load {
             val img = withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.fromFile(st.store.file(name)) }
-            if (img != null) onImage(img) else onError("Couldn't read that picture.")
+            if (img != null) onImage(img) else onError("Couldn't read that image.")
         }
     }
     val pickImage = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1690,10 +1690,10 @@ internal fun GalleryImagePicker(st: StudioViewModel, onClose: () -> Unit, onPick
         Card {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Pick a picture from the Gallery", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text("Pick an image from the Gallery", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = onClose) { Text("✕") }
                 }
-                if (pics.isEmpty()) Text("No pictures made yet.", style = MaterialTheme.typography.bodyMedium)
+                if (pics.isEmpty()) Text("No images made yet.", style = MaterialTheme.typography.bodyMedium)
                 Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (row in pics.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         for ((e, name) in row) {

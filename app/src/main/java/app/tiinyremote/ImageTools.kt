@@ -300,7 +300,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
     }
 
     // Characters
-    LabelRow("Characters", "look the same in every picture")
+    LabelRow("Characters", "look the same in every image")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (ch in characters) FilterChip(
             selected = ch.name in chosen,
@@ -310,7 +310,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         )
         AssistChip(onClick = { editingChar = PicCharacter("", "", Random.nextLong(0, 1L shl 31)) }, label = { Text("+ Character") })
     }
-    if (characters.isEmpty()) Hint("Describe a person, animal or object once (looks, clothes, colours); tick it, and it's drawn the same way in every picture.")
+    if (characters.isEmpty()) Hint("Describe a person, animal or object once (looks, clothes, colours); tick it, and it's drawn the same way in every image.")
     editingChar?.let { ch ->
         CharacterDialog(ch, onClose = { editingChar = null }, onDelete = {
             saveChars(characters.filter { it.name != ch.name }); chosen = chosen - ch.name; editingChar = null
@@ -412,8 +412,8 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                     Column(Modifier.weight(1f)) {
                         Text("Live preview", style = MaterialTheme.typography.labelLarge)
                         Text(
-                            "Shows the picture as it forms, every 4 steps (readable from about three quarters of the way). " +
-                                "Each preview costs the Tiiny time (about 2.5 s per megapixel), so pictures take longer.",
+                            "Shows the image as it forms, every 4 steps (readable from about three quarters of the way). " +
+                                "Each preview costs the Tiiny time (about 2.5 s per megapixel), so images take longer.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -564,7 +564,7 @@ private fun CharacterDialog(ch: PicCharacter, onClose: () -> Unit, onDelete: () 
                 )
                 Text(
                     "Concrete and countable works best: colours, clothes, hair, marks. These words and the seed go into every " +
-                        "picture with this character, unchanged.",
+                        "image with this character, unchanged.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(seed, { v -> seed = v.filter { it.isDigit() }.take(10) }, label = { Text("Seed") }, singleLine = true, modifier = Modifier.fillMaxWidth())

@@ -1,6 +1,6 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.0.16 (test build)
+## What's new in 4.0.18 (test build)
 - **Gallery:** delete an image in the full view (🗑 beside Share, asks first). Long-press images to mark several, then Share or Delete them (All marks everything).
 - **Send to chat:** results and the full view have "Send to chat": the image or text goes into the chat as an attachment. Images also have "Edit this".
 - **Chat → 📎 → Image from the Gallery:** pick one of your made images to send with a message.
