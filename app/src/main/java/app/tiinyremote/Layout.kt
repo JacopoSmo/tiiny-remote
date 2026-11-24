@@ -249,6 +249,11 @@ val LAYOUTS = listOf(
     "square" to "Square · compact (Unihertz Titan 2, 1:1)",
     "tall" to "Tall phone (19.5:9 and similar)",
 )
+val THEMES = listOf(
+    "auto" to "Auto (as the phone is set)",
+    "dark" to "Dark",
+    "light" to "Light",
+)
 val UI_SCALES = listOf("0.85" to "Small", "1.0" to "Normal", "1.15" to "Large")
 val TEXT_SCALES = listOf("0.9" to "Small", "1.0" to "Normal", "1.15" to "Large", "1.3" to "Extra large")
 

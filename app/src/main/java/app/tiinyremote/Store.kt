@@ -37,6 +37,8 @@ data class AppSettings(
     val tavilyKey: String = "",
     /** Display: layout (auto, square, tall), overall size and text size, and whether Enter sends a chat message. */
     val layout: String = "auto",
+    /** Light or dark: "auto" follows the phone, "dark" and "light" keep one. */
+    val theme: String = "auto",
     val uiScale: String = "1.0",
     val textScale: String = "1.0",
     val enterSends: Boolean = true,
@@ -92,6 +94,7 @@ class Store(context: Context) {
         searchMode = prefs.getString("search_mode", "auto") ?: "auto",
         tavilyKey = Crypto.decrypt(prefs.getString("tavily_key", null)) ?: "",
         layout = prefs.getString("layout", "auto") ?: "auto",
+        theme = prefs.getString("theme", "auto") ?: "auto",
         uiScale = prefs.getString("ui_scale", "1.0") ?: "1.0",
         textScale = prefs.getString("text_scale", "1.0") ?: "1.0",
         enterSends = prefs.getBoolean("enter_sends", true),
@@ -127,6 +130,7 @@ class Store(context: Context) {
             .putString("search_mode", s.searchMode)
             .putString("tavily_key", Crypto.encrypt(s.tavilyKey.trim()))
             .putString("layout", s.layout)
+            .putString("theme", s.theme)
             .putString("ui_scale", s.uiScale)
             .putString("text_scale", s.textScale)
             .putBoolean("enter_sends", s.enterSends)
