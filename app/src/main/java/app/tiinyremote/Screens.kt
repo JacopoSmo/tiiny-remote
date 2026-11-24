@@ -296,7 +296,7 @@ fun AppRoot(vm: MainViewModel) {
                     Column(Modifier.fillMaxHeight()) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 20.dp, end = 8.dp)) {
-                                Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                Text(AppUpdate.appName(LocalContext.current), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                 IconButton(onClick = { navSettings = true }) { Icon(Icons.Filled.Settings, contentDescription = "Sidebar settings: start screen and order") }
                             }
                             for ((label, icon, i) in sections) {
@@ -1827,7 +1827,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         var release by remember { mutableStateOf<AppRelease?>(null) }
         var updBusy by remember { mutableStateOf<String?>(null) }
         var updNote by remember {
-            mutableStateOf(AppUpdate.known(ctx)?.let { "Tiiny Remote $it is out (found by the daily check)." })
+            mutableStateOf(AppUpdate.known(ctx)?.let { "${AppUpdate.appName(ctx)} $it is out (found by the daily check)." })
         }
         fun checkNow(then: ((AppRelease) -> Unit)? = null) {
             updBusy = "Checking…"
@@ -1836,7 +1836,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 updBusy = null
                 r.onSuccess {
                     release = it
-                    updNote = if (it == null) "Tiiny Remote $version is the newest." else "Tiiny Remote ${it.version} is out."
+                    updNote = if (it == null) "${AppUpdate.appName(ctx)} $version is the newest." else "${AppUpdate.appName(ctx)} ${it.version} is out."
                     if (it != null) then?.invoke(it)
                 }.onFailure { updNote = "Couldn't check for updates: ${it.message}" }
             }
@@ -1878,7 +1878,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         var about by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Tiiny Remote $version · secrets are stored encrypted on this phone",
+                "${AppUpdate.appName(ctx)} $version · secrets are stored encrypted on this phone",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

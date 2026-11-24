@@ -164,7 +164,7 @@ object Notifier {
         channels(ctx)
         return NotificationCompat.Builder(ctx, WORK)
             .setSmallIcon(R.drawable.ic_stat_tiiny)
-            .setContentTitle(if (label.startsWith("Connected")) "Tiiny Remote" else "Tiiny Remote is working")
+            .setContentTitle(AppUpdate.appName(ctx) + if (label.startsWith("Connected")) "" else " is working")
             .setContentText(label)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -186,7 +186,7 @@ object Notifier {
         }
         val n = NotificationCompat.Builder(app, "updates")
             .setSmallIcon(R.drawable.ic_stat_tiiny)
-            .setContentTitle("Tiiny Remote $version is out")
+            .setContentTitle("${AppUpdate.appName(app)} $version is out")
             .setContentText("Open Settings in the app and tap Update app.")
             .setAutoCancel(true)
             .setContentIntent(openApp(app))
@@ -246,7 +246,7 @@ object Notifier {
             .setPublicVersion(
                 NotificationCompat.Builder(app, DONE)
                     .setSmallIcon(R.drawable.ic_stat_tiiny)
-                    .setContentTitle("Tiiny Remote")
+                    .setContentTitle(AppUpdate.appName(app))
                     .setContentText("A job is done")
                     .build(),
             )

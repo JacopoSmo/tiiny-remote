@@ -29,6 +29,7 @@ object AppUpdate {
     private const val PREFS = "app_update"
 
     fun experimental(ctx: Context) = ctx.packageName.endsWith(".exp")
+    fun appName(ctx: Context) = if (experimental(ctx)) "Tiiny Remote Exp" else "Tiiny Remote"
 
     fun installed(ctx: Context): String = try {
         ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: ""

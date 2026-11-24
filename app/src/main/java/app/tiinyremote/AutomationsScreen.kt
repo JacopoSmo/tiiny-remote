@@ -161,10 +161,12 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         _runs.value = store.runs()
     }
 
-    fun saveConnectors(c: Connectors) {
+    /** Saves; answerAt names the card ("email", "nas") whose Save was tapped: the answer shows right under its button. */
+    fun saveConnectors(c: Connectors, answerAt: String? = null) {
         store.saveConnectors(c)
         _conn.value = store.connectors()
-        if (c.nasReady) pushNas(announce = true) else _note.value = "Saved."
+        if (c.nasReady) pushNas(answerAt)
+        else answerAt?.let { _tests.value = _tests.value + (it to TestResult(true, "Saved.")) }
     }
 
     fun testEmail(c: Connectors) = test("email", "Email") {
@@ -207,14 +209,15 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun testNas(c: Connectors) = test("nas", "NAS agent") { NasAgent.test(c) }
 
-    private fun pushNas(announce: Boolean = false) {
+    private fun pushNas(answerAt: String? = null) {
         if (!_conn.value.nasReady) return
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { NasAgent.push(getApplication()) }
-                if (announce) _note.value = "Saved and sent to the NAS agent."
+                answerAt?.let { _tests.value = _tests.value + (it to TestResult(true, "Saved and sent to the NAS agent.")) }
             } catch (e: Exception) {
-                _note.value = "Couldn't update the NAS agent: ${e.message}"
+                val msg = "Saved on this phone, but the NAS agent couldn't be updated: ${e.message}"
+                if (answerAt != null) _tests.value = _tests.value + (answerAt to TestResult(false, msg)) else _note.value = msg
             }
         }
     }
@@ -433,7 +436,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
             OutlinedTextField(user, { user = it }, label = { Text("User (your email address)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             SecretField(pw, { pw = it }, "App password")
             Row {
-                TextButton(onClick = { av.saveConnectors(current()) }) { BtnLabel("Save", symbol = "✓") }
+                TextButton(onClick = { av.saveConnectors(current(), "email") }) { BtnLabel("Save", symbol = "✓") }
                 TextButton(onClick = { av.saveConnectors(current()); av.testEmail(current()) }, enabled = host.isNotBlank() && user.isNotBlank() && pw.isNotBlank()) {
                     BtnLabel("Test", symbol = "🔌")
                 }
@@ -487,7 +490,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
             )
             OutlinedTextField(ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row {
-                TextButton(onClick = { av.saveConnectors(current()) }) { BtnLabel("Save", symbol = "✓") }
+                TextButton(onClick = { av.saveConnectors(current(), "nas") }) { BtnLabel("Save", symbol = "✓") }
                 TextButton(onClick = { av.saveConnectors(current()); av.testNas(current()) }, enabled = nasUrl.isNotBlank() && token.isNotBlank()) {
                     BtnLabel("Test", symbol = "🔌")
                 }

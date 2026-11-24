@@ -5,6 +5,7 @@
 - **Deleting an automation asks first.**
 - **Code:** Send needs a project and a loaded model; the field now says which is missing instead of a silent grey button. A question typed before making the first project is kept. Project names keep umlauts and accents as plain letters ("über" → "ueber") instead of dropping them.
 - **Automate from the side menu** while it's already open also goes back to its list.
+- The Exp app calls itself **Tiiny Remote Exp** in update messages, notifications, the side menu and Settings.
 - **Back means back:** going back (← or the back gesture) to Automate, e.g. from the log opened by a test answer, returns to the same section (e.g. Connectors) at the same place on the page. Opening Automate from the side menu starts on its list, at the top.
 - **Image shapes:** only the usual ones (1:1, 4:3, 3:2, 16:10, 16:9, 21:9 and their upright versions); a model's sizes are listed under the nearest one instead of odd ratios like 75:56.
 - **Fixes from a full test on the phone:**
@@ -12,7 +13,7 @@
   - **Tables** in answers and results show as aligned columns instead of raw | lines.
   - **Light mode:** the phone's status bar icons turn dark, so they stay visible.
   - **Calendars:** pasting more than 10 links says how many were left out; ✕ on the last link empties it.
-  - **Connectors:** Save says "Saved" (or "Saved and sent to the NAS agent"); email errors say plainly what's wrong (server not found, no answer, user or password refused); "1 automation" instead of "1 automation(s)".
+  - **Connectors:** Save answers right under its button: "Saved", "Saved and sent to the NAS agent", or why the NAS couldn't be updated; email errors say plainly what's wrong (server not found, no answer, user or password refused); "1 automation" instead of "1 automation(s)".
   - **Automation results** (phone and NAS agent 1.4 and newer on `:exp`) end without questions or offers of further help.
   - Alphabetical: the automation examples and the image style chips.
 - **Starting point:** the same as the normal app 4.0.5 (see its release: several calendars for the NAS with agent 1.3, set-up guides for NAS, iCal and ntfy). New experimental features will be listed here as they come.
