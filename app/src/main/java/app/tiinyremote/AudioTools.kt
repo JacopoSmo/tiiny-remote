@@ -116,6 +116,15 @@ private fun Dropdown(label: String, options: List<Pair<String, String>>, selecte
     }
 }
 
+internal fun hasTag(text: String, tag: String) = Regex("\\b${Regex.escape(tag)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)
+
+/** Adds ", tag" to a comma list, or takes it out (with its comma) when it's there. */
+internal fun toggleTag(text: String, tag: String): String =
+    if (hasTag(text, tag)) {
+        text.replace(Regex("\\s*,?\\s*\\b${Regex.escape(tag)}\\b", RegexOption.IGNORE_CASE), "")
+            .trim().trimStart(',').trim()
+    } else text.trimEnd().trimEnd(',', '.').let { if (it.isBlank()) tag else "$it, $tag" }
+
 @Composable
 internal fun Hint(text: String, warn: Boolean = false) {
     Text(
@@ -525,8 +534,9 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     // Style
     LabelRow("Style")
     Field(caption, { caption = it }, "Genre, mood, instruments, voice", lines = 2, placeholder = "e.g. alpine folk-rock, male choir, accordion and stomping drums")
-    TagChips(SONG_CHIPS, { Regex("\\b${Regex.escape(it)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(caption) }, { "+ $it" }) { chip ->
-        caption = caption.trimEnd().trimEnd(',').let { if (it.isBlank()) chip else "$it, $chip" }
+    // A chip adds its word; tapped again (✓) it takes it out.
+    TagChips(SONG_CHIPS, { hasTag(caption, it) }, { if (hasTag(caption, it)) "✓ $it" else "+ $it" }) { chip ->
+        caption = toggleTag(caption, chip)
     }
 
     // Lyrics

@@ -1413,7 +1413,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         Text("Changes apply right away.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SettingDropdown("Layout", LAYOUTS, cur.layout) { vm.setDisplay(cur.copy(layout = it)) }
         Text(
-            "Square · compact puts the sections in the ☰ sidebar instead of a bottom bar, uses a slim top bar and folds the model and chat options into one line, leaving more room for chats, images and video.",
+            "Square · compact: sections in the ☰ sidebar, a slim top bar and the chat options on one line: more room for content.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1485,7 +1485,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         if (searchMode != "searx") {
             SecretField(tavily, { tavily = it; searxTest = null }, "Tavily API key (optional)")
             Text(
-                "The phone searches with Tavily if you add a key (free plan: 1,000 searches a month, no card, at tavily.com), otherwise with Bing and DuckDuckGo, and Wikipedia as a last resort. News comes from Google News and Bing News. The keyless sources can occasionally refuse; the log shows which one answered.",
+                "With a Tavily key (free: 1,000 searches a month at tavily.com) the phone searches there; without, Bing, DuckDuckGo, then Wikipedia. News: Google News and Bing News. The log shows which one answered.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1520,9 +1520,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Column(Modifier.weight(1f)) {
                 Text("Stay connected in the background", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "The app keeps running while you're elsewhere, with a silent notification showing the Tiiny's state. " +
-                        "It checks the Tiiny every minute, so it unlocks it after a restart even with the app closed. " +
-                        "Uses a little battery.",
+                    "A silent notification keeps the app checking the Tiiny every minute, so it unlocks it after a restart even when closed. A little battery.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1536,8 +1534,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Column(Modifier.weight(1f)) {
                 Text("Keep working in the background", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "While a tool job, chat answer, speed test or download is going on, the app keeps working when you " +
-                        "switch away or lock the phone, with a quiet notification. It stops by itself when done.",
+                    "Jobs, answers, tests and downloads go on when you switch away or lock the phone (quiet notification until done).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1611,10 +1608,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             vm.setDisplay(cur.copy(helperModel = it))
         }
         Text(
-            "A quick chat model kept loaded beside your main one. While it's loaded it names new chats, suggests follow-up questions and condenses long attached files (all after the answer, so it " +
-                "doesn't slow it down), condenses long chats, and runs Improve prompt, lyrics and tags. It condenses web pages too, but " +
-                "only when the speed test found it at least 25% faster than the chat model (details can get lost, see ⓘ); otherwise the chat model reads " +
-                "them itself. It's never swapped in: when it isn't loaded, the chat model does everything.",
+            "A small chat model loaded beside your main one. It names chats, suggests follow-ups, condenses long chats and files, and runs Improve prompt, lyrics and tags. " +
+                "It condenses web pages only if the speed test found it at least 25% faster (ⓘ). Never loaded by itself: without it, the chat model does all this.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -1622,9 +1617,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Column(Modifier.weight(1f)) {
                 Text("Auto thinking asks the helper", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "With the chat's Thinking on Auto, the helper reads each question and chooses Low, Medium or High. " +
-                        "Smarter than the app's own rule, but every answer starts about 2 seconds later. Off: the app " +
-                        "decides at once from the question's words and length.",
+                    "With Thinking on Auto, the helper picks Low, Medium or High per question: smarter, but answers start about 2 s later. Off: the app decides from the question's length and words.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1798,8 +1791,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             ) { BtnLabel("Power off", PowerIcon) }
         }
         Text(
-            "Power off: to switch the Tiiny on again, press its power button. Restart: afterwards it's locked until " +
-                "unlocked (automatic with its saved password). Both unload the models and stop what's running on it.",
+            "Both unload the models and stop what's running. After a restart it's locked until unlocked (automatic with the saved password); after power off, its power button starts it again.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

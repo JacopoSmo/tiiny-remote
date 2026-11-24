@@ -287,13 +287,13 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                 label = { Text(c.trim().replace(Regex(" (the|to)$"), " …").let { if (c.endsWith(" ") && !it.endsWith("…")) "$it …" else it }) },
             )
         } else {
-            for (c in CREATE_CHIPS) AssistChip(
+            for (c in CREATE_CHIPS) FilterChip(
+                selected = hasTag(prompt.text, c),
                 onClick = {
-                    val t = prompt.text.trim()
-                    val nt = if (t.isEmpty()) c else t.trimEnd(',', '.') + ", " + c
+                    val nt = toggleTag(prompt.text, c)
                     prompt = TextFieldValue(nt, TextRange(nt.length))
                 },
-                label = { Text("+ $c") },
+                label = { Text((if (hasTag(prompt.text, c)) "✓ " else "+ ") + c) },
             )
             if (transparentOk) FilterChip(selected = transparent, onClick = { transparent = !transparent }, label = { Text("◩ Transparent background") })
         }
