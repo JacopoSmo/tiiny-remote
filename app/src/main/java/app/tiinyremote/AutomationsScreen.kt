@@ -231,6 +231,11 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
 
     fun testNas(c: Connectors) = test("nas", "NAS agent") { NasAgent.test(c) }
 
+    /** A card's answer goes once one of its fields changes: it was about what was there before. */
+    fun clearTest(key: String) {
+        if (_tests.value[key] != null) _tests.value = _tests.value - key
+    }
+
     private fun pushNas(answerAt: String? = null) {
         if (!_conn.value.nasReady) return
         viewModelScope.launch {
@@ -423,8 +428,15 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
     var ics by remember(conn) { mutableStateOf(conn.icsLinks.ifEmpty { listOf("") }) }
     var dropped by remember(conn) { mutableStateOf(0) }
     var ntfy by remember(conn) { mutableStateOf(conn.ntfyUrl) }
+    // An answer under Save/Test is about the fields as they were: it goes when one of them changes (not on coming back).
+    val emailFields = listOf(host, port, user, pw, ssl)
+    val nasFields = listOf(nasUrl, token, ics, ntfy)
+    var seenEmail by remember(conn) { mutableStateOf(emailFields) }
+    var seenNas by remember(conn) { mutableStateOf(nasFields) }
+    if (emailFields != seenEmail) androidx.compose.runtime.SideEffect { seenEmail = emailFields; av.clearTest("email") }
+    if (nasFields != seenNas) androidx.compose.runtime.SideEffect { seenNas = nasFields; av.clearTest("nas") }
     fun current() = Connectors(
-        host.trim(), port.toIntOrNull()?.takeIf { it in 1..65535 } ?: if (ssl) 993 else 143, user.trim(), pw, ssl,
+        host.filterNot { it.isWhitespace() }, port.toIntOrNull()?.takeIf { it in 1..65535 } ?: if (ssl) 993 else 143, user.trim(), pw, ssl,
         ics.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n"), nasUrl.trim(), token.trim(), ntfy.trim(),
     )
     Text(

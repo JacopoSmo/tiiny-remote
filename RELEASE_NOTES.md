@@ -1,5 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.8 (test build)
+- **Connectors:** an answer under Save or Test goes away as soon as you change one of that card's fields (it was about the old values); spaces in the IMAP server address are ignored.
+
 ## What's new in 4.0.7 (test build, with NAS agent 1.5.1)
 - **NAS runs show while they work:** after ▶ on a NAS automation, its card says "Running on the NAS…" and the result appears under Results by itself when it's done. ↻ at the top also fetches the NAS results.
 - **News on the NAS and the phone:** when SearXNG has only a few news items for a topic, the week's news are tried, then Google News (and on the phone Bing News), instead of returning 2 stray items.
