@@ -236,8 +236,8 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
     // and TiinyComics do), so they look the same from picture to picture.
     var characters by remember { mutableStateOf(loadCharacters(st.setting("img.characters", "[]"))) }
     var chosen by rememberSaveable { mutableStateOf(setOf<String>()) }
-    var editingChar by remember { mutableStateOf<Character?>(null) }
-    fun saveChars(list: List<Character>) { characters = list; st.setSetting("img.characters", charactersJson(list)) }
+    var editingChar by remember { mutableStateOf<PicCharacter?>(null) }
+    fun saveChars(list: List<PicCharacter>) { characters = list; st.setSetting("img.characters", charactersJson(list)) }
 
     // "Edit this" on a result brings the picture here.
     LaunchedEffect(editSource, edit) {
@@ -308,7 +308,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
             label = { Text(ch.name) },
             trailingIcon = { Text("✎", modifier = Modifier.clickable { editingChar = ch }) },
         )
-        AssistChip(onClick = { editingChar = Character("", "", Random.nextLong(0, 1L shl 31)) }, label = { Text("+ Character") })
+        AssistChip(onClick = { editingChar = PicCharacter("", "", Random.nextLong(0, 1L shl 31)) }, label = { Text("+ Character") })
     }
     if (characters.isEmpty()) Hint("Describe a person, animal or object once (looks, clothes, colours); tick it, and it's drawn the same way in every picture.")
     editingChar?.let { ch ->
@@ -531,23 +531,23 @@ private val TRANSPARENT = Regex("transparent|alpha channel|RGBA", RegexOption.IG
 
 
 /** A character for the pictures: its name, its fixed description, and its seed. */
-internal data class Character(val name: String, val description: String, val seed: Long)
+internal data class PicCharacter(val name: String, val description: String, val seed: Long)
 
-internal fun loadCharacters(json: String): List<Character> = try {
+internal fun loadCharacters(json: String): List<PicCharacter> = try {
     val a = org.json.JSONArray(json)
     (0 until a.length()).mapNotNull { i ->
-        a.optJSONObject(i)?.let { o -> Character(o.optString("name"), o.optString("description"), o.optLong("seed")) }
+        a.optJSONObject(i)?.let { o -> PicCharacter(o.optString("name"), o.optString("description"), o.optLong("seed")) }
     }.filter { it.name.isNotBlank() }
 } catch (e: Exception) {
     emptyList()
 }
 
-internal fun charactersJson(list: List<Character>): String = org.json.JSONArray(
+internal fun charactersJson(list: List<PicCharacter>): String = org.json.JSONArray(
     list.map { org.json.JSONObject().put("name", it.name).put("description", it.description).put("seed", it.seed) },
 ).toString()
 
 @Composable
-private fun CharacterDialog(ch: Character, onClose: () -> Unit, onDelete: () -> Unit, onSave: (Character) -> Unit) {
+private fun CharacterDialog(ch: PicCharacter, onClose: () -> Unit, onDelete: () -> Unit, onSave: (PicCharacter) -> Unit) {
     var name by remember { mutableStateOf(ch.name) }
     var desc by remember { mutableStateOf(ch.description) }
     var seed by remember { mutableStateOf(ch.seed.toString()) }
@@ -576,7 +576,7 @@ private fun CharacterDialog(ch: Character, onClose: () -> Unit, onDelete: () -> 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(Character(name.trim(), desc.trim(), seed.toLongOrNull() ?: ch.seed)) },
+                onClick = { onSave(PicCharacter(name.trim(), desc.trim(), seed.toLongOrNull() ?: ch.seed)) },
                 enabled = name.isNotBlank() && desc.isNotBlank(),
             ) { Text("Save") }
         },
