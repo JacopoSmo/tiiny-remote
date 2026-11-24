@@ -144,6 +144,55 @@ object Wav {
         return out
     }
 
+    /**
+     * A WAV as the Tiiny's speech-to-text wants it: 16-bit, 16 kHz, mono. Other rates, stereo, 8/24/32-bit and float
+     * WAVs come back empty-handed from it (a 24 or 48 kHz voice clip gave an empty text), so they're converted
+     * (Tiiny Studio's to_asr_wav). Anything that isn't a WAV it can read is returned as it is.
+     */
+    fun forAsr(wav: ByteArray): ByteArray {
+        val (fmt, data) = split(wav) ?: return wav
+        if (fmt.size < 16) return wav
+        val f = ByteBuffer.wrap(fmt).order(ByteOrder.LITTLE_ENDIAN)
+        var tag = f.getShort(0).toInt() and 0xFFFF
+        val ch = f.getShort(2).toInt().coerceAtLeast(1)
+        val rate = f.getInt(4)
+        val bits = f.getShort(14).toInt()
+        if (tag == 0xFFFE && fmt.size >= 26) tag = f.getShort(24).toInt() and 0xFFFF // extensible: the real format
+        if (tag == 1 && ch == 1 && rate == 16_000 && bits == 16) return wav
+        val bytes = bits / 8
+        if (rate <= 0 || bytes !in 1..4 || (tag != 1 && !(tag == 3 && bits == 32))) return wav
+        val frames = data.size / (bytes * ch)
+        val b = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        fun sample(i: Int): Int {
+            val at = i * bytes
+            return when {
+                tag == 3 -> (b.getFloat(at).coerceIn(-1f, 1f) * 32767).toInt()
+                bytes == 1 -> ((data[at].toInt() and 0xFF) - 128) shl 8
+                bytes == 2 -> b.getShort(at).toInt()
+                bytes == 3 -> (data[at + 1].toInt() and 0xFF) or (data[at + 2].toInt() shl 8)
+                else -> b.getInt(at) shr 16
+            }
+        }
+        val mono = IntArray(frames) { fr -> var sum = 0; for (c in 0 until ch) sum += sample(fr * ch + c); sum / ch }
+        val step = rate / 16_000.0
+        val n = (frames / step).toInt()
+        val out = ByteBuffer.allocate(n * 2).order(ByteOrder.LITTLE_ENDIAN)
+        val k = step.toInt()
+        for (i in 0 until n) {
+            val v = if (step == k.toDouble() && k >= 1) {
+                // 32/48 kHz: the average of each group (a simple low-pass)
+                var sum = 0; for (j in 0 until k) sum += mono[(i * k + j).coerceAtMost(frames - 1)]; sum / k
+            } else {
+                val x = i * step
+                val lo = x.toInt().coerceAtMost(frames - 1)
+                val hi = (lo + 1).coerceAtMost(frames - 1)
+                (mono[lo] + (mono[hi] - mono[lo]) * (x - lo)).toInt()
+            }
+            out.putShort(v.coerceIn(-32768, 32767).toShort())
+        }
+        return build(out.array(), 16_000, 1)
+    }
+
     /** Joins WAV pieces of the same format into one (speech made in parts). */
     fun join(parts: List<ByteArray>): ByteArray {
         if (parts.size == 1) return parts[0]

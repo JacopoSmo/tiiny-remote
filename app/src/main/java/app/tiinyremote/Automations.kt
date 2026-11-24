@@ -159,7 +159,9 @@ data class Connectors(
 ) {
     val emailReady get() = imapHost.isNotBlank() && imapUser.isNotBlank() && imapPassword.isNotBlank()
     val nasReady get() = nasUrl.isNotBlank() && nasToken.isNotBlank()
-    val icsLinks get() = icsUrl.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    // webcal:// (as Apple and Outlook offer calendars) is the same link over https.
+    val icsLinks get() = icsUrl.lines().map { it.trim().replace(Regex("^webcals?://", RegexOption.IGNORE_CASE), "https://") }
+        .filter { it.isNotEmpty() }.distinct()
 }
 
 /** Automations, their runs and the connectors, in the app's private storage; passwords encrypted (Android Keystore). */

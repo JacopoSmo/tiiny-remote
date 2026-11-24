@@ -324,7 +324,14 @@ internal fun TranscribeTool(model: ModelInfo?, notReady: String?, st: StudioView
         val a = audio!!
         val id = model!!.id
         val lang = language
-        st.run("transcribe") { c, store, p, _ -> Tools.transcribe(c, store, id, a.bytes, a.mime, a.name, lang, p) }
+        st.run("transcribe") { c, store, p, _ ->
+            // An empty transcript says nothing: say why it may be empty instead.
+            Tools.transcribe(c, store, id, a.bytes, a.mime, a.name, lang, p).also {
+                if (it.text.isBlank()) throw MediaException(
+                    "No speech was recognised in ${a.name}. Is there speech in it (not only music), and is the language right?",
+                )
+            }
+        }
     }
 }
 

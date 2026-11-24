@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -339,7 +339,8 @@ def read_calendar(rng="today"):
     events, problems = [], []
     for i, url in enumerate(urls[:10], 1):
         try:
-            _, _, raw = http(url.strip(), timeout=30, max_bytes=8_000_000)
+            link = re.sub(r"^webcals?://", "https://", url.strip(), flags=re.I)  # webcal:// is the same link over https
+            _, _, raw = http(link, timeout=30, max_bytes=8_000_000)
             name, found = parse_ics(raw, start, end, ZONE)
             name = name or f"Calendar {i}"
             events += [ev + (name,) for ev in found]

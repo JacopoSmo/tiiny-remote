@@ -528,7 +528,17 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
                 "Up to 10 calendars: the last $dropped pasted link${if (dropped == 1) " was" else "s were"} left out.",
                 color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
             )
-            OutlinedTextField(ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            val icsBad = ics.any { it.isNotBlank() && !Regex("^(https?|webcals?)://", RegexOption.IGNORE_CASE).containsMatchIn(it.trim()) }
+            if (icsBad) Text(
+                "A calendar link starts with https:// (or webcal://).", color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            val ntfyBad = ntfy.isNotBlank() && !ntfy.trim().startsWith("https://") && !ntfy.trim().startsWith("http://")
+            OutlinedTextField(
+                ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true,
+                isError = ntfyBad, modifier = Modifier.fillMaxWidth(),
+                supportingText = if (ntfyBad) ({ Text("The whole address, starting with https://") }) else null,
+            )
             Row {
                 TextButton(onClick = { av.saveConnectors(current(), "nas") }) { BtnLabel("Save", symbol = "✓") }
                 TextButton(onClick = { av.saveConnectors(current()); av.testNas(current()) }, enabled = nasUrl.isNotBlank() && token.isNotBlank()) {

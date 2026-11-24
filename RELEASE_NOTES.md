@@ -1,5 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.9 (test build, with NAS agent 1.5.2)
+- **Transcribe:** WAV files at other rates, in stereo or 24/32-bit (a voice clip made here, say) are converted to what the Tiiny's speech-to-text reads (16 kHz mono); before, they came back as an empty transcript. An empty result now says why instead of showing an empty card.
+- **Calendar links:** webcal:// links (Apple, Outlook) work: they're read over https. A link that doesn't start with https:// or webcal:// and an ntfy address without https:// are pointed out under their fields.
+
 ## What's new in 4.0.8 (test build)
 - **Connectors:** an answer under Save or Test goes away as soon as you change one of that card's fields (it was about the old values); spaces in the IMAP server address are ignored.
 

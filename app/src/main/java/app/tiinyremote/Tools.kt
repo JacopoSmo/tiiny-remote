@@ -421,7 +421,7 @@ object Tools {
         if (language.isNotBlank()) fields.add("language" to language)
         // The Tiiny's speech-to-text fails on long audio (past ~90 s): a long 16 kHz WAV goes in ~60 s parts cut at
         // quiet moments, and the texts are joined (as Tiiny Studio does).
-        val parts = if (mime.contains("wav")) Wav.asrParts(audio) else listOf(audio)
+        val parts = if (mime.contains("wav")) Wav.asrParts(Wav.forAsr(audio)) else listOf(audio)
         val texts = ArrayList<String>()
         for ((i, part) in parts.withIndex()) {
             check(p)
