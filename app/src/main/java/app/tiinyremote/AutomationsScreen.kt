@@ -440,6 +440,8 @@ private val NAS_STEPS = listOf(
         "sudo docker logs tiiny-agent\ncurl -s -H \"Authorization: Bearer \$TOKEN\" http://localhost:8765/status\nhostname -I",
     "5. Here in the app: address http://<NAS address>:8765 and the token, Save, Test. Later, to update the agent:" to
         "cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d",
+    "6. Optional, after an update: delete the old images nothing uses any more, to free space on the NAS (images of " +
+        "running containers stay):" to "sudo docker image prune -f",
 )
 
 

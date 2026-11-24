@@ -2138,4 +2138,6 @@ private val SEARX_STEPS = listOf(
         "curl -s \"http://localhost:8888/search?q=test&format=json\" | head -c 300; echo\nhostname -I",
     "5. Here in Settings: SearXNG address http://<NAS address>:8888, then Test. Later, to update SearXNG:" to
         "cd ~/searxng && sudo docker compose pull && sudo docker compose up -d",
+    "6. Optional, after an update: delete the old images nothing uses any more, to free space on the NAS (images of " +
+        "running containers stay):" to "sudo docker image prune -f",
 )
