@@ -18,6 +18,9 @@ It's one small Python file using only the standard library, in a Docker containe
    Google Calendar: Settings → your calendar → "Secret address in iCal format") and an **ntfy** topic URL for push.
 5. Edit an automation, set **Runs on → The NAS agent**, save. The app sends it to the NAS.
 
+Tiiny Remote and Tiiny Remote Exp can both use the same agent: from version 1.5 on it keeps each app's automations,
+connectors and results apart.
+
 ### From a terminal instead (SSH from the phone: Termius, Termux…)
 
 The app shows these steps with a Copy button each: **Automate → Connectors → NAS agent → Set up NAS**.

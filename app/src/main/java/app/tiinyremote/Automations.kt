@@ -430,7 +430,8 @@ object AutoRunner {
     private fun now(): String = LocalDateTime.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy, HH:mm", Locale.ENGLISH))
 
     private fun system() = "You are running an automation for the user of Tiiny Remote, on their own Tiiny AI device. " +
-        "Now: ${now()} (${ZoneId.systemDefault().id}). Be concise and useful; use Markdown. Write in the language of the task."
+        "Now: ${now()} (${ZoneId.systemDefault().id}). Be concise and useful; use Markdown. Write in the language of the task. " +
+        "The result is read later, not answered: no questions and no offers of further help at the end."
 
     /** Input → model → result. */
     private fun process(
@@ -667,6 +668,17 @@ class AutoWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
  * connectors from here, runs them around the clock, and keeps their results for the app to fetch.
  */
 object NasAgent {
+    /**
+     * Which app this is for the NAS: "normal", or "exp" for Tiiny Remote Exp. Agent 1.5 and newer keep each app's
+     * automations, connectors and results apart, so the two apps no longer overwrite each other on the same NAS.
+     */
+    @Volatile var app = "normal"
+        private set
+
+    fun init(ctx: Context) {
+        app = if (ctx.packageName.endsWith(".exp")) "exp" else "normal"
+    }
+
     private const val REFUSED = "The NAS agent refused the token: it must be exactly the AGENT_TOKEN in the setup file on the NAS " +
         "(on the NAS: grep AGENT_TOKEN ~/tiiny-agent/docker-compose.yml)."
 
@@ -681,6 +693,8 @@ object NasAgent {
         conn.requestMethod = method
         conn.setRequestProperty("Authorization", "Bearer ${c.nasToken.trim()}")
         conn.setRequestProperty("Accept", "application/json")
+        // Which app asks, in a header: agents before 1.5 ignore it (a ?app= in the address made them answer 404).
+        conn.setRequestProperty("X-Tiiny-App", app)
         try {
             if (body != null) {
                 conn.doOutput = true
@@ -710,17 +724,19 @@ object NasAgent {
         val (_, t) = call(c, "GET", "/status")
         val o = JSONObject(t)
         val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
-        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations")} automation(s), Tiiny " +
+        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
             if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
     }
 
     /** Sends the NAS automations and what they need (Tiiny address and key, search, email, calendar link, push). */
     fun push(ctx: Context) {
+        init(ctx)
         val store = AutoStore(ctx)
         val c = store.connectors()
         if (!c.nasReady) return
         val s = Store(ctx).load()
         val cfg = JSONObject()
+            .put("app", app)
             // The address as the app itself uses it (http:// added, a trailing /v1 taken off), else the NAS can't use it.
             .put("tiiny", JSONObject().put("url", TiinyApi.normalize(s.tiinyUrl)).put("api_key", s.apiKey))
             .put("searx_url", s.searxUrl)
@@ -747,14 +763,14 @@ object NasAgent {
     }
 }
 
-/** Ready-made starting points for the editor. */
+/** Ready-made starting points for the editor, alphabetical. */
 val AUTOMATION_TEMPLATES: List<Automation> = listOf(
     Automation("", "Morning news", source = "news", sourceArg = "Switzerland", time = "07:00",
         instruction = "Give me the 5 most important news items in short bullet points, each with its link."),
+    Automation("", "Research agent", kind = "agent", time = "", tools = setOf("web", "pages"),
+        instruction = "Find the latest news about Tiiny AI and summarise what's new, with links."),
     Automation("", "Today's emails", source = "email", sourceArg = "24", time = "18:00",
         instruction = "Summarise today's emails: what needs an answer or action from me first, then the rest in one line each."),
     Automation("", "Tomorrow's meetings", source = "calendar", sourceArg = "tomorrow", time = "20:00", days = setOf(7, 1, 2, 3, 4),
         instruction = "List tomorrow's meetings with time and place, and point out clashes or tight gaps."),
-    Automation("", "Research agent", kind = "agent", time = "", tools = setOf("web", "pages"),
-        instruction = "Find the latest news about Tiiny AI and summarise what's new, with links."),
 )

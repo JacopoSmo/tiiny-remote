@@ -196,7 +196,10 @@ fun AppRoot(vm: MainViewModel) {
     // Where you came from: ← and Android's back gesture go back through it; with nothing left, back closes the app.
     val history = remember { mutableStateListOf<Pair<Int, String?>>() }
     fun goTab(i: Int) {
-        if (i == tab) return
+        if (i == tab) {
+            if (i == 5) av.openFresh() // Automate chosen again while open: back to its list, at the top
+            return
+        }
         history.add(tab to toolId)
         if (history.size > 30) history.removeAt(0)
         tab = i
@@ -211,6 +214,7 @@ fun AppRoot(vm: MainViewModel) {
     fun back() {
         if (history.isNotEmpty()) {
             val (t, tool) = history.removeAt(history.size - 1)
+            if (t == 5) av.cameBack = true // back to Automate: the section and place you left (the side menu starts on its list)
             tab = t
             toolId = tool
         } else if (tab == 1 && toolId != null) toolId = null
@@ -292,7 +296,7 @@ fun AppRoot(vm: MainViewModel) {
                     Column(Modifier.fillMaxHeight()) {
                         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 20.dp, end = 8.dp)) {
-                                Text("Tiiny Remote", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                Text(AppUpdate.appName(LocalContext.current), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                                 IconButton(onClick = { navSettings = true }) { Icon(Icons.Filled.Settings, contentDescription = "Sidebar settings: start screen and order") }
                             }
                             for ((label, icon, i) in sections) {
@@ -1823,7 +1827,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         var release by remember { mutableStateOf<AppRelease?>(null) }
         var updBusy by remember { mutableStateOf<String?>(null) }
         var updNote by remember {
-            mutableStateOf(AppUpdate.known(ctx)?.let { "Tiiny Remote $it is out (found by the daily check)." })
+            mutableStateOf(AppUpdate.known(ctx)?.let { "${AppUpdate.appName(ctx)} $it is out (found by the daily check)." })
         }
         fun checkNow(then: ((AppRelease) -> Unit)? = null) {
             updBusy = "Checking…"
@@ -1832,7 +1836,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 updBusy = null
                 r.onSuccess {
                     release = it
-                    updNote = if (it == null) "Tiiny Remote $version is the newest." else "Tiiny Remote ${it.version} is out."
+                    updNote = if (it == null) "${AppUpdate.appName(ctx)} $version is the newest." else "${AppUpdate.appName(ctx)} ${it.version} is out."
                     if (it != null) then?.invoke(it)
                 }.onFailure { updNote = "Couldn't check for updates: ${it.message}" }
             }
@@ -1874,7 +1878,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         var about by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Tiiny Remote $version · secrets are stored encrypted on this phone",
+                "${AppUpdate.appName(ctx)} $version · secrets are stored encrypted on this phone",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

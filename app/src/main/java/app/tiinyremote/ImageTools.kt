@@ -62,7 +62,7 @@ import kotlin.random.Random
  * The image workspace, laid out like Tiiny Studio's (static/image.js): Create, Edit and Text.
  */
 
-private val CREATE_CHIPS = listOf("cinematic lighting", "35mm photo", "watercolor", "isometric 3D", "studio product shot", "golden hour")
+private val CREATE_CHIPS = listOf("35mm photo", "cinematic lighting", "golden hour", "isometric 3D", "studio product shot", "watercolor")
 private val EDIT_CHIPS = listOf("Change the background to ", "Make it night time", "Turn it into a watercolor painting", "Remove the ", "Add ", "Change the color of the ")
 
 // ---------------- size math (Tiiny Studio's) ----------------
@@ -86,16 +86,24 @@ private fun modelSizes(m: ModelInfo?): List<Pair<Int, Int>>? {
 
 private tailrec fun gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
 
+/** The usual shapes; a model's sizes are shown under the nearest of these (600×448 is 4:3, 1360×768 is 16:9). */
+private val USUAL = listOf("1:1", "4:3", "3:4", "3:2", "2:3", "16:10", "10:16", "16:9", "9:16", "21:9", "9:21")
+
 private fun aspectKey(w: Int, h: Int): String {
+    val r = Math.log(w.toDouble() / h)
+    val best = USUAL.minBy { k -> val (a, b) = k.split(":").map { it.toDouble() }; Math.abs(r - Math.log(a / b)) }
+    val (a, b) = best.split(":").map { it.toDouble() }
+    if (Math.abs(r - Math.log(a / b)) < 0.03) return best // within 3 %
     val g = gcd(w, h)
-    val k = "${w / g}:${h / g}"
-    return mapOf("8:5" to "16:10", "5:8" to "10:16")[k] ?: k
+    return "${w / g}:${h / g}"
 }
 
 private fun shapesFor(m: ModelInfo?): Pair<Boolean, List<Shape>> {
     val list = modelSizes(m) ?: return false to ASPECTS
     val groups = LinkedHashMap<String, MutableList<Pair<Int, Int>>>()
-    for ((w, h) in list) groups.getOrPut(aspectKey(w, h)) { ArrayList() }.add(w to h)
+    // Only the usual shapes: a size far from all of them (an odd one like 75:56 would be) isn't offered.
+    for ((w, h) in list) aspectKey(w, h).takeIf { it in USUAL }?.let { groups.getOrPut(it) { ArrayList() }.add(w to h) }
+    if (groups.isEmpty()) return false to ASPECTS
     val shapes = groups.map { (id, sizes) ->
         val (a, b) = id.split(":").map { it.toInt() }
         Shape(id, a, b, sizes.sortedBy { it.first * it.second })

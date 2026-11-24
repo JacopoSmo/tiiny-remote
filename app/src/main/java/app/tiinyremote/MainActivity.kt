@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NasAgent.init(this) // which app this is for the NAS agent (normal or exp)
         // The daily update check (Settings) is kept scheduled, or cancelled, to match the setting.
         AppUpdate.schedule(this, Store(this).load().dailyUpdateCheck)
         // Scheduled automations stay queued (after an update, say); what's already waiting is kept.
@@ -77,6 +78,17 @@ fun AppTheme(theme: String = "auto", content: @Composable () -> Unit) {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
         dark -> darkColorScheme()
         else -> lightColorScheme()
+    }
+    // The phone's status and navigation bar icons follow the chosen mode too (dark icons on a light app), else
+    // Light on a phone set to dark leaves white icons on a light bar.
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) androidx.compose.runtime.SideEffect {
+        (view.context as? android.app.Activity)?.window?.let { w ->
+            androidx.core.view.WindowCompat.getInsetsController(w, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
     }
     MaterialTheme(colorScheme = scheme, content = content)
 }
