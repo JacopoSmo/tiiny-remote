@@ -1455,7 +1455,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         var searxGuide by remember { mutableStateOf(false) }
-        TextButton(onClick = { searxGuide = true }) { Text("How to set it up (Terminal)") }
+        TextButton(onClick = { searxGuide = true }) { Text("Set up SearXNG") }
         if (searxGuide) TerminalGuide(
             "SearXNG from the terminal", SEARX_STEPS,
             "Keep port 8888 on your home network (don't forward it on the router); away from home the app reaches it through WireGuard.",
@@ -2129,7 +2129,7 @@ private fun QuitDialog(s: UiState, vm: MainViewModel, working: Boolean, onClose:
     )
 }
 
-/** SearXNG in Docker on the NAS, over SSH: what Settings → Web search → How to set it up (Terminal) shows. */
+/** SearXNG in Docker on the NAS, over SSH: what Settings → Web search → Set up SearXNG shows. */
 private val SEARX_STEPS = listOf(
     "1. Connect to the NAS with your SSH app (on Ugreen: Control Panel → Terminal → SSH on). Then make a folder and SearXNG's settings: " +
         "JSON answers on (the app needs them), the bot limiter off (it's only for you), a random secret." to

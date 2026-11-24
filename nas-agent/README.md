@@ -19,7 +19,7 @@ It's one small Python file using only the standard library, in a Docker containe
 
 ### From a terminal instead (SSH from the phone: Termius, Termux…)
 
-The app shows these steps with a Copy button each: **Automate → Connectors → NAS agent → How to set it up (Terminal)**.
+The app shows these steps with a Copy button each: **Automate → Connectors → NAS agent → Set up NAS**.
 
 ```
 mkdir -p ~/tiiny-agent && cd ~/tiiny-agent

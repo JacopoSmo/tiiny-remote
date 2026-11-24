@@ -511,12 +511,16 @@ val CodeIcon by lazy {
 }
 
 /**
- * "How to set it up (Terminal)": the commands to run over SSH (Termius, Termux…) on the NAS, step by step, each in
+ * The set-up guides ("Set up NAS", "Set up SearXNG"…): the commands to run over SSH (Termius, Termux…) on the NAS, step by step, each in
  * its own box with Copy. [steps]: what the step does, then its commands.
  */
 @Composable
-fun TerminalGuide(title: String, steps: List<Pair<String, String>>, note: String, onClose: () -> Unit) {
+fun TerminalGuide(
+    title: String, steps: List<Pair<String, String>>, note: String,
+    link: Pair<String, String>? = null, onClose: () -> Unit,
+) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val uri = androidx.compose.ui.platform.LocalUriHandler.current
     ScaledAlertDialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -524,8 +528,18 @@ fun TerminalGuide(title: String, steps: List<Pair<String, String>>, note: String
         title = { ClosableTitle(onClose) { Text(title) } },
         text = {
             Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // A link to the same guide elsewhere (GitHub), first.
+                link?.let { (label, url) ->
+                    androidx.compose.material3.TextButton(onClick = { runCatching { uri.openUri(url) } }) { Text(label) }
+                }
                 for ((what, cmd) in steps) {
+                    // "## …" starts a part of the guide; a step without commands is only text.
+                    if (what.startsWith("## ")) {
+                        Text(what.removePrefix("## "), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                        continue
+                    }
                     Text(what, style = MaterialTheme.typography.bodyMedium)
+                    if (cmd.isBlank()) continue
                     Column(
                         Modifier.fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
