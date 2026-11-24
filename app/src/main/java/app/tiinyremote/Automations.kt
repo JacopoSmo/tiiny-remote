@@ -708,7 +708,9 @@ object NasAgent {
     fun test(c: Connectors): String {
         val (_, t) = call(c, "GET", "/status")
         val o = JSONObject(t)
-        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations")} automation(s), Tiiny ${if (o.optBoolean("tiiny_ok")) "reachable" else "not reachable from the NAS"}."
+        val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
+        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations")} automation(s), Tiiny " +
+            if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
     }
 
     /** Sends the NAS automations and what they need (Tiiny address and key, search, email, calendar link, push). */
@@ -718,7 +720,8 @@ object NasAgent {
         if (!c.nasReady) return
         val s = Store(ctx).load()
         val cfg = JSONObject()
-            .put("tiiny", JSONObject().put("url", s.tiinyUrl).put("api_key", s.apiKey))
+            // The address as the app itself uses it (http:// added, a trailing /v1 taken off), else the NAS can't use it.
+            .put("tiiny", JSONObject().put("url", TiinyApi.normalize(s.tiinyUrl)).put("api_key", s.apiKey))
             .put("searx_url", s.searxUrl)
             .put("imap", JSONObject().put("host", c.imapHost).put("port", c.imapPort).put("user", c.imapUser)
                 .put("password", c.imapPassword).put("ssl", c.imapSsl))

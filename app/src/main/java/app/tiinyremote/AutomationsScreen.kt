@@ -455,6 +455,9 @@ private val NAS_STEPS = listOf(
         "cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d",
     "6. Optional, after an update: delete the old images nothing uses any more, to free space on the NAS (images of " +
         "running containers stay):" to "sudo docker image prune -f",
+    "Lost the token? The NAS still has it: the first line shows it from the setup file, the second from the running agent " +
+        "(they should be the same):" to
+        "grep AGENT_TOKEN ~/tiiny-agent/docker-compose.yml\nsudo docker exec tiiny-agent printenv AGENT_TOKEN",
 )
 
 
