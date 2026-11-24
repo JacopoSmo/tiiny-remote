@@ -687,12 +687,14 @@ object NasAgent {
         // Spaces or a line break copied along with the address or the token would break the request.
         val base = c.nasUrl.trim().trimEnd('/')
         if (!base.startsWith("http://") && !base.startsWith("https://")) throw MediaException("The NAS agent's address must start with http:// (e.g. http://192.168.3.10:8765).")
-        val conn = URL(base + path + (if ('?' in path) "&" else "?") + "app=$app").openConnection() as HttpURLConnection
+        val conn = URL(base + path).openConnection() as HttpURLConnection
         conn.connectTimeout = 8_000
         conn.readTimeout = timeoutSec * 1000
         conn.requestMethod = method
         conn.setRequestProperty("Authorization", "Bearer ${c.nasToken.trim()}")
         conn.setRequestProperty("Accept", "application/json")
+        // Which app asks, in a header: agents before 1.5 ignore it (a ?app= in the address made them answer 404).
+        conn.setRequestProperty("X-Tiiny-App", app)
         try {
             if (body != null) {
                 conn.doOutput = true

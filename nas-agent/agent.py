@@ -635,9 +635,10 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def route(self):
-        """The path without its query, and the app asking (?app=exp for the experimental one; none: the normal app)."""
+        """The path without its query, and the app asking: header X-Tiiny-App (or ?app=), "exp" for the experimental
+        one; none: the normal app."""
         u = urllib.parse.urlsplit(self.path)
-        CTX.app = app_of((urllib.parse.parse_qs(u.query).get("app") or [""])[0])
+        CTX.app = app_of(self.headers.get("X-Tiiny-App") or (urllib.parse.parse_qs(u.query).get("app") or [""])[0])
         return u.path
 
     def body(self):
