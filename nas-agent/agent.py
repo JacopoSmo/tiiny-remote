@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -122,16 +122,30 @@ def tiiny(path, body=None, timeout=60, method=None):
         url = "http://" + url
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Authorization": "Bearer " + t.get("api_key", ""), "Content-Type": "application/json"}
-    try:
-        _, _, raw = http(url + path, data, headers, timeout, method)
-    except urllib.error.HTTPError as e:
-        detail = e.read(2000).decode("utf-8", "replace")
-        if e.code == 502:
-            raise RuntimeError("The Tiiny is locked or its services are starting (HTTP 502).")
-        raise RuntimeError(f"The Tiiny answered HTTP {e.code}: {detail[:300]}")
-    except OSError as e:
-        raise RuntimeError(f"The Tiiny isn't reachable from the NAS ({e}).")
-    text = raw.decode("utf-8", "replace").strip()
+    # "Busy" isn't "broken": error 150004 (already working, for the phone say; can come with HTTP 200), "xh2a backend
+    # fail" just after a load and 502 "Upstream model server request failed" while another model loads are tried
+    # again after 5, 10 and 20 s (found by Story Lantern and Tiiny's API notes on TiinyVerse).
+    for wait in (5, 10, 20, None):
+        try:
+            _, _, raw = http(url + path, data, headers, timeout, method)
+            text = raw.decode("utf-8", "replace").strip()
+            if wait and text.startswith("{") and '"code": 150004' in text.replace('"code":150004', '"code": 150004'):
+                log(f"The Tiiny is busy; trying again in {wait} s")
+                time.sleep(wait)
+                continue
+            break
+        except urllib.error.HTTPError as e:
+            detail = e.read(2000).decode("utf-8", "replace")
+            if wait and ("150004" in detail or "xh2a backend fail" in detail
+                         or (e.code == 502 and "upstream model server request failed" in detail.lower())):
+                log(f"The Tiiny is busy (HTTP {e.code}); trying again in {wait} s")
+                time.sleep(wait)
+                continue
+            if e.code == 502:
+                raise RuntimeError("The Tiiny is locked or its services are starting (HTTP 502).")
+            raise RuntimeError(f"The Tiiny answered HTTP {e.code}: {detail[:300]}")
+        except OSError as e:
+            raise RuntimeError(f"The Tiiny isn't reachable from the NAS ({e}).")
     return json.loads(text) if text.startswith(("{", "[")) else {}
 
 
