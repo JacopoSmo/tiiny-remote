@@ -362,7 +362,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("✉ Email (IMAP, read-only)", style = MaterialTheme.typography.titleSmall)
+            Text("✉️ Email (IMAP, read-only)", style = MaterialTheme.typography.titleSmall)
             Text(
                 "Your mail server's IMAP address and an app password (Gmail, Outlook, GMX, Bluewin… all offer one). Nothing is " +
                     "marked as read, moved or deleted.",
@@ -510,7 +510,7 @@ private fun AutomationEditor(
                 } else {
                     Text("Tools the agent may use", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for ((k, label) in listOf("web" to "$SIGN_WEB Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉ Email")) {
+                        for ((k, label) in listOf("web" to "$SIGN_WEB Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉️ Email")) {
                             FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { SignText(label) })
                         }
                     }

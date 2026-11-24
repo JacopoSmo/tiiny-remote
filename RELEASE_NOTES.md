@@ -11,7 +11,7 @@ Download the .apk below on your phone and open it to install or update (or in th
 - **Mode:** Settings → Display → Mode: Auto, Dark or Light.
 - **Pictograms:** web search is a blue globe with a magnifier; Translate and Automate use their page pictograms everywhere; agents have a robot head, processes a numbered list.
 - **SearXNG from the terminal:** Settings → Web search → How to set it up (Terminal); both terminal guides end with an optional clean-up of old Docker images.
-- **Smaller:** the app's own examples everywhere (Video: "Describe the clip"); PP-DocLayoutV3 isn't offered for OCR; a Create job doesn't start with under 2 GB free on the Tiiny; and the clean-ups of a "Slytherin Mode" review (style references must be WAV, as the Tiiny requires; a suspicious-file warning only when it actually switches something off).
+- **Smaller:** the email pictogram drawn properly (a coloured envelope like the other connectors); the app's own examples everywhere (Video: "Describe the clip"); PP-DocLayoutV3 isn't offered for OCR; a Create job doesn't start with under 2 GB free on the Tiiny; and the clean-ups of a "Slytherin Mode" review (style references must be WAV, as the Tiiny requires; a suspicious-file warning only when it actually switches something off).
 
 ## New in 4.0 (in case you're coming from 3.2)
 Code (projects with a coding model on your Tiiny, GitHub included), Automate (agents and processes, on the phone or 24/7 on a NAS), Translate (text, photo, speech), the redesigned Create and a new Gallery, chat attachments and dictation, incognito chats, NPU care, Speed statistics, a welcome tour and a ? on every page, sidebar order and ⏻ shut-down. Details in the 4.0.0 release.
