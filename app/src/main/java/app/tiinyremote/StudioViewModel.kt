@@ -452,7 +452,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val out = withContext(Dispatchers.IO) {
                 try {
-                    val r = client().request("GET", "/kb/conversation_days?limit=1000", null, 30)
+                    val r = client().request("GET", "/kb/conversation_days?limit=500", null, 30)
                     if (!r.ok) null to r.error()
                     else {
                         val t = r.text.trim()

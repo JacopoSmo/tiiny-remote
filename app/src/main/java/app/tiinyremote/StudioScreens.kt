@@ -1229,7 +1229,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             !hasSearx && web -> "Web search is set to SearXNG only, but no address is set: Settings → Web search."
             (canMake || (web && hasSearx)) && !makes -> "This model isn't marked for tool use: it may not make things or search, or not reliably. Pick one marked \"Makes things\"."
             web && hasSearx && !canMake -> "The model may search the web and read pages."
-            canMake -> (if (web && hasSearx) "The model may search the web, " else "The model may ") + "create and edit images, speak, and make loops and songs. Models are swapped on the Tiiny when needed, which can take a few minutes."
+            canMake -> (if (web && hasSearx) "The model may search the web, " else "The model may ") + "make and edit images, speak and make music, swapping models when needed (can take minutes)."
             !thinks -> "This model doesn't think before answering."
             else -> null
         }
@@ -1268,9 +1268,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         ) {
             if (msgs.isEmpty()) {
                 Text(
-                    "Chat with the loaded model. Earlier chats are under History (top right); several can answer at the same time.\n\n" +
-                        "Tip: \"A3B\" models (mixture of experts) answer fast, good for everyday questions. Dense ones like the " +
-                        "27B models are slower but more careful: better for tricky questions, long texts or code.",
+                    "Earlier chats: 🕘 top right. \"A3B\" models answer fast; 27B ones are slower but more careful.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),
@@ -1342,6 +1340,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop,
                     )
                     TextButton(onClick = { image = emptyList() }) { Text("✕") }
+                    if (model?.seesImages == false) Text(
+                        "This model can't see images: pick one with 👁 above.",
+                        color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 file?.let { f ->
                     Text(
@@ -1353,7 +1355,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 attachError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         }
-        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty() || file != null) && !busy
+        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty() || file != null) && !busy &&
+            (image.isEmpty() || model?.seesImages == true)
         fun doSend() = sendText(input, typed = true)
         helperBusy?.let { what ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -1651,6 +1654,11 @@ private fun AttachButton(seesImages: Boolean, st: StudioViewModel, onImage: (Pic
         IconButton(onClick = { open = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Add, contentDescription = "Attach an image or a file") }
         ScaledDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp)
+            if (!seesImages) Text(
+                "Images: pick a model that sees them (👁)",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+            )
             DropdownMenuItem(
                 text = { Text("🖼 Image from the phone") },
                 enabled = seesImages,

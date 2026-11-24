@@ -1,5 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.20 (test build)
+- **Copies kept on the Tiiny** works (the Tiiny refused the list before: it gives at most 500 days at a time).
+- **Chat:** an image for a model that can't see images (sent from the Gallery, say) is pointed out next to the image, and Send waits for a model with 👁, instead of the Tiiny answering with an error. The ＋ menu says why the image items are greyed out. Shorter intro text.
+
 ## What's new in 4.0.19 (test build)
 - **Live preview** fixed: if the Tiiny's live route refuses, the image is made the normal way instead of failing. The switch now sits at the end of Advanced.
 - **Full view:** "Send to chat" and "Edit this" have room and stay clear of the phone's buttons.

@@ -2050,9 +2050,8 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
             title = { Text(if (list.size == 1) "Delete the whole of ${list[0]}?" else "Delete all ${list.size} days?") },
             text = {
                 Text(
-                    "The Tiiny only deletes whole days: every chat of ${if (list.size == 1) "that day" else "those days"} goes, from all apps " +
-                        "(TiinyOS, this app, others), and the memory facts the Tiiny drew from them. TiinyOS's own chat list stays. " +
-                        "This can't be undone.",
+                    "Every chat of ${if (list.size == 1) "that day" else "those days"} goes, from all apps, with what the Tiiny " +
+                        "remembered from them. TiinyOS's own chat list stays. Can't be undone.",
                 )
             },
             confirmButton = { TextButton(onClick = { st.deleteTiinyChatDays(list); ask = null; onClose() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
@@ -2066,8 +2065,7 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "The Tiiny keeps a copy of every chat in its vault, sorted by day, from every app (TiinyOS does this; " +
-                        "incognito here doesn't stop it). It can be deleted only a whole day at a time.",
+                    "The Tiiny keeps a copy of every chat from every app, even incognito ones, by day. Only whole days can be deleted.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 val d = days
