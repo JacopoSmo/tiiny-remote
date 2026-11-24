@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1060,6 +1061,7 @@ fun ResultCard(
                 if (e.text.isNotBlank() && e.kind in TEXT_KINDS) {
                     TextButton(onClick = { clipboard.setText(AnnotatedString(e.text)) }) { BtnLabel("Copy", symbol = "⧉") }
                 }
+                if (st.canSendToChat(e)) TextButton(onClick = { st.sendToChat(e) }) { BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
                 TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                 if (confirmDelete) DangerButton("Really delete", onClick = { st.delete(e) })
                 else DangerButton("Delete", onClick = { confirmDelete = true })
@@ -1093,6 +1095,15 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     var file by remember { mutableStateOf<PickedFile?>(null) } // a document attached to the next message
+    // A result sent here from Create or the Gallery: attached to the next message.
+    val handed by st.toChat.collectAsState()
+    LaunchedEffect(handed) {
+        handed?.let { h ->
+            h.image?.let { image = listOf(it) }
+            h.file?.let { file = it }
+            st.toChatTaken()
+        }
+    }
     var attachError by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
     var lastCount by remember { mutableStateOf(0) }
@@ -1349,6 +1360,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         var shiftEnter by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             AttachButton(
+                st = st,
                 seesImages = model?.seesImages == true,
                 onImage = { image = listOf(it); attachError = null },
                 onFile = { file = it; attachError = null },
@@ -1593,8 +1605,9 @@ private fun QuickResult(title: String, text: String, onClose: () -> Unit) {
  * (PDF, Word, Excel, PowerPoint, text), whose text is read on the phone and sent along.
  */
 @Composable
-private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, onFile: (PickedFile) -> Unit, onError: (String) -> Unit) {
+private fun AttachButton(seesImages: Boolean, st: StudioViewModel, onImage: (PickedImage) -> Unit, onFile: (PickedFile) -> Unit, onError: (String) -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    var fromGallery by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var open by remember { mutableStateOf(false) }
     fun load(block: suspend () -> Unit) = scope.launch {
@@ -1602,6 +1615,13 @@ private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, on
             block()
         } catch (e: Exception) {
             onError(e.message ?: "Couldn't read it.")
+        }
+    }
+    if (fromGallery) GalleryImagePicker(st, onClose = { fromGallery = false }) { name ->
+        fromGallery = false
+        load {
+            val img = withContext(kotlinx.coroutines.Dispatchers.IO) { Inputs.fromFile(st.store.file(name)) }
+            if (img != null) onImage(img) else onError("Couldn't read that picture.")
         }
     }
     val pickImage = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -1635,6 +1655,12 @@ private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, on
                 },
             )
             DropdownMenuItem(
+                text = { Text("🖼 Image from the Gallery") },
+                enabled = seesImages,
+                contentPadding = pad,
+                onClick = { open = false; fromGallery = true },
+            )
+            DropdownMenuItem(
                 text = { Text("📷 Take a photo") },
                 enabled = seesImages,
                 contentPadding = pad,
@@ -1645,6 +1671,35 @@ private fun AttachButton(seesImages: Boolean, onImage: (PickedImage) -> Unit, on
                 contentPadding = pad,
                 onClick = { open = false; runCatching { pickFile.launch(Docs.MIMES) }.onFailure { onError("No file picker found.") } },
             )
+        }
+    }
+}
+
+/** The app's own pictures (Create's results), newest first, to pick one. */
+@Composable
+internal fun GalleryImagePicker(st: StudioViewModel, onClose: () -> Unit, onPick: (String) -> Unit) {
+    val results by st.results.collectAsState()
+    val pics = results.filter { it.kind == "image" }.sortedByDescending { it.created }.flatMap { e -> e.files.map { e to it } }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Card {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Pick a picture from the Gallery", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onClose) { Text("✕") }
+                }
+                if (pics.isEmpty()) Text("No pictures made yet.", style = MaterialTheme.typography.bodyMedium)
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (row in pics.chunked(3)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for ((e, name) in row) {
+                            val bmp = rememberThumbnail(st.store.file(name), 256)
+                            Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(8.dp)).clickable { onPick(name) }) {
+                                if (bmp != null) Image(bmp.asImageBitmap(), e.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                            }
+                        }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
         }
     }
 }

@@ -230,6 +230,10 @@ fun AppRoot(vm: MainViewModel) {
     LaunchedEffect(openTool) {
         if (openTool != null) goTab(1) // "Edit this" from the chat or results goes to the Create tab
     }
+    val toChat by st.toChat.collectAsState()
+    LaunchedEffect(toChat) {
+        if (toChat != null) goTab(2) // "Send to chat" from Create or the Gallery
+    }
     val snackbar = remember { SnackbarHostState() }
 
     // Keep the screen on while the Tiiny works on something, so Android doesn't stop the app mid-job.

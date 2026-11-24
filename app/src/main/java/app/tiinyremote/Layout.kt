@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
 import android.widget.MediaController
@@ -330,6 +331,9 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                         dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
                     )
                     TextButton(onClick = { askDelete = true }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
+                    if (e.kind != "image" && st.canSendToChat(e)) TextButton(onClick = { onClose(); st.sendToChat(e) }) {
+                        BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send)
+                    }
                     TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                     TextButton(onClick = onClose) { Text("Close") }
                 }
@@ -346,7 +350,10 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                             } else {
                                 Text("Pinch to zoom · double-tap", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (name != null) TextButton(onClick = { onClose(); st.editThis(name) }) { BtnLabel("Edit this", androidx.compose.material.icons.Icons.Filled.Edit) }
+                            if (name != null) Row {
+                                TextButton(onClick = { onClose(); st.sendToChat(e, name) }) { BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
+                                TextButton(onClick = { onClose(); st.editThis(name) }) { BtnLabel("Edit this", androidx.compose.material.icons.Icons.Filled.Edit) }
+                            }
                         }
                     }
                     "video" -> e.mainFile?.let { n ->

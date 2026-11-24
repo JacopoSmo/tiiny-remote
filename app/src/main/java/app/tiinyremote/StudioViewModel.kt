@@ -963,6 +963,33 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val _editSource = MutableStateFlow<String?>(null) // a file in the results store
     val editSource: StateFlow<String?> = _editSource.asStateFlow()
 
+    /** A result handed to the chat: a picture as the next message's image, a text as its attached file. */
+    class ToChat(val image: PickedImage?, val file: PickedFile?)
+
+    private val _toChat = MutableStateFlow<ToChat?>(null)
+    val toChat: StateFlow<ToChat?> = _toChat.asStateFlow()
+
+    /** Whether a result can go to the chat: a picture, or a result that is text (OCR, a transcript…). */
+    fun canSendToChat(e: ResultEntry) = (e.kind == "image" && e.mainFile != null) || (e.files.isEmpty() && e.text.isNotBlank()) ||
+        (e.kind in setOf("ocr", "description", "transcript", "classification") && e.text.isNotBlank())
+
+    /** Sends a result (or one of its pictures) to the chat; the app switches to Chat. */
+    fun sendToChat(e: ResultEntry, file: String? = null) {
+        viewModelScope.launch {
+            val out = withContext(Dispatchers.IO) {
+                val name = file ?: e.mainFile
+                if (e.kind == "image" && name != null) Inputs.fromFile(store.file(name))?.let { ToChat(it, null) }
+                else if (e.text.isNotBlank()) ToChat(null, PickedFile(e.title.take(80), e.text.take(60_000), e.text.length > 60_000))
+                else null
+            }
+            if (out == null) note("This result can't go to the chat.") else _toChat.value = out
+        }
+    }
+
+    fun toChatTaken() {
+        _toChat.value = null
+    }
+
     fun editThis(file: String) {
         _editSource.value = file
         _openTool.value = "edit"
