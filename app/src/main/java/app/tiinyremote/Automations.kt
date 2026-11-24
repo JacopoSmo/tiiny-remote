@@ -711,6 +711,8 @@ object NasAgent {
                 .put("password", c.imapPassword).put("ssl", c.imapSsl))
             .put("ics_url", c.icsUrl)
             .put("ntfy_url", c.ntfyUrl)
+            // The phone's time zone: "every day at 07:00" means 07:00 where you are, wherever the NAS's clock is set.
+            .put("time_zone", java.time.ZoneId.systemDefault().id)
             .put("automations", JSONArray(store.automations().filter { it.where == "nas" }.map { it.json() }))
         call(c, "PUT", "/config", cfg, 20)
     }

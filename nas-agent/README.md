@@ -4,13 +4,13 @@ Runs the automations you mark **"on the NAS"** in Tiiny Remote around the clock,
 The app sends it those automations and what they need; the agent runs them at their time and keeps the results,
 which the app shows under **Automate → Results** (and, if you like, pushes to your phone via ntfy).
 
-It's one small Python file using only the standard library, in a Docker container.
+It's one small Python file using only the standard library, in a Docker container. Automations run one at a time (a second one waits for the first), on your phone's time zone, which the app sends.
 
 ## Set it up (Ugreen NAS, or any Docker host on your home network)
 
 1. Make a secret: `openssl rand -hex 24` (or any 32+ random letters and digits).
 2. In Docker (Ugreen: **Docker → Project → Create**), paste [`docker-compose.yml`](docker-compose.yml),
-   put your secret in `AGENT_TOKEN`, check `TZ`, and deploy.
+   put your secret in `AGENT_TOKEN` and deploy. (No time zone to set: the app sends your phone's.)
 3. In the app: **Automate → Connectors → NAS agent**: address `http://<your NAS's IP>:8765`, the same token,
    **Save**, then **Test**. It should say the Tiiny is reachable.
 4. Optional, in the same card: your calendar's **private iCal link** (the NAS can't read the phone's calendar;
