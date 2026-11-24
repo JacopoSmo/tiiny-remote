@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -185,16 +185,29 @@ def strip_html(s):
 def search(query, news=False, count=8):
     cfg = config()
     searx = (cfg.get("searx_url") or "").rstrip("/")
+    few = []
     if searx:
         try:
-            extra = "&categories=news&time_range=day" if news else ""
-            _, _, raw = http(f"{searx}/search?q={urllib.parse.quote(query)}&format=json{extra}", timeout=15)
-            hits = [(r.get("title", ""), r.get("url", ""), r.get("content", "")) for r in json.loads(raw).get("results", [])]
-            hits = [h for h in hits if h[1].startswith(("http://", "https://"))][:count]
-            if hits:
-                return hits, "SearXNG"
+            # News: of the day, else of the week; a handful only (2 stray items, say) goes on to Google News.
+            for extra in (["&categories=news&time_range=day", "&categories=news&time_range=week"] if news else [""]):
+                _, _, raw = http(f"{searx}/search?q={urllib.parse.quote(query)}&format=json{extra}", timeout=15)
+                hits = [(r.get("title", ""), r.get("url", ""), r.get("content", "")) for r in json.loads(raw).get("results", [])]
+                hits = [h for h in hits if h[1].startswith(("http://", "https://"))][:count]
+                if hits and (not news or len(hits) >= 4):
+                    return hits, "SearXNG"
+                if len(hits) > len(few):
+                    few = hits
         except Exception as e:
-            log(f"SearXNG failed ({e}); using DuckDuckGo")
+            log(f"SearXNG failed ({e}); using another search")
+    if news:
+        try:
+            hits = google_news(query, count)
+            if hits:
+                return hits, "Google News"
+        except Exception as e:
+            log(f"Google News failed ({e})")
+        if few:
+            return few, "SearXNG"
     q = query + (" news" if news else "")
     _, _, raw = http("https://lite.duckduckgo.com/lite/", urllib.parse.urlencode({"q": q}).encode(), timeout=20)
     page = raw.decode("utf-8", "replace")
@@ -209,6 +222,23 @@ def search(query, news=False, count=8):
         if len(hits) >= count:
             break
     return hits, "DuckDuckGo"
+
+
+def google_news(query, count=8):
+    """Google News' feed for a search, last day; the links are Google's redirects, the source is in the title."""
+    url = "https://news.google.com/rss/search?" + urllib.parse.urlencode(
+        {"q": f"{query} when:1d", "hl": "en-US", "gl": "US", "ceid": "US:en"})
+    _, _, raw = http(url, timeout=20, max_bytes=2_000_000)
+    xml = raw.decode("utf-8", "replace")
+    hits = []
+    for item in re.findall(r"<item>(.*?)</item>", xml, re.S)[:count]:
+        def tag(name):
+            m = re.search(rf"<{name}(?:\s[^>]*)?>(.*?)</{name}>", item, re.S)
+            return html.unescape(re.sub(r"^\s*<!\[CDATA\[|]]>\s*$", "", m.group(1)).strip()) if m else ""
+        title, link = strip_html(tag("title")), tag("link")
+        if title and link.startswith(("http://", "https://")):
+            hits.append((title, link, tag("pubDate")))
+    return hits
 
 
 def hits_text(hits):

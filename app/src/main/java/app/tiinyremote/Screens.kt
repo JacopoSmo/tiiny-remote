@@ -375,7 +375,7 @@ fun AppRoot(vm: MainViewModel) {
                                 }
                                 IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             }
-                            IconButton(onClick = { vm.refreshNow() }) {
+                            IconButton(onClick = { vm.refreshNow(); if (tab == 5) av.refresh() }) { // in Automate: its results too
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                             }
                         },

@@ -52,7 +52,7 @@ private fun markdown(text: String, link: Color, code: Color, quote: Color): Anno
         if (!inCode && tableRow.matches(raw) && lines.getOrNull(i + 1)?.let { tableRule.matches(it) } == true) {
             var end = i + 2
             while (end < lines.size && tableRow.matches(lines[end])) end++
-            table(lines.subList(i, end).filterIndexed { k, _ -> k != 1 }, code)
+            table(lines.subList(i, end).filterIndexed { k, _ -> k != 1 }, link, code)
             tableEnd = end - 1
             if (end - 1 < lines.lastIndex) append('\n')
             continue
@@ -90,13 +90,29 @@ private fun markdown(text: String, link: Color, code: Color, quote: Color): Anno
     }
 }
 
-private fun AnnotatedString.Builder.table(rows: List<String>, code: Color) {
+private fun AnnotatedString.Builder.table(rows: List<String>, link: Color, code: Color) {
     val cells = rows.map { r ->
         r.trim().removePrefix("|").removeSuffix("|").split(Regex("(?<!\\\\)\\|"))
             .map { it.trim().replace("\\|", "|").replace("**", "").replace("__", "").replace("`", "").replace("<br>", " ") }
     }
     val cols = cells.maxOf { it.size }
     val width = (0 until cols).map { c -> cells.maxOf { it.getOrElse(c) { "" }.length }.coerceIn(1, 28) }
+    // Too wide for a phone (long texts in the cells): each row as a small block, "Column: value" per line.
+    if (width.sum() + 3 * (cols - 1) > 44 || cells.any { r -> r.any { it.length > 28 } }) {
+        val head = cells.first()
+        for ((k, row) in cells.drop(1).withIndex()) {
+            if (k > 0) append("\n\n")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { inlines(row.getOrElse(0) { "" }, link, code) }
+            for (c in 1 until cols) {
+                val v = row.getOrElse(c) { "" }
+                if (v.isBlank() || v == "-" || v == "–") continue
+                append("\n")
+                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(head.getOrElse(c) { "" }.ifBlank { "·" } + ": ") }
+                inlines(v, link, code)
+            }
+        }
+        return
+    }
     for ((k, row) in cells.withIndex()) {
         val line = (0 until cols).joinToString(" │ ") { c ->
             val t = row.getOrElse(c) { "" }
@@ -108,7 +124,10 @@ private fun AnnotatedString.Builder.table(rows: List<String>, code: Color) {
     }
 }
 
-private fun AnnotatedString.Builder.inlines(s: String, link: Color, code: Color) {
+private val autolink = Regex("<(https?://[^\\s<>]+)>")
+
+private fun AnnotatedString.Builder.inlines(text: String, link: Color, code: Color) {
+    val s = text.replace(autolink, "$1") // <https://…> (a Markdown autolink): the link without its brackets
     var at = 0
     for (m in inline.findAll(s)) {
         append(s.substring(at, m.range.first))

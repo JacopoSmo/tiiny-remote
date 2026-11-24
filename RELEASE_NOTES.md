@@ -1,5 +1,11 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.7 (test build, with NAS agent 1.5.1)
+- **NAS runs show while they work:** after ▶ on a NAS automation, its card says "Running on the NAS…" and the result appears under Results by itself when it's done. ↻ at the top also fetches the NAS results.
+- **News on the NAS and the phone:** when SearXNG has only a few news items for a topic, the week's news are tried, then Google News (and on the phone Bing News), instead of returning 2 stray items.
+- **Tables with long texts** show as one small block per row ("Column: value"); links written as <https://…> lose their brackets.
+- **Agent tools** are alphabetical and named as in the editor (Calendar, Email, News, Open pages, Web search).
+
 ## What's new in 4.0.6
 - **NAS agent 1.5.0** (image `ghcr.io/jacoposmo/tiiny-remote-agent:latest`; update it on the NAS: `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d`):
   - **Tiiny Remote and Tiiny Remote Exp on the same NAS** keep their own automations, connectors (calendars, email, push) and results; saving in one no longer replaces the other's. Your earlier setup counts as the normal app's. Older agents keep working with this app.

@@ -136,11 +136,33 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         if (a.id in _running.value) return
         if (a.where == "nas") {
             viewModelScope.launch {
-                _note.value = try {
-                    withContext(Dispatchers.IO) { NasAgent.runNow(_conn.value, a.id) }
-                    "Started on the NAS: its result shows here when it's done."
+                val before = (try {
+                    withContext(Dispatchers.IO) { NasAgent.runs(_conn.value) }
                 } catch (e: Exception) {
-                    e.message
+                    _nasRuns.value
+                }).map { it.id }.toSet()
+                try {
+                    withContext(Dispatchers.IO) { NasAgent.runNow(_conn.value, a.id) }
+                } catch (e: Exception) {
+                    _note.value = e.message
+                    return@launch
+                }
+                // Shown on its card while the NAS works; its result appears under Results by itself (checked every 10 s,
+                // at most 16 minutes: an automation's own limit is 15).
+                _running.update { it + (a.id to "Running on the NAS…") }
+                try {
+                    repeat(96) {
+                        kotlinx.coroutines.delay(10_000)
+                        val runs = try {
+                            withContext(Dispatchers.IO) { NasAgent.runs(_conn.value) }
+                        } catch (e: Exception) {
+                            return@repeat
+                        }
+                        _nasRuns.value = runs
+                        if (runs.any { it.automationId == a.id && it.id !in before }) return@launch
+                    }
+                } finally {
+                    _running.update { it - a.id }
                 }
             }
             return
@@ -222,6 +244,12 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 }
+
+/** An agent's tools, alphabetical: key, sign, name. */
+private val AGENT_TOOLS = listOf(
+    Triple("calendar", "📅", "Calendar"), Triple("email", "✉️", "Email"), Triple("news", "📰", "News"),
+    Triple("pages", "📄", "Open pages"), Triple("web", SIGN_WEB, "Web search"),
+)
 
 private val runTime = DateTimeFormatter.ofPattern("EEE d MMM HH:mm", Locale.ENGLISH)
 
@@ -314,7 +342,7 @@ private fun AutomationCard(a: Automation, doing: String?, last: AutoRun?, onEdit
                 SignText((if (a.kind == "agent") "$SIGN_AGENT " else "$SIGN_PROCESS ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Switch(checked = a.enabled, onCheckedChange = onEnable)
             }
-            val what = if (a.kind == "agent") "Tools: " + a.tools.sorted().joinToString(", ").ifBlank { "none" }
+            val what = if (a.kind == "agent") "Tools: " + AGENT_TOOLS.filter { it.first in a.tools }.joinToString(", ") { it.third }.ifBlank { "none" }
             else mapOf("web" to "Web search", "news" to "News", "calendar" to "Calendar", "email" to "Email")[a.source] ?: "No input"
             Text(
                 "${a.whenText()} · ${if (a.where == "nas") "on the NAS" else "on the phone"} · $what",
@@ -665,7 +693,7 @@ private fun AutomationEditor(
                 } else {
                     Text("Tools the agent may use", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for ((k, label) in listOf("web" to "$SIGN_WEB Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉️ Email")) {
+                        for ((k, label) in AGENT_TOOLS.map { (k, sign, name) -> k to "$sign $name" }) {
                             FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { SignText(label) })
                         }
                     }

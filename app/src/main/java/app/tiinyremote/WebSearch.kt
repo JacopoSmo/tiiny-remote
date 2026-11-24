@@ -122,15 +122,24 @@ object WebSearch {
     fun news(s: AppSettings, topic: String, region: String, count: Int = 10): Found {
         val errors = ArrayList<String>()
         val q = topic.trim()
+        // SearXNG's news of the day, else of the week; only a handful (2 stray items, say) goes on to the other sources.
+        var few: List<Hit> = emptyList()
         if (s.searchMode != "phone" && s.searxUrl.isNotBlank() && q.isNotEmpty()) {
             try {
-                val hits = searx(s.searxUrl, q, count, if (s.searchMode == "searx") 10 else 4, "&categories=news&time_range=day")
-                if (hits.isNotEmpty()) return Found(hits, "SearXNG news", errors)
+                for (range in listOf("day", "week")) {
+                    val hits = searx(s.searxUrl, q, count, if (s.searchMode == "searx") 10 else 4, "&categories=news&time_range=$range")
+                    if (hits.size >= 4) return Found(hits, "SearXNG news", errors)
+                    if (hits.size > few.size) few = hits
+                }
+                errors.add("SearXNG: only ${few.size} news items")
             } catch (e: Exception) {
                 errors.add("SearXNG: ${e.message}")
             }
         }
-        if (s.searchMode == "searx") throw MediaException("SearXNG had no news (${errors.joinToString("; ")}).")
+        if (s.searchMode == "searx") {
+            if (few.isNotEmpty()) return Found(few, "SearXNG news", errors)
+            throw MediaException("SearXNG had no news (${errors.joinToString("; ")}).")
+        }
         if (s.tavilyKey.isNotBlank()) {
             try {
                 val hits = tavily(s.tavilyKey, q.ifEmpty { "top news today" }, count, true)
@@ -170,6 +179,7 @@ object WebSearch {
                 errors.add("$name: ${e.message}")
             }
         }
+        if (few.isNotEmpty()) return Found(few, "SearXNG news", errors)
         throw MediaException("Couldn't get news (${errors.joinToString("; ")}). Is the phone online?")
     }
 
