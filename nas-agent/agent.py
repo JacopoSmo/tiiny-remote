@@ -27,7 +27,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
-VERSION = "1.1"
+VERSION = "1.2"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -96,9 +96,14 @@ def http(url, data=None, headers=None, timeout=30, method=None, max_bytes=3_000_
 
 def tiiny(path, body=None, timeout=60, method=None):
     t = config().get("tiiny", {})
-    url = t.get("url", "").rstrip("/")
+    url = t.get("url", "").strip().rstrip("/")
     if not url:
         raise RuntimeError("The app hasn't sent the Tiiny's address yet.")
+    # As the app does: http:// if it's missing, no trailing /v1 (the paths bring their own).
+    if url.endswith("/v1"):
+        url = url[:-3].rstrip("/")
+    if not url.startswith(("http://", "https://")):
+        url = "http://" + url
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Authorization": "Bearer " + t.get("api_key", ""), "Content-Type": "application/json"}
     try:
@@ -601,13 +606,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorized():
             return
         if self.path == "/status":
+            err = ""
             try:
                 tiiny("/v1/models", timeout=8)
-                ok = True
-            except Exception:
-                ok = False
+            except Exception as e:  # why, for the app's Test (no keys in it: only the address and the answer)
+                err = str(e)[:300]
+                log(f"Status check: the Tiiny isn't reachable: {err}")
             return self.reply(200, {"version": VERSION, "automations": len(config().get("automations", [])),
-                                    "tiiny_ok": ok, "running": sorted(RUNNING)})
+                                    "tiiny_ok": not err, "tiiny_error": err, "running": sorted(RUNNING)})
         if self.path == "/runs":
             with LOCK:
                 return self.reply(200, {"runs": load(RUNS_F, [])})

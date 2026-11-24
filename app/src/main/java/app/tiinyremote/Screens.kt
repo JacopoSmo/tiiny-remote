@@ -175,6 +175,7 @@ private fun shareLog(ctx: Context, s: UiState, types: Set<String>? = null, error
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot(vm: MainViewModel) {
+    val ctx = LocalContext.current
     val s by vm.state.collectAsState()
     val st: StudioViewModel = viewModel()
     val av: AutoViewModel = viewModel()
@@ -408,7 +409,12 @@ fun AppRoot(vm: MainViewModel) {
                         7 -> TranslateScreen(s, st)
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
-                        5 -> AutomationsScreen(s, st, av, openChat = { goTab(2) })
+                        5 -> AutomationsScreen(s, st, av, openChat = { goTab(2) }, openLogs = {
+                            // The log, showing only what Automate did (the filter stays until you change it there).
+                            ctx.getSharedPreferences("log_ui", android.content.Context.MODE_PRIVATE).edit()
+                                .putStringSet("types", setOf("Automate")).putBoolean("problems", false).apply()
+                            goTab(3)
+                        })
                         8 -> CodeScreen(s, vm, st)
                         else -> SettingsScreen(s, vm, st)
                     } }

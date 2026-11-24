@@ -34,6 +34,9 @@ hostname -I                                     # the NAS's address for the app
 After an update (`sudo docker compose pull && sudo docker compose up -d`), optionally free space by deleting the
 old images nothing uses any more: `sudo docker image prune -f`.
 
+Lost the token? The NAS still has it: `grep AGENT_TOKEN ~/tiiny-agent/docker-compose.yml`, or from the running agent:
+`sudo docker exec tiiny-agent printenv AGENT_TOKEN`.
+
 The image is built from this folder by GitHub Actions (`ghcr.io/jacoposmo/tiiny-remote-agent`). If you'd rather build it
 yourself, replace the `image:` line with `build: https://github.com/JacopoSmo/tiiny-remote.git#main:nas-agent`.
 

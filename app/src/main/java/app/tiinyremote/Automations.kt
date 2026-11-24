@@ -666,13 +666,19 @@ class AutoWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
  * connectors from here, runs them around the clock, and keeps their results for the app to fetch.
  */
 object NasAgent {
+    private const val REFUSED = "The NAS agent refused the token: it must be exactly the AGENT_TOKEN in the setup file on the NAS " +
+        "(on the NAS: grep AGENT_TOKEN ~/tiiny-agent/docker-compose.yml)."
+
     private fun call(c: Connectors, method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> {
         if (!c.nasReady) throw MediaException("The NAS agent isn't set up: Automate → Connectors → NAS agent.")
-        val conn = URL(c.nasUrl.trimEnd('/') + path).openConnection() as HttpURLConnection
+        // Spaces or a line break copied along with the address or the token would break the request.
+        val base = c.nasUrl.trim().trimEnd('/')
+        if (!base.startsWith("http://") && !base.startsWith("https://")) throw MediaException("The NAS agent's address must start with http:// (e.g. http://192.168.3.10:8765).")
+        val conn = URL(base + path).openConnection() as HttpURLConnection
         conn.connectTimeout = 8_000
         conn.readTimeout = timeoutSec * 1000
         conn.requestMethod = method
-        conn.setRequestProperty("Authorization", "Bearer ${c.nasToken}")
+        conn.setRequestProperty("Authorization", "Bearer ${c.nasToken.trim()}")
         conn.setRequestProperty("Accept", "application/json")
         try {
             if (body != null) {
@@ -682,11 +688,18 @@ object NasAgent {
             }
             val code = conn.responseCode
             val text = (if (code >= 400) conn.errorStream else conn.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-            if (code == 401) throw MediaException("The NAS agent refused the token: check it matches AGENT_TOKEN on the NAS.")
+            ApiLog.add("NAS agent: $method $path -> HTTP $code", "Automate", isProblem = code >= 400)
+            if (code == 401) throw MediaException(REFUSED)
             if (code >= 400) throw MediaException("The NAS agent answered HTTP $code.")
             return code to text
         } catch (e: java.io.IOException) {
-            throw MediaException("The NAS agent isn't reachable (${e.message}).")
+            // Android reports a 401 without a login challenge as an error of its own: it's the token, not the network.
+            if (e.message?.contains("authentication challenge", true) == true) {
+                ApiLog.add("NAS agent: $method $path -> HTTP 401 (token refused)", "Automate", isProblem = true)
+                throw MediaException(REFUSED)
+            }
+            ApiLog.add("NAS agent: $method $path -> ${e.javaClass.simpleName}: ${e.message}", "Automate", isProblem = true)
+            throw MediaException("The NAS agent isn't reachable at $base (${e.message ?: e.javaClass.simpleName}). Is the address right, and the container running?")
         } finally {
             conn.disconnect()
         }
@@ -695,7 +708,9 @@ object NasAgent {
     fun test(c: Connectors): String {
         val (_, t) = call(c, "GET", "/status")
         val o = JSONObject(t)
-        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations")} automation(s), Tiiny ${if (o.optBoolean("tiiny_ok")) "reachable" else "not reachable from the NAS"}."
+        val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
+        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations")} automation(s), Tiiny " +
+            if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
     }
 
     /** Sends the NAS automations and what they need (Tiiny address and key, search, email, calendar link, push). */
@@ -705,7 +720,8 @@ object NasAgent {
         if (!c.nasReady) return
         val s = Store(ctx).load()
         val cfg = JSONObject()
-            .put("tiiny", JSONObject().put("url", s.tiinyUrl).put("api_key", s.apiKey))
+            // The address as the app itself uses it (http:// added, a trailing /v1 taken off), else the NAS can't use it.
+            .put("tiiny", JSONObject().put("url", TiinyApi.normalize(s.tiinyUrl)).put("api_key", s.apiKey))
             .put("searx_url", s.searxUrl)
             .put("imap", JSONObject().put("host", c.imapHost).put("port", c.imapPort).put("user", c.imapUser)
                 .put("password", c.imapPassword).put("ssl", c.imapSsl))
