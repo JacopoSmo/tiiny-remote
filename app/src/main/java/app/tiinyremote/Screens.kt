@@ -211,6 +211,7 @@ fun AppRoot(vm: MainViewModel) {
     fun back() {
         if (history.isNotEmpty()) {
             val (t, tool) = history.removeAt(history.size - 1)
+            if (t == 5) av.cameBack = true // back to Automate: the section and place you left (the side menu starts on its list)
             tab = t
             toolId = tool
         } else if (tab == 1 && toolId != null) toolId = null

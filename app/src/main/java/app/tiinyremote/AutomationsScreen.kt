@@ -67,9 +67,13 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         NasAgent.init(app)
     }
 
-    /** The open section (list, results, connectors) and where the page was scrolled: kept while you look at the log, say. */
+    /**
+     * The open section (list, results, connectors) and where the page was scrolled. Going back to Automate (from the log
+     * opened by a test answer, say) shows them as they were; opening it from the side menu starts on the list, at the top.
+     */
     var section by mutableStateOf("list")
     val scroll = androidx.compose.foundation.ScrollState(0)
+    var cameBack = false
 
     private val store = AutoStore(app)
     private val _list = MutableStateFlow(store.automations())
@@ -227,7 +231,14 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
     var editing by remember { mutableStateOf<Automation?>(null) }
     var section by av::section // list, results, connectors; kept in the view model, so coming back opens the same one
     var agentInfo by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { av.refresh() }
+    LaunchedEffect(Unit) {
+        if (av.cameBack) av.cameBack = false
+        else {
+            section = "list"
+            av.scroll.scrollTo(0)
+        }
+        av.refresh()
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(av.scroll).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
