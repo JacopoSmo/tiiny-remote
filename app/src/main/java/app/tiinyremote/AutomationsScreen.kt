@@ -67,6 +67,10 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         NasAgent.init(app)
     }
 
+    /** The open section (list, results, connectors) and where the page was scrolled: kept while you look at the log, say. */
+    var section by mutableStateOf("list")
+    val scroll = androidx.compose.foundation.ScrollState(0)
+
     private val store = AutoStore(app)
     private val _list = MutableStateFlow(store.automations())
     val list: StateFlow<List<Automation>> = _list.asStateFlow()
@@ -221,11 +225,11 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
     val conn by av.connectors.collectAsState()
     val note by av.note.collectAsState()
     var editing by remember { mutableStateOf<Automation?>(null) }
-    var section by remember { mutableStateOf("list") } // list, results, connectors
+    var section by av::section // list, results, connectors; kept in the view model, so coming back opens the same one
     var agentInfo by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { av.refresh() }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxSize().verticalScroll(av.scroll).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             FilterChip(selected = section == "list", onClick = { section = "list" }, label = { SignText(sign("Automate") + " Automate") })
             FilterChip(selected = section == "results", onClick = { section = "results"; av.refresh() }, label = { Text("Results") })
