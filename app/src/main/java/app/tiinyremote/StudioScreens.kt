@@ -1021,7 +1021,8 @@ fun ResultCard(
                         bmp?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 420.dp), contentScale = ContentScale.Fit) }
                         if (e.files.size > 1) TextButton(onClick = { st.editThis(name) }) { BtnLabel("Edit this one", androidx.compose.material.icons.Icons.Filled.Edit) }
                     }
-                    e.text.lines().drop(1).joinToString(" ").takeIf { it.isNotBlank() }?.let {
+                    // The settings line (size · steps · seed), the last one: a prompt with characters runs over several.
+                    e.text.lines().drop(1).lastOrNull { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (e.files.size == 1) OutlinedButton(onClick = { st.editThis(e.files[0]) }) { BtnLabel("Edit this", androidx.compose.material.icons.Icons.Filled.Edit) }

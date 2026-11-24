@@ -136,13 +136,17 @@ object Tools {
      * a decode of the picture so far, ~2.5 s per megapixel, so it makes the picture slower). Returns the picture as
      * base64, or null when the device doesn't offer the route (then the normal one is used).
      */
-    private fun imageStreamed(c: DeviceClient, body: JSONObject, steps: Int?, every: Int, p: Progress): String? {
+    /** Each image model's own step count, as its live route tells it ("… between 1 and steps (40)"). */
+    private val modelSteps = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    private fun imageStreamed(c: DeviceClient, body: JSONObject, steps0: Int?, every: Int, p: Progress, again: Boolean = true): String? {
+        val steps = steps0 ?: modelSteps[body.optString("model")]
         val (w, h) = body.optString("size").split("x").mapNotNull { it.trim().toIntOrNull() }.let { if (it.size == 2) it[0] to it[1] else return null }
         val s = JSONObject(body.toString()).put("width", w).put("height", h).put("app_id", "tiinyremote")
         s.remove("size"); s.remove("n"); s.remove("response_format")
         // Which steps to show: every `every` up to the step count (the model's own when not set: up to 60, those past
         // its last step simply don't come).
-        val last = steps ?: 60
+        val last = steps ?: 30
         s.put("stream_return_steps", JSONArray((every until last step every).toList()))
         var image: String? = null
         var failed: String? = null
@@ -156,7 +160,7 @@ object Tools {
                 }
                 event == "completed" -> image = o.optString("image").substringAfter("base64,", "").takeIf { it.isNotEmpty() }
                 event == "error" || o.optString("status") == "error" -> {
-                    ApiLog.add("image/generate/stream error: ${data.take(300)}")
+                    ApiLog.add("image/generate/stream error: ${data.take(300)}", "Create")
                     failed = o.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
                         ?: o.optString("error").takeIf { it.isNotBlank() && !it.startsWith("{") }
                         ?: o.optString("message").ifBlank { o.optString("detail").ifBlank { "unknown" } }
@@ -169,7 +173,16 @@ object Tools {
         }
         // Whatever went wrong with the live route (just loaded: "backend fail"; something it doesn't take), the normal
         // route still makes the image, only without previews.
-        if (failed != null) return null
+        failed?.let { f ->
+            // Without a step count the previews were guessed; the answer names the model's own: once more with it.
+            Regex("steps \\((\\d+)\\)").find(f)?.groupValues?.get(1)?.toIntOrNull()?.let { n ->
+                if (steps0 == null && again && modelSteps[body.optString("model")] != n) {
+                    modelSteps[body.optString("model")] = n
+                    return imageStreamed(c, body, null, every, p, again = false)
+                }
+            }
+            return null
+        }
         return image
     }
 
