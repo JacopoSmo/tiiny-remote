@@ -71,14 +71,17 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🗂", "Choose what", "The first row picks the kind (3D, Audio, Image, Text, Video), the second the task (Create, Edit, Voice, Song…).", "Top"),
         GuideStep("🧠", "The model", "The model button shows which one is used; ● means loaded. ▶ Load loads it, swapping others out if needed.", "Under the choices"),
         GuideStep("✍", "Describe and start", "Fill in what it asks for (a description, a photo, a text) and start. Long jobs keep running in the background; you get a notice when they're done.", "Middle"),
-        GuideStep("🖼", "Gallery", "Everything made lands in the Gallery; the Gallery link on this page goes there."),
+        GuideStep("🙂", "Characters (Image)", "Describe someone once; tick them and they look the same in every image.", "Image → Characters"),
+        GuideStep("👁", "Live preview (Image)", "Watch the image form. Makes images slower; off by default.", "Image → Advanced"),
+        GuideStep("🎵", "Songs", "Over Wi-Fi or WireGuard a song is complete and exactly as long as chosen, with vocals and backing as extra files. Over USB a shorter song is the opening of a full-length one.", "Audio → Song"),
+        GuideStep("🖼", "Results", "Everything made lands in the Gallery. Under a result: Send to chat, Edit (images), Share."),
     )
     2 -> "Chat" to listOf(
         GuideStep("🧠", "The model", "The button on top picks the chat model (● = loaded); ▶ loads it. A3B models answer fast, 27B ones more carefully.", "Top"),
         GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth, tools (🛠 make images, speak…), web search ($SIGN_WEB), follow-up ideas (💡), and Socratic or Student mode.", "Right of the model"),
-        GuideStep("＋", "Attach", "＋ adds an image (from the phone or a new photo, for models that see images) or a file: PDF, Word, Excel, PowerPoint, text.", "Left of the message"),
+        GuideStep("＋", "Attach", "＋ adds an image (from the phone, the Gallery or a new photo, for models that see images) or a file: PDF, Word, Excel, PowerPoint, text.", "Left of the message"),
         GuideStep("🎤", "Dictate", "With the message box empty, 🎤 records you; the Tiiny writes it out into the box. ✎ improves your message before sending.", "Right of the message"),
-        GuideStep("🕘", "Chats", "🕘 earlier chats (rename or delete them there), 💾 green = saved / red = incognito, ＋ new chat, ⟳ try the last answer again.", "Top right"),
+        GuideStep("🕘", "Chats", "🕘 earlier chats (rename or delete them there), 💾 green = saved / red = incognito, ＋ new chat, ⟳ try the last answer again. The Tiiny keeps its own copy of every chat, by day: 🕘 → \"Copies kept on the Tiiny\" deletes those.", "Top right"),
         GuideStep("⧉", "Answers", "Copy or share an answer from its buttons; when you've scrolled up, ↓ jumps back to the newest message.", "Under each answer"),
     )
     3 -> "Activity" to listOf(
@@ -107,7 +110,8 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🖼", "Everything you made", "Images, sound, video, 3D and texts from Create, newest first."),
         GuideStep("🗂", "Filter and search", "The chips filter by kind and task; search finds words in descriptions.", "Top"),
         GuideStep("📅", "Order", "Newest or oldest first, grouped by day, month, year or not at all.", "Top"),
-        GuideStep("⤴", "Open, share, redo", "Tap an item to open it, share it, or go back to Create with the same settings.", "Each item"),
+        GuideStep("⤴", "Open, share, redo", "Tap an item to open it: share, delete, send to chat or edit it.", "Each item"),
+        GuideStep("☑", "Several at once", "Long-press to mark items, tap more, then share or delete them together.", "Each item"),
     )
     7 -> "Translate" to listOf(
         GuideStep(SIGN_TRANSLATE, "Translate", "Text, a photo (a sign, a menu, a letter) or speech, with the models on your Tiiny."),

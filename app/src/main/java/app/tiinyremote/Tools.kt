@@ -155,16 +155,22 @@ object Tools {
                     p.update("Step $step" + (steps?.let { " of $it" } ?: ""), steps?.let { step * 100 / it })
                 }
                 event == "completed" -> image = o.optString("image").substringAfter("base64,", "").takeIf { it.isNotEmpty() }
-                event == "error" || o.optString("status") == "error" ->
-                    failed = o.optJSONObject("error")?.optString("message") ?: o.optString("message").ifBlank { "The image failed." }
+                event == "error" || o.optString("status") == "error" -> {
+                    ApiLog.add("image/generate/stream error: ${data.take(300)}")
+                    failed = o.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
+                        ?: o.optString("error").takeIf { it.isNotBlank() && !it.startsWith("{") }
+                        ?: o.optString("message").ifBlank { o.optString("detail").ifBlank { "unknown" } }
+                }
             }
         }
         if (!r.ok) {
             if (r.code == 404 || r.code == 405) return null // no such route on this TiinyOS: the normal one
             throw MediaException(r.error())
         }
-        failed?.let { if (it.contains("backend fail")) return null else throw MediaException(it) } // just loaded: the normal route waits and retries
-        return image ?: throw MediaException("The Tiiny sent no image back.")
+        // Whatever went wrong with the live route (just loaded: "backend fail"; something it doesn't take), the normal
+        // route still makes the image, only without previews.
+        if (failed != null) return null
+        return image
     }
 
     fun image(

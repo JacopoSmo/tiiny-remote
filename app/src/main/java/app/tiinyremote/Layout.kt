@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -342,17 +343,16 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                         var page by remember(e.id) { mutableStateOf(0) }
                         val name = e.files.getOrNull(page)
                         if (name != null) ZoomImage(st.store.file(name), Modifier.weight(1f).fillMaxWidth())
-                        Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            if (e.files.size > 1) {
+                        // Clear of the phone's own buttons at the bottom, with room to tap.
+                        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 12.dp)) {
+                            if (e.files.size > 1) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = { page = (page - 1 + e.files.size) % e.files.size }) { Text("‹ Previous") }
                                 Text("${page + 1} / ${e.files.size}")
                                 TextButton(onClick = { page = (page + 1) % e.files.size }) { Text("Next ›") }
-                            } else {
-                                Text("Pinch to zoom · double-tap", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (name != null) Row {
-                                TextButton(onClick = { onClose(); st.sendToChat(e, name) }) { BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
-                                TextButton(onClick = { onClose(); st.editThis(name) }) { BtnLabel("Edit this", androidx.compose.material.icons.Icons.Filled.Edit) }
+                            if (name != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                TextButton(onClick = { onClose(); st.sendToChat(e, name) }) { Text("Send to chat") }
+                                TextButton(onClick = { onClose(); st.editThis(name) }) { Text("Edit this") }
                             }
                         }
                     }

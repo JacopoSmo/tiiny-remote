@@ -1,5 +1,10 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.19 (test build)
+- **Live preview** fixed: if the Tiiny's live route refuses, the image is made the normal way instead of failing. The switch now sits at the end of Advanced.
+- **Full view:** "Send to chat" and "Edit this" have room and stay clear of the phone's buttons.
+- **? help** on Chat, Create and Gallery covers the new things; shorter texts for characters and live preview.
+
 ## What's new in 4.0.18 (test build)
 - **Gallery:** delete an image in the full view (🗑 beside Share, asks first). Long-press images to mark several, then Share or Delete them (All marks everything).
 - **Send to chat:** results and the full view have "Send to chat": the image or text goes into the chat as an attachment. Images also have "Edit this".

@@ -310,7 +310,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         )
         AssistChip(onClick = { editingChar = PicCharacter("", "", Random.nextLong(0, 1L shl 31)) }, label = { Text("+ Character") })
     }
-    if (characters.isEmpty()) Hint("Describe a person, animal or object once (looks, clothes, colours); tick it, and it's drawn the same way in every image.")
+    if (characters.isEmpty()) Hint("Describe someone once; tick them and they look the same in every image.")
     editingChar?.let { ch ->
         CharacterDialog(ch, onClose = { editingChar = null }, onDelete = {
             saveChars(characters.filter { it.name != ch.name }); chosen = chosen - ch.name; editingChar = null
@@ -408,17 +408,6 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                     Checkbox(checked = cfgAuto, onCheckedChange = { cfgAuto = it; st.setSetting("img.$mid.cfgAuto", if (it) "1" else "0") })
                     Text("model default", style = MaterialTheme.typography.labelMedium)
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Live preview", style = MaterialTheme.typography.labelLarge)
-                        Text(
-                            "Shows the image as it forms, every 4 steps (readable from about three quarters of the way). " +
-                                "Each preview costs the Tiiny time (about 2.5 s per megapixel), so images take longer.",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(checked = livePreview, onCheckedChange = { livePreview = it; st.setSetting("img.preview", if (it) "1" else "0") })
-                }
                 Slider(
                     value = cfg,
                     onValueChange = { cfg = Math.round(it * 2) / 2f; st.setSetting("img.$mid.cfg", "$cfg") },
@@ -426,6 +415,16 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                     steps = 17,
                     enabled = !cfgAuto,
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Live preview", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "Watch the image form. Slower: each preview costs about 2.5 s per megapixel.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = livePreview, onCheckedChange = { livePreview = it; st.setSetting("img.preview", if (it) "1" else "0") })
+                }
             }
         }
     }
@@ -563,8 +562,7 @@ private fun CharacterDialog(ch: PicCharacter, onClose: () -> Unit, onDelete: () 
                     placeholder = { Text("e.g. a small scruffy wheat-coloured terrier with one folded left ear and a red collar") },
                 )
                 Text(
-                    "Concrete and countable works best: colours, clothes, hair, marks. These words and the seed go into every " +
-                        "image with this character, unchanged.",
+                    "Colours, clothes, hair and marks work best. Used word for word, with the seed, in every image.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(seed, { v -> seed = v.filter { it.isDigit() }.take(10) }, label = { Text("Seed") }, singleLine = true, modifier = Modifier.fillMaxWidth())
