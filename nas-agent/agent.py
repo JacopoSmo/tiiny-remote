@@ -27,7 +27,9 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
-VERSION = "1.5"
+# Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
+# and work, the next release is x.(y+1).0.
+VERSION = "1.5.0"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
