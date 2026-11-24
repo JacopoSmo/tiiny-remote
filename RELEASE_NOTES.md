@@ -1,12 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.0.4
-- **NAS agent 1.2** (image `ghcr.io/jacoposmo/tiiny-remote-agent:latest`; update it on the NAS: `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d`):
-  - **The Tiiny reachable from the NAS:** the app now sends the Tiiny's address the way it uses it itself (http:// added, a trailing /v1 taken off). An address typed without http:// made the Tiiny "not reachable from the NAS". The agent also accepts such addresses now.
-  - **Test says why:** if the NAS can't reach the Tiiny, Test tells the reason (timeout, refused key…).
-- **Connector tests you can follow:** Test (NAS agent, email) shows "Testing…" and then its answer right below the button, green when it worked and red when not, with **Open the log (Automate) →**. Every NAS agent request and test is in the log.
-- **Clearer messages:** a refused token says so plainly (also where Android reports it as an error of its own); spaces or line breaks copied with the address or token are ignored; an address without http:// is pointed out.
-- **Lost the token?** The terminal guide's last step shows it again from the NAS.
+## What's new in 4.0.5
+- **Several calendars for the NAS:** in Automate → Connectors → NAS agent, the iCal field now takes one link per calendar (**＋ Another calendar**, up to 10; ✕ removes one; several links pasted at once become several fields), each kept encrypted.
+- **NAS agent 1.3** (image `ghcr.io/jacoposmo/tiiny-remote-agent:latest`; update it on the NAS: `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d`): reads all your calendars, merges the events by time and marks each with its calendar's name (e.g. "[Work]"). A calendar that can't be read is named in the result, the others still come. Events without an end time now show too. Agents older than 1.3 read only the first link.
+- **Set-up guides in the NAS agent card:** **Set up NAS** (the terminal steps, with a link to the same guide on GitHub), **Set up iCal** (where Google, Outlook and iCloud keep your calendar's private link) and **Set up ntfy** (push messages for NAS results: quickly via the public ntfy.sh, or privately with ntfy on your NAS). In Settings → Web search the guide is now **Set up SearXNG**.
 
 ## Earlier in 4.0
-4.0.3: NAS agent 1.1 with your phone's time zone, one automation at a time. 4.0.2: voice via the model's own port, long recordings, song style references, safer attachments, Mode (Auto/Dark/Light), new pictograms. 4.0.1: the NAS agent's terminal guide. 4.0.0: Code, Automate, Translate, the redesigned Create and Gallery, chat attachments and dictation, incognito, NPU care, Speed statistics, guides. Details in those releases.
+4.0.4: NAS agent 1.2 (the Tiiny reachable from the NAS), test answers under their button with a link to the log, lost-token step. 4.0.3: NAS agent 1.1 with your phone's time zone, one automation at a time. 4.0.2: voice via the model's own port, long recordings, song style references, safer attachments, Mode (Auto/Dark/Light), new pictograms. 4.0.1: the NAS agent's terminal guide. 4.0.0: Code, Automate, Translate, the redesigned Create and Gallery, chat attachments and dictation, incognito, NPU care, Speed statistics, guides. Details in those releases.

@@ -1,6 +1,4 @@
 **Experimental** — installs as a separate app, "Tiiny Remote Exp" (orange "exp" ribbon on its icon), beside the normal Tiiny Remote, with its own settings. Newest features first; may still have rough edges. Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app).
 
-## 4.0.5-exp
-- **Several calendars for the NAS:** the iCal field now takes one link per calendar (**＋ Another calendar**, up to 10; ✕ removes one; several links pasted at once become several fields), each kept encrypted. **NAS agent 1.3** (image `:exp`) reads them all, merges the events by time and marks each with its calendar's name (e.g. "[Work]"); a calendar that can't be read is named in the result, the others still come. Events without an end time now show too. Agents older than 1.3 read only the first link.
-- **Set-up guides in the NAS agent card:** **Set up NAS** (the terminal steps, with a link to the same guide on GitHub), **Set up iCal** (where Google, Outlook and iCloud keep your calendar's private link) and **Set up ntfy** (push messages for NAS results: quickly via the public ntfy.sh, or privately with ntfy on your NAS, terminal steps included). In Settings → Web search the guide is now **Set up SearXNG**.
-- **Starting point:** the same as the normal app 4.0.4 (see its release: NAS agent 1.2, test answers under their button with a link to the log, and more). New experimental features will be listed here as they come.
+## 4.0.6-exp
+- **Starting point:** the same as the normal app 4.0.5 (see its release: several calendars for the NAS with agent 1.3, set-up guides for NAS, iCal and ntfy). New experimental features will be listed here as they come.
