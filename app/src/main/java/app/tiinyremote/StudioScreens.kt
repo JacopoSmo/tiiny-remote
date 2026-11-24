@@ -1334,6 +1334,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
         }
         quick?.let { (title, text) -> QuickResult(title, text) { quick = null } }
+        var shiftEnter by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             AttachButton(
                 seesImages = model?.seesImages == true,
@@ -1343,12 +1344,21 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             )
             OutlinedTextField(
                 value = input,
-                onValueChange = { input = it },
+                onValueChange = { v ->
+                    // Some keyboards (the phone's own keyboard app among them) take a hardware Enter themselves and type
+                    // a line break, so the key never reaches the app: a single line break typed at the end then sends
+                    // too, unless Shift was held (that's a new line).
+                    if (ui.enterSends && !shiftEnter && v.length == input.length + 1 && v.endsWith("\n") && v.dropLast(1) == input) {
+                        if (canSend) doSend()
+                    } else input = v
+                    shiftEnter = false
+                },
                 placeholder = { Text(if (ui.enterSends) "Message · Enter sends" else "Message") },
                 modifier = Modifier
                     .weight(1f)
                     .onPreviewKeyEvent { k ->
                         // Hardware keyboard (e.g. the Titan 2's): Enter sends, Shift+Enter makes a new line.
+                        if ((k.key == Key.Enter || k.key == Key.NumPadEnter) && k.isShiftPressed) shiftEnter = true
                         if (ui.enterSends && (k.key == Key.Enter || k.key == Key.NumPadEnter) && !k.isShiftPressed) {
                             if (k.type == KeyEventType.KeyDown && canSend) doSend()
                             true

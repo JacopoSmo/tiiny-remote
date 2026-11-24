@@ -1,5 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.10 (test build)
+- **Enter sends, also through the keyboard app:** some keyboard apps take a hardware Enter themselves and type a line break, so the message didn't go out. A line break typed at the end now sends too (Shift+Enter still makes a new line).
+
 ## What's new in 4.0.9 (test build, with NAS agent 1.5.2)
 - **Transcribe:** WAV files at other rates, in stereo or 24/32-bit (a voice clip made here, say) are converted to what the Tiiny's speech-to-text reads (16 kHz mono); before, they came back as an empty transcript. An empty result now says why instead of showing an empty card.
 - **Calendar links:** webcal:// links (Apple, Outlook) work: they're read over https. A link that doesn't start with https:// or webcal:// and an ntfy address without https:// are pointed out under their fields.
