@@ -323,6 +323,12 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(mine.message.ifBlank { "Working…" })
+                // Live preview (Create → Image → Advanced): the picture as it forms.
+                val live by Tools.livePreview.collectAsState()
+                if (tool == "image" || tool == "edit") live?.let { (bytes, step) ->
+                    val bmp = remember(bytes) { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+                    bmp?.let { Image(it.asImageBitmap(), "Preview at step $step", Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit) }
+                }
                 val pct = mine.percent
                 if (pct != null && pct > 0) LinearProgressIndicator(progress = { pct / 100f }, modifier = Modifier.fillMaxWidth())
                 else LinearProgressIndicator(Modifier.fillMaxWidth())

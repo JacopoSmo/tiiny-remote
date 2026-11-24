@@ -128,10 +128,49 @@ object Tools {
 
     // ---------------- images ----------------
 
+    /** The picture forming, while an image is made with live preview on (and the step it shows); null otherwise. */
+    val livePreview = kotlinx.coroutines.flow.MutableStateFlow<Pair<ByteArray, Int>?>(null)
+
+    /**
+     * One picture through the streaming route, with a preview every `every` steps (TiinyPaint's way: each preview is
+     * a decode of the picture so far, ~2.5 s per megapixel, so it makes the picture slower). Returns the picture as
+     * base64, or null when the device doesn't offer the route (then the normal one is used).
+     */
+    private fun imageStreamed(c: DeviceClient, body: JSONObject, steps: Int?, every: Int, p: Progress): String? {
+        val (w, h) = body.optString("size").split("x").mapNotNull { it.trim().toIntOrNull() }.let { if (it.size == 2) it[0] to it[1] else return null }
+        val s = JSONObject(body.toString()).put("width", w).put("height", h).put("app_id", "tiinyremote")
+        s.remove("size"); s.remove("n"); s.remove("response_format")
+        // Which steps to show: every `every` up to the step count (the model's own when not set: up to 60, those past
+        // its last step simply don't come).
+        val last = steps ?: 60
+        s.put("stream_return_steps", JSONArray((every until last step every).toList()))
+        var image: String? = null
+        var failed: String? = null
+        val r = c.sse("/v1/image/generate/stream", s, 3600, { p.cancelled() }) { event, data ->
+            val o = try { JSONObject(data) } catch (e: Exception) { return@sse }
+            when {
+                event == "preview" -> {
+                    val step = o.optInt("step")
+                    o.optString("image").substringAfter("base64,", "").takeIf { it.isNotEmpty() }?.let { livePreview.value = unb64(it) to step }
+                    p.update("Step $step" + (steps?.let { " of $it" } ?: ""), steps?.let { step * 100 / it })
+                }
+                event == "completed" -> image = o.optString("image").substringAfter("base64,", "").takeIf { it.isNotEmpty() }
+                event == "error" || o.optString("status") == "error" ->
+                    failed = o.optJSONObject("error")?.optString("message") ?: o.optString("message").ifBlank { "The image failed." }
+            }
+        }
+        if (!r.ok) {
+            if (r.code == 404 || r.code == 405) return null // no such route on this TiinyOS: the normal one
+            throw MediaException(r.error())
+        }
+        failed?.let { if (it.contains("backend fail")) return null else throw MediaException(it) } // just loaded: the normal route waits and retries
+        return image ?: throw MediaException("The Tiiny sent no image back.")
+    }
+
     fun image(
         c: DeviceClient, store: ResultStore, model: String, prompt: String, negative: String,
         size: String, steps: Int?, seed: Long?, sources: List<String>, p: Progress,
-        count: Int = 1, guidance: Double? = null,
+        count: Int = 1, guidance: Double? = null, previewEvery: Int = 0,
     ): ResultEntry {
         val body = JSONObject().put("model", model).put("prompt", prompt).put("n", 1)
             .put("response_format", "b64_json")
@@ -149,7 +188,13 @@ object Tools {
         for (i in 0 until n) {
             seed?.let { body.put("seed", it + i) }
             var got: String? = null
-            for (attempt in 0..6) {
+            if (previewEvery > 0) try {
+                p.update(if (n == 1) "$verb the image" else "$verb image ${i + 1} of $n", if (n > 1) i * 100 / n else null)
+                got = imageStreamed(c, body, steps, previewEvery, p)
+            } finally {
+                livePreview.value = null
+            }
+            if (got == null) for (attempt in 0..6) {
                 check(p)
                 p.update(
                     if (attempt > 0) "Waiting for the model to warm up" else if (n == 1) "$verb the image" else "$verb image ${i + 1} of $n",
@@ -325,6 +370,22 @@ object Tools {
             val info = d.request("GET", "/v1/models", null, 15, log = false).json()
             val own = info.optJSONObject("model_config")?.optString("id")?.takeIf { it.isNotBlank() && it != "null" }
             d to (own ?: model.substringAfterLast('/'))
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** A loaded model's own port, if this connection reaches it (2 s check); else null. The port takes no key. */
+    private fun ownPort(c: DeviceClient, model: String): DeviceClient? = try {
+        val run = c.request("GET", "/api/v1/models/running", null, 15, log = false).json()
+        val a = run.optJSONObject("instances")?.optJSONArray("running") ?: JSONArray()
+        val port = (0 until a.length()).mapNotNull { a.optJSONObject(it) }
+            .firstOrNull { it.optString("model_id") == model }?.optInt("port", 0)?.takeIf { it > 0 }
+        val host = android.net.Uri.parse(c.base).host
+        if (port == null || host == null) null
+        else {
+            java.net.Socket().use { it.connect(java.net.InetSocketAddress(host, port), 2000) }
+            DeviceClient("http://$host:$port", "")
         }
     } catch (e: Exception) {
         null
@@ -514,6 +575,9 @@ object Tools {
         val plain = songInfo(c, model).plain
         val caption = config.optString("caption")
         val lyrics = config.optString("lyrics")
+        // SongGeneration on its own port (Wi-Fi, WireGuard): a complete song of exactly the asked length, with its
+        // separate tracks. Over the gateway alone (USB) it can only make the opening of a full-length arrangement.
+        val direct = if (!plain && !preview && resume == null) ownPort(c, model) else null
 
         // Show the device's own progress while the long request runs.
         val done = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -522,7 +586,8 @@ object Tools {
                 try {
                     Thread.sleep(3_000)
                     if (done.get()) break
-                    val r = c.request("GET", "/v1/music/sessions?model=$q", null, 5, log = false)
+                    val r = direct?.request("GET", "/v1/sessions", null, 5, log = false)
+                        ?: c.request("GET", "/v1/music/sessions?model=$q", null, 5, log = false)
                     val list = r.json().optJSONArray("sessions") ?: continue
                     var best = 0.0
                     for (i in 0 until list.length()) {
@@ -545,6 +610,10 @@ object Tools {
         var previewSession: String? = null
         val r: Reply = try {
             when {
+                direct != null -> {
+                    p.update("Composing", null)
+                    direct.request("POST", "/v1/generate", JSONObject().put("config", JSONObject(config.toString()).put("seconds_total", seconds)), 3600)
+                }
                 plain -> {
                     p.update("Composing", null)
                     post("", JSONObject(config.toString()).put("seconds_total", if (preview) 8 else seconds))
@@ -592,6 +661,26 @@ object Tools {
         val ext = if (bytes.size > 4 && String(bytes, 0, 4) == "RIFF") "wav" else "mp3"
         val id = store.newId()
         val file = store.saveFile(id, "song.$ext", bytes)
+        val files = arrayListOf(file)
+        if (direct != null) {
+            // The separate tracks (vocals, backing), each its own file; "mixed" is the song itself.
+            res.optJSONObject("audio_outputs")?.let { outs ->
+                for (name in outs.keys()) {
+                    val data = outs.optString(name)
+                    if (name.lowercase() == "mixed" || data.length < 1000) continue
+                    try {
+                        val b = unb64(data)
+                        val e2 = if (b.size > 4 && String(b, 0, 4) == "RIFF") "wav" else "mp3"
+                        files.add(store.saveFile(id, "song-${name.lowercase().replace(Regex("[^a-z0-9]+"), "_")}.$e2", b))
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+            // Its session isn't needed any more (Tiiny Studio does the same).
+            res.optString("session_id").takeIf { it.isNotBlank() && it != "null" }?.let { sid ->
+                try { direct.request("DELETE", "/v1/sessions/${c.quote(sid)}", null, 15, log = false) } catch (e: Exception) { }
+            }
+        }
         val kindLabel = when {
             preview && !plain -> "Song preview"
             resume != null -> "Song (full)"
@@ -603,7 +692,7 @@ object Tools {
             append(mapOf("bgm" to "instrumental", "vocal" to "vocals only").getOrDefault(config.optString("generation_type"), "with vocals"))
             if (lyrics.isNotBlank()) append("\n\n").append(lyrics)
         }
-        val entry = ResultEntry(id, "song", "$kindLabel: ${caption.take(60)}", listOf(file), text, model, System.currentTimeMillis())
+        val entry = ResultEntry(id, "song", "$kindLabel: ${caption.take(60)}", files, text, model, System.currentTimeMillis())
         return SongOut(entry, if (preview && !plain) previewSession else null)
     }
 

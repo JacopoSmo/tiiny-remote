@@ -1,5 +1,14 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.0.16 (test build)
+- **Gallery:** delete an image in the full view (🗑 beside Share, asks first). Long-press images to mark several, then Share or Delete them (All marks everything).
+- **Send to chat:** results and the full view have "Send to chat": the image or text goes into the chat as an attachment. Images also have "Edit this".
+- **Chat → 📎 → Image from the Gallery:** pick one of your made images to send with a message.
+- **Copies kept on the Tiiny** (chat history menu): lists the days the Tiiny keeps a copy of chats in its vault and deletes today's or all of them. It warns first: a whole day goes, from every app, with the memory notes taken from it; can't be undone.
+- **Create → Image → Characters:** describe a person, animal or object once (name, looks, seed); tick it and it's drawn with the same words and seed in every image, so it looks the same from image to image.
+- **Create → Image → Advanced → Live preview** (off by default): shows the image as it forms, every 4 steps. It makes images slower (each preview costs the Tiiny about 2.5 s per megapixel).
+- **Songs (SongGeneration) of any length are complete:** over Wi-Fi/WireGuard the app now asks the model directly, which composes a whole song of exactly the chosen length (before, shorter songs were the opening of a full-length arrangement that just stopped). The separate tracks (vocals, backing) come as extra files. Over USB it works as before.
+
 ## What's new in 4.0.11 (test build)
 Found in Tiiny Studio's API notes and on TiinyVerse:
 - **Busy Tiiny:** when the Tiiny answers "busy" (error 150004: it's already working, for another app say; "xh2a backend fail" right after a load; 502 while another model loads), the app waits and tries again (after 5, 10, 20 s) instead of failing.

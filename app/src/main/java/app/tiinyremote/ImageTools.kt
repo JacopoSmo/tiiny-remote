@@ -56,6 +56,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Switch
 import kotlin.random.Random
 
 /*
@@ -228,6 +231,13 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
     var cfg by rememberSaveable(mid) { mutableStateOf(st.setting("img.$mid.cfg", "4").toFloat()) }
     var seed by rememberSaveable { mutableStateOf("") }
     var seedLocked by rememberSaveable { mutableStateOf(false) }
+    var livePreview by remember { mutableStateOf(st.setting("img.preview", "0") == "1") }
+    // Characters: a fixed description and seed each, used word for word in every picture they're in (as Story Lantern
+    // and TiinyComics do), so they look the same from picture to picture.
+    var characters by remember { mutableStateOf(loadCharacters(st.setting("img.characters", "[]"))) }
+    var chosen by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var editingChar by remember { mutableStateOf<Character?>(null) }
+    fun saveChars(list: List<Character>) { characters = list; st.setSetting("img.characters", charactersJson(list)) }
 
     // "Edit this" on a result brings the picture here.
     LaunchedEffect(editSource, edit) {
@@ -286,6 +296,28 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                 label = { Text("+ $c") },
             )
             if (transparentOk) FilterChip(selected = transparent, onClick = { transparent = !transparent }, label = { Text("◩ Transparent background") })
+        }
+    }
+
+    // Characters
+    LabelRow("Characters", "look the same in every picture")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (ch in characters) FilterChip(
+            selected = ch.name in chosen,
+            onClick = { chosen = if (ch.name in chosen) chosen - ch.name else chosen + ch.name },
+            label = { Text(ch.name) },
+            trailingIcon = { Text("✎", modifier = Modifier.clickable { editingChar = ch }) },
+        )
+        AssistChip(onClick = { editingChar = Character("", "", Random.nextLong(0, 1L shl 31)) }, label = { Text("+ Character") })
+    }
+    if (characters.isEmpty()) Hint("Describe a person, animal or object once (looks, clothes, colours); tick it, and it's drawn the same way in every picture.")
+    editingChar?.let { ch ->
+        CharacterDialog(ch, onClose = { editingChar = null }, onDelete = {
+            saveChars(characters.filter { it.name != ch.name }); chosen = chosen - ch.name; editingChar = null
+        }) { new ->
+            saveChars(characters.filter { it.name != ch.name && it.name != new.name } + new)
+            chosen = (chosen - ch.name) + new.name
+            editingChar = null
         }
     }
 
@@ -376,6 +408,17 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                     Checkbox(checked = cfgAuto, onCheckedChange = { cfgAuto = it; st.setSetting("img.$mid.cfgAuto", if (it) "1" else "0") })
                     Text("model default", style = MaterialTheme.typography.labelMedium)
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Live preview", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "Shows the picture as it forms, every 4 steps (readable from about three quarters of the way). " +
+                                "Each preview costs the Tiiny time (about 2.5 s per megapixel), so pictures take longer.",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = livePreview, onCheckedChange = { livePreview = it; st.setSetting("img.preview", if (it) "1" else "0") })
+                }
                 Slider(
                     value = cfg,
                     onValueChange = { cfg = Math.round(it * 2) / 2f; st.setSetting("img.$mid.cfg", "$cfg") },
@@ -402,12 +445,19 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         }
         val neg = negative.trim()
         val size = "${w}x$h"
-        val sd = seed.toLongOrNull() ?: Random.nextLong(0, 1L shl 31)
+        val picked = characters.filter { it.name in chosen }
+        if (picked.isNotEmpty()) {
+            // Word for word, every time: that is what keeps them looking the same.
+            pr += "\n\n" + picked.joinToString("\n") { "${it.name}: ${it.description.trim().trimEnd('.')}." }
+        }
+        // A character's own seed, unless one was set here.
+        val sd = seed.toLongOrNull() ?: picked.firstOrNull()?.seed ?: Random.nextLong(0, 1L shl 31)
         if (!seedLocked) seed = "" else seed = "$sd"
         val g = if (cfgAuto) null else cfg.toDouble()
         val srcs = if (edit) images.map { it.dataUri } else emptyList()
         val count = n
-        st.run(tool) { c, store, p, _ -> Tools.image(c, store, mid, pr, neg, size, stp, sd, srcs, p, count, g) }
+        val every = if (livePreview) 4 else 0
+        st.run(tool) { c, store, p, _ -> Tools.image(c, store, mid, pr, neg, size, stp, sd, srcs, p, count, g, every) }
     }
 }
 
@@ -478,3 +528,58 @@ internal fun TextTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
 
 private val MAX_REFS = Regex("up to (\\d+) reference images", RegexOption.IGNORE_CASE)
 private val TRANSPARENT = Regex("transparent|alpha channel|RGBA", RegexOption.IGNORE_CASE)
+
+
+/** A character for the pictures: its name, its fixed description, and its seed. */
+internal data class Character(val name: String, val description: String, val seed: Long)
+
+internal fun loadCharacters(json: String): List<Character> = try {
+    val a = org.json.JSONArray(json)
+    (0 until a.length()).mapNotNull { i ->
+        a.optJSONObject(i)?.let { o -> Character(o.optString("name"), o.optString("description"), o.optLong("seed")) }
+    }.filter { it.name.isNotBlank() }
+} catch (e: Exception) {
+    emptyList()
+}
+
+internal fun charactersJson(list: List<Character>): String = org.json.JSONArray(
+    list.map { org.json.JSONObject().put("name", it.name).put("description", it.description).put("seed", it.seed) },
+).toString()
+
+@Composable
+private fun CharacterDialog(ch: Character, onClose: () -> Unit, onDelete: () -> Unit, onSave: (Character) -> Unit) {
+    var name by remember { mutableStateOf(ch.name) }
+    var desc by remember { mutableStateOf(ch.description) }
+    var seed by remember { mutableStateOf(ch.seed.toString()) }
+    var askDelete by remember { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(if (ch.name.isBlank()) "New character" else "Character") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(name, { name = it.take(40) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    desc, { desc = it.take(600) }, label = { Text("How they look") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("e.g. a small scruffy wheat-coloured terrier with one folded left ear and a red collar") },
+                )
+                Text(
+                    "Concrete and countable works best: colours, clothes, hair, marks. These words and the seed go into every " +
+                        "picture with this character, unchanged.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(seed, { v -> seed = v.filter { it.isDigit() }.take(10) }, label = { Text("Seed") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (ch.name.isNotBlank()) {
+                    if (askDelete) TextButton(onClick = onDelete) { Text("Really delete ${ch.name}", color = MaterialTheme.colorScheme.error) }
+                    else TextButton(onClick = { askDelete = true }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(Character(name.trim(), desc.trim(), seed.toLongOrNull() ?: ch.seed)) },
+                enabled = name.isNotBlank() && desc.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } },
+    )
+}

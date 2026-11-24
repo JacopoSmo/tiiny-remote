@@ -195,6 +195,58 @@ class DeviceClient(url: String, private val key: String) {
 
     private class Busy(msg: String) : Exception(msg)
 
+    /**
+     * A request answered with server-sent events (`event:` / `data:` blocks), e.g. image generation with previews.
+     * onEvent(event, data) for each; the Reply is the error answer when it wasn't 2xx (then no events came), else
+     * an empty 200.
+     */
+    fun sse(path: String, body: JSONObject, timeoutSec: Int, stop: () -> Boolean, onEvent: (String, String) -> Unit): Reply = NpuGate.work {
+        val conn = open("POST", path, timeoutSec)
+        try {
+            val bytes = body.toString().toByteArray(Charsets.UTF_8)
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "text/event-stream")
+            conn.setFixedLengthStreamingMode(bytes.size)
+            conn.outputStream.use { it.write(bytes) }
+            val code = conn.responseCode
+            if (code !in 200..299) {
+                val err = conn.errorStream?.use { it.readBytes() } ?: ByteArray(0)
+                ApiLog.add("POST $path -> HTTP $code: ${String(err).take(300)}")
+                return@work Reply(code, err)
+            }
+            ApiLog.add("POST $path -> HTTP $code (streaming)")
+            conn.inputStream.bufferedReader().use { reader ->
+                var event = "message"
+                val data = StringBuilder()
+                while (!stop()) {
+                    val line = reader.readLine() ?: break
+                    when {
+                        line.isEmpty() -> {
+                            if (data.isNotEmpty()) onEvent(event, data.toString())
+                            event = "message"
+                            data.setLength(0)
+                        }
+                        line.startsWith("event:") -> event = line.removePrefix("event:").trim()
+                        line.startsWith("data:") -> {
+                            if (data.isNotEmpty()) data.append('\n')
+                            data.append(line.removePrefix("data:").trimStart())
+                        }
+                    }
+                }
+                if (data.isNotEmpty()) onEvent(event, data.toString())
+            }
+            Reply(200, ByteArray(0))
+        } catch (e: MediaException) {
+            throw e
+        } catch (e: Exception) {
+            ApiLog.add("POST $path -> ${e.javaClass.simpleName}: ${e.message}")
+            throw MediaException("Lost the connection to the Tiiny (${e.message ?: e.javaClass.simpleName}).")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun stream(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion {
         val conn = open("POST", "/v1/chat/completions", 900)
         var first = 0L
