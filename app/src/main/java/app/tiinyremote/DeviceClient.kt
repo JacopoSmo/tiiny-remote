@@ -49,7 +49,7 @@ class DeviceClient(url: String, private val key: String) {
         conn.requestMethod = method
         conn.connectTimeout = 10_000
         conn.readTimeout = timeoutSec * 1000
-        conn.setRequestProperty("Authorization", "Bearer $key")
+        if (key.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $key")
         conn.setRequestProperty("Accept", "*/*")
         return conn
     }

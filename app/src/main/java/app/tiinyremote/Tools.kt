@@ -308,6 +308,45 @@ object Tools {
         return out
     }
 
+    /**
+     * A loaded voice model's own port, if this connection reaches it (2 s check), and the name the model knows itself
+     * by (Supertonic wants its own, not the store id); else null.
+     */
+    private fun speechDirect(c: DeviceClient, model: String): Pair<DeviceClient, String>? = try {
+        val run = c.request("GET", "/api/v1/models/running", null, 15, log = false).json()
+        val a = run.optJSONObject("instances")?.optJSONArray("running") ?: JSONArray()
+        val port = (0 until a.length()).mapNotNull { a.optJSONObject(it) }
+            .firstOrNull { it.optString("model_id") == model }?.optInt("port", 0)?.takeIf { it > 0 }
+        val host = android.net.Uri.parse(c.base).host
+        if (port == null || host == null) null
+        else {
+            java.net.Socket().use { it.connect(java.net.InetSocketAddress(host, port), 2000) }
+            val d = DeviceClient("http://$host:$port", "") // the model's own port takes no key
+            val info = d.request("GET", "/v1/models", null, 15, log = false).json()
+            val own = info.optJSONObject("model_config")?.optString("id")?.takeIf { it.isNotBlank() && it != "null" }
+            d to (own ?: model.substringAfterLast('/'))
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * The text a voice model gets for one piece: ending with sentence punctuation, then a space. Through the gateway
+     * several voice models fail more often without it ("How are you." fails, "How are you. " often works); harmless
+     * for every model (Tiiny Studio's tts_text).
+     */
+    private fun ttsText(piece: String): String {
+        var t = piece.trimEnd()
+        if (t.isBlank()) return piece
+        val core = t.trimEnd('"', '\'', '\u201d', '\u2019', ')', ']', '\u00bb', '\u300d', '\u300f')
+        if (core.isNotEmpty() && core.last() !in ".!?\u2026\u3002\uff01\uff1f") {
+            val ch = core.last()
+            val cjk = ch in '\u3040'..'\u30ff' || ch in '\u3400'..'\u9fff' || ch in '\uac00'..'\ud7af' || ch in '\uf900'..'\ufaff'
+            t += if (cjk) "\u3002" else "."
+        }
+        return "$t "
+    }
+
     fun speech(
         c: DeviceClient, store: ResultStore, model: String, text: String,
         speaker: String?, design: String?, refAudio: ByteArray?, refText: String?,
@@ -317,23 +356,43 @@ object Tools {
         when {
             !speaker.isNullOrBlank() -> body.put("voice", speaker)
             !design.isNullOrBlank() -> body.put("instruct", design)
-            else -> {
-                if (refAudio == null) throw MediaException("This voice needs a reference clip: record or pick one.")
+            refAudio != null -> {
                 if (refText.isNullOrBlank()) throw MediaException("Type what's said in the reference clip: cloning needs both.")
                 body.put("ref_audio", b64(refAudio)).put("ref_text", refText.trim())
                 if (instruct.isNotBlank()) body.put("instruct", instruct.trim())
             }
+            // Nothing chosen: the model's own voice (VoxCPM2, say, has no built-in speakers and speaks without one).
         }
+        val noVoice = speaker.isNullOrBlank() && design.isNullOrBlank() && refAudio == null
         if (language.isNotBlank()) body.put("language", language)
         val parts = chunks(text)
         val wavs = ArrayList<ByteArray>()
+        // The voice model's own port first, where this connection reaches it (home Wi-Fi or the VPN): through the
+        // gateway, MOSS-TTS-Nano, OmniVoice, VoxCPM2, Qwen3-TTS CustomVoice and VibeVoice-Realtime answer 500 for many
+        // texts, and for others a WAV missing its last sentence (TiinyOS 0.1.39, found by Tiiny Studio). Once the own
+        // port fails, the gateway takes the rest.
+        var direct = speechDirect(c, model)
         for ((i, part) in parts.withIndex()) {
             check(p)
             p.update(
                 if (parts.size == 1) "Speaking" else "Speaking part ${i + 1} of ${parts.size}",
                 if (parts.size > 1) i * 100 / parts.size else null,
             )
-            body.put("input", part)
+            body.put("input", ttsText(part))
+            val own = direct
+            if (own != null) {
+                val r = try {
+                    own.first.request("POST", "/v1/audio/speech", JSONObject(body.toString()).put("model", own.second), 3600)
+                } catch (e: Exception) {
+                    null
+                }
+                if (r != null && r.ok && r.bytes.size > 12 && String(r.bytes, 0, 4) == "RIFF") {
+                    wavs.add(r.bytes)
+                    continue
+                }
+                ApiLog.add("${short(model)}'s own port didn't answer: the rest goes through the gateway", "Create")
+                direct = null
+            }
             val r = c.request("POST", "/v1/audio/speech", body, 3600)
             if (r.ok && r.bytes.size > 12 && String(r.bytes, 0, 4) == "RIFF") {
                 wavs.add(r.bytes)
@@ -341,9 +400,13 @@ object Tools {
             }
             val e = r.error()
             if (e.contains("upstream TTS model failed")) {
-                throw MediaException("${short(model)} failed on the device. Some voice models and modes don't work through TiinyOS's gateway yet. Try another voice model.")
+                throw MediaException(
+                    "${short(model)} failed on the device. Through TiinyOS's gateway several voice models fail on many texts " +
+                        "(MOSS-TTS-Nano, OmniVoice, VoxCPM2, Qwen3-TTS CustomVoice, VibeVoice-Realtime). Kokoro-82M and " +
+                        "Supertonic-3 work there; or try again on the home Wi-Fi, where the app uses the model's own port.",
+                )
             }
-            throw MediaException(e)
+            throw MediaException(if (noVoice) "$e (No voice was chosen: if this model has no voice of its own, give it a speaker, a voice description or a clip.)" else e)
         }
         val id = store.newId()
         val file = store.saveFile(id, "speech.wav", Wav.join(wavs))
@@ -354,14 +417,22 @@ object Tools {
         c: DeviceClient, store: ResultStore, model: String, audio: ByteArray, mime: String,
         filename: String, language: String, p: Progress,
     ): ResultEntry {
-        p.update("Transcribing", null)
         val fields = mutableListOf("model" to model, "response_format" to "json")
         if (language.isNotBlank()) fields.add("language" to language)
-        val r = c.multipart("/v1/audio/transcriptions", fields, listOf(DeviceClient.Part("file", filename, mime, audio)), 3600)
-        val text = r.json().opt("text")
-        if (!r.ok || text == null) throw MediaException(r.error())
+        // The Tiiny's speech-to-text fails on long audio (past ~90 s): a long 16 kHz WAV goes in ~60 s parts cut at
+        // quiet moments, and the texts are joined (as Tiiny Studio does).
+        val parts = if (mime.contains("wav")) Wav.asrParts(audio) else listOf(audio)
+        val texts = ArrayList<String>()
+        for ((i, part) in parts.withIndex()) {
+            check(p)
+            p.update(if (parts.size > 1) "Transcribing, part ${i + 1} of ${parts.size}" else "Transcribing", if (parts.size > 1) i * 100 / parts.size else null)
+            val r = c.multipart("/v1/audio/transcriptions", fields, listOf(DeviceClient.Part("file", filename, mime, part)), 3600)
+            val text = r.json().opt("text")
+            if (!r.ok || text == null) throw MediaException(r.error())
+            texts.add(text.toString().trim())
+        }
         val id = store.newId()
-        return ResultEntry(id, "transcript", "Transcript: ${filename}", emptyList(), text.toString().trim(), model, System.currentTimeMillis())
+        return ResultEntry(id, "transcript", "Transcript: ${filename}", emptyList(), texts.filter { it.isNotBlank() }.joinToString(" "), model, System.currentTimeMillis())
     }
 
     // ---------------- music ----------------
@@ -392,6 +463,8 @@ object Tools {
         val maxSteps: Int?,
         val maxSeconds: Int,
         val secsPerSec: Double?,
+        /** Takes a style reference: a clip of music whose feel the song borrows (SongGeneration, AceStep; not YuE2). */
+        val styleRef: Boolean = false,
     )
 
     fun songInfo(c: DeviceClient, model: String): SongInfo {
@@ -420,6 +493,7 @@ object Tools {
                 svc.startsWith("AceStep") -> 1.5
                 else -> null
             },
+            styleRef = mi.optJSONArray("supported_prompt_sources")?.let { a -> (0 until a.length()).any { a.optString(it) == "reference_audio_base64" } } == true,
         )
     }
 
@@ -545,10 +619,10 @@ object Tools {
             .put("messages", JSONArray()
                 .put(JSONObject().put("role", "system").put("content", system))
                 .put(JSONObject().put("role", "user").put("content", user)))
-        when (mode) {
-            "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-            "always" -> body.put("reasoning_effort", "low")
-        }
+        // "none" too: Qwen-Image's prompt enhancer reports it can't think, yet reasons until its tokens run out unless
+        // told not to (found by Tiiny Studio); the flag is ignored where it means nothing.
+        if (mode == "always") body.put("reasoning_effort", "low")
+        else body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
         val r = c.request("POST", "/v1/chat/completions", body, timeoutSec)
         if (!r.ok) throw MediaException(r.error())
         val text = r.json().optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content") ?: ""
@@ -939,17 +1013,45 @@ object Tools {
     private const val CUTOUT_PROMPT = "Extract the main subject from this photo onto a transparent background. Keep the subject exactly the same: " +
         "shape, colours, details. Remove everything else. The image has an alpha channel and a transparent background."
 
-    /** Makes nearly see-through pixels fully transparent white, as Tiiny Studio does before building from a cut-out. */
-    private fun cleanAlpha(png: ByteArray): ByteArray {
+    /**
+     * The picture a 3D model gets (Tiiny Studio's prep_for_3d). The models take every pixel that isn't fully
+     * transparent as part of the subject, and a cut-out leaves faint noise over the background: a flat card or a big
+     * floor came out. So nearly see-through pixels (alpha < 32) become fully transparent white, and a picture with
+     * see-through parts has its subject cropped and centred on a square it fills to about 95%. Opaque pictures (and
+     * anything that isn't a PNG) stay as they are.
+     */
+    private fun prepFor3d(png: ByteArray): ByteArray {
+        if (png.size < 8 || png[1] != 'P'.code.toByte() || png[2] != 'N'.code.toByte()) return png
         val bmp = android.graphics.BitmapFactory.decodeByteArray(png, 0, png.size) ?: return png
         if (!bmp.hasAlpha()) return png
         val w = bmp.width
         val h = bmp.height
         val px = IntArray(w * h)
         bmp.getPixels(px, 0, w, 0, 0, w, h)
-        for (i in px.indices) if ((px[i] ushr 24) < 32) px[i] = 0x00FFFFFF
-        val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
-        out.setPixels(px, 0, w, 0, 0, w, h)
+        var clear = false
+        var x0 = w
+        var y0 = h
+        var x1 = -1
+        var y1 = -1
+        for (y in 0 until h) for (x in 0 until w) {
+            val i = y * w + x
+            if ((px[i] ushr 24) < 32) {
+                px[i] = 0x00FFFFFF
+                clear = true
+            } else {
+                if (x < x0) x0 = x
+                if (x > x1) x1 = x
+                if (y < y0) y0 = y
+                if (y > y1) y1 = y
+            }
+        }
+        if (!clear || x1 < 0) return png // opaque, or nothing solid at all
+        val bw = x1 - x0 + 1
+        val bh = y1 - y0 + 1
+        val side = (maxOf(bw, bh) * 100 + 94) / 95
+        val out = android.graphics.Bitmap.createBitmap(side, side, android.graphics.Bitmap.Config.ARGB_8888)
+        out.eraseColor(0x00FFFFFF)
+        out.setPixels(px, y0 * w + x0, w, (side - bw) / 2, (side - bh) / 2, bw, bh)
         val bos = java.io.ByteArrayOutputStream()
         out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos)
         return bos.toByteArray()
@@ -976,11 +1078,13 @@ object Tools {
                 putBack(c, opts.cutoutModel, unloaded, p)
             }
             val f = store.file(cut.mainFile!!)
-            source = cleanAlpha(f.readBytes())
+            source = prepFor3d(f.readBytes())
             sourceMime = "image/png"
             f.delete() // the cut-out is only a step on the way, not a result of its own
             makeRoom(c, model, p) // the 3D model may have made way for the image model
         }
+        // A picture that's already transparent gets the same clean-up and centring as a cut-out.
+        if (opts.cutoutModel == null && sourceMime == "image/png") source = prepFor3d(source)
         val q = "?model=${c.quote(model)}"
         val caps = c.request("GET", "/v1/3d/capabilities$q", null, 30).json().let { it.optJSONObject("data") ?: JSONObject() }
         val plan = mutableListOf("shape")

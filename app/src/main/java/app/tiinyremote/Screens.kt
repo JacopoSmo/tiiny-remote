@@ -692,7 +692,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                                         filters = if (key in filters) filters - key else filters + key
                                         prefs.edit().putStringSet("filters", filters).apply()
                                     },
-                                    label = { Text(tag(label)) },
+                                    label = { SignText(tag(label)) },
                                 )
                             }
                         }
@@ -931,7 +931,7 @@ private fun ModelCard(
                     Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (m.abilities.isNotEmpty()) {
-                    Text(tags(m.abilities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    SignText(tags(m.abilities), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                 }
                 if (unavailable) {
                     Text(
@@ -1217,7 +1217,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     "Main chat model" to "The chat's main model (when a helper is loaded)",
                     "Helper" to "The fast helper model",
                     "working" to "Working on something right now",
-                    "Web search" to "Chat: web search on",
+                    "Web search" to "Web search: in the chat (on), and for agents",
                     "Suggestions" to "Chat: follow-up suggestions on",
                     "Socratic" to "Chat: Socratic mode (guides with questions)",
                     "Student" to "Chat: Student mode (teaches step by step)",
@@ -1227,7 +1227,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 )
                 for ((word, what) in meaning) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(TAG_ICONS[word] ?: "", modifier = Modifier.width(36.dp))
+                        SignText(TAG_ICONS[word] ?: "", modifier = Modifier.width(36.dp))
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
@@ -1250,10 +1250,10 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
                 for ((icon, what) in listOf(GalleryIcon to "Gallery: everything made", TranslateIcon to "Translate: text, photos, speech",
-                    AutomationIcon to "Automate: 🤖 agents, 📋 processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
+                    AutomationIcon to "Automate: $SIGN_AGENT agents, $SIGN_PROCESS processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) { Icon(icon, null, Modifier.size(18.dp)) }
-                        Text(what, style = MaterialTheme.typography.bodyMedium)
+                        SignText(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 Text(
@@ -1345,7 +1345,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "")
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "")
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1400,6 +1400,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        SettingDropdown("Mode", THEMES, cur.theme) { vm.setDisplay(cur.copy(theme = it)) }
         SettingDropdown("Size of everything", UI_SCALES, cur.uiScale) { vm.setDisplay(cur.copy(uiScale = it)) }
         SettingDropdown("Text size", TEXT_SCALES, cur.textScale) { vm.setDisplay(cur.copy(textScale = it)) }
         var legend by remember { mutableStateOf(false) }
@@ -1447,6 +1448,12 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        var searxGuide by remember { mutableStateOf(false) }
+        TextButton(onClick = { searxGuide = true }) { Text("How to set it up (Terminal)") }
+        if (searxGuide) TerminalGuide(
+            "SearXNG from the terminal", SEARX_STEPS,
+            "Keep port 8888 on your home network (don't forward it on the router); away from home the app reaches it through WireGuard.",
+        ) { searxGuide = false }
         Text("Search with", style = MaterialTheme.typography.labelLarge)
         for ((v, label) in listOf(
             "auto" to "Your SearXNG when reachable, else the phone (works anywhere)",
@@ -2115,3 +2122,22 @@ private fun QuitDialog(s: UiState, vm: MainViewModel, working: Boolean, onClose:
         },
     )
 }
+
+/** SearXNG in Docker on the NAS, over SSH: what Settings → Web search → How to set it up (Terminal) shows. */
+private val SEARX_STEPS = listOf(
+    "1. Connect to the NAS with your SSH app (on Ugreen: Control Panel → Terminal → SSH on). Then make a folder and SearXNG's settings: " +
+        "JSON answers on (the app needs them), the bot limiter off (it's only for you), a random secret." to
+        "mkdir -p ~/searxng/config && cd ~/searxng\ncat > config/settings.yml <<EOF\nuse_default_settings: true\nserver:\n" +
+        "  secret_key: \"$(openssl rand -hex 32)\"\n  limiter: false\n  image_proxy: false\nsearch:\n  formats:\n    - html\n    - json\nEOF",
+    "2. Write the setup file (paste the whole block):" to
+        "cat > docker-compose.yml <<'EOF'\nservices:\n  searxng:\n    image: searxng/searxng:latest\n    container_name: searxng\n" +
+        "    restart: unless-stopped\n    ports:\n      - \"8888:8080\"\n    volumes:\n      - ./config:/etc/searxng\nEOF",
+    "3. Start it (if \"compose\" isn't known: sudo docker-compose up -d):" to "sudo docker compose up -d",
+    "4. Check it: after a few seconds the search should answer with {\"query\": \"test\"…; the last line shows the NAS's address (192.168.…). " +
+        "If it doesn't answer, sudo docker logs searxng says why." to
+        "curl -s \"http://localhost:8888/search?q=test&format=json\" | head -c 300; echo\nhostname -I",
+    "5. Here in Settings: SearXNG address http://<NAS address>:8888, then Test. Later, to update SearXNG:" to
+        "cd ~/searxng && sudo docker compose pull && sudo docker compose up -d",
+    "6. Optional, after an update: delete the old images nothing uses any more, to free space on the NAS (images of " +
+        "running containers stay):" to "sudo docker image prune -f",
+)

@@ -184,6 +184,8 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
     val speakers = c?.speakers ?: emptyList()
     val canDesign = c?.design == true
     val choices = buildList {
+        // The model's own voice (no voice sent), for models without built-in speakers: VoxCPM2 speaks this way.
+        if (speakers.isEmpty()) add("own")
         speakers.forEach { add("spk:$it") }
         if (canClone) voices.forEach { add("saved:${it.id}") }
         if (canDesign) add("design")
@@ -211,12 +213,13 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
         when {
             speakers.isNotEmpty() && canClone -> "built-in, or cloned from a 3–20 s clip"
             speakers.isNotEmpty() -> "built into this model"
-            else -> "cloned from a 3–20 s clip"
+            else -> "its own, or cloned from a 3–20 s clip"
         },
     )
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (s in speakers) FilterChip(selected = cur == "spk:$s", onClick = { choose("spk:$s") }, label = { Text(speakerName(s)) })
         if (canClone) for (v in voices) FilterChip(selected = cur == "saved:${v.id}", onClick = { choose("saved:${v.id}") }, label = { Text("🎙 ${v.name}") })
+        if ("own" in choices) FilterChip(selected = cur == "own", onClick = { choose("own") }, label = { Text("The model's own voice") })
         if (canDesign) FilterChip(selected = cur == "design", onClick = { choose("design") }, label = { Text("Describe a voice") })
         if (canClone) FilterChip(selected = cur == "new", onClick = { choose("new") }, label = { Text("+ New voice") })
     }
@@ -244,7 +247,7 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
                 clip?.seconds?.let { s ->
                     if (s < 3 || s > 20) Hint("Works best between 3 and 20 seconds; this one is %.0f s.".format(s), warn = true)
                 }
-                Field(clipText, { clipText = it }, "Transcript", lines = 3, placeholder = "Exactly what's said in the clip (makes the clone much better)")
+                Field(clipText, { clipText = it }, "Transcript", lines = 3, placeholder = "Word for word what the clip says (the clone gets much better)")
                 if (models.any { it.isAsr }) {
                     OutlinedButton(
                         enabled = clip != null && helper == null,
@@ -266,18 +269,18 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
             }
         }
         cur == "design" -> {
-            Field(design, { design = it }, "Describe the voice", lines = 2, placeholder = "e.g. a calm, warm narrator with a slight British accent")
+            Field(design, { design = it }, "Describe the voice", lines = 2, placeholder = "e.g. a cheerful young radio host, bright and quick")
             TagChips(DESIGN_CHIPS, { design == it }) { design = it }
         }
     }
 
     LabelRow("What to say", "${text.length} characters")
-    Field(text, { text = it }, "Text", lines = 5, placeholder = "Type what the voice should say…")
+    Field(text, { text = it }, "Text", lines = 5, placeholder = "e.g. Good morning! Today will be sunny, with a light breeze on the lake.")
     if (text.length > 320) Hint("Long text is read in ${(text.length + 299) / 300} parts and joined.")
 
     if (saved != null && c?.instruct == true) {
         LabelRow("Delivery", "optional")
-        Field(instruct, { instruct = it }, "How to say it", placeholder = "e.g. calm and warm, a little slower")
+        Field(instruct, { instruct = it }, "How to say it", placeholder = "e.g. whispering, as if telling a secret")
         TagChips(STYLE_CHIPS, { instruct == it }) { instruct = if (instruct == it) "" else it }
     }
 
@@ -363,7 +366,7 @@ internal fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
 
     // Describe it: a chat model maps your words to the tag vocabulary.
     LabelRow("Describe it", "optional")
-    Field(desc, { desc = it }, "In your own words", lines = 2, placeholder = "e.g. a dreamy, shimmering pad for a night drive")
+    Field(desc, { desc = it }, "In your own words", lines = 2, placeholder = "e.g. warm lo-fi piano with soft vinyl crackle, for studying")
     if (models.any { it.isChat }) {
         OutlinedButton(
             enabled = desc.isNotBlank() && helper == null,
@@ -479,6 +482,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     var type by rememberSaveable { mutableStateOf("mixed") }
     var lyrics by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(LYRICS_TEMPLATE)) }
     var seconds by rememberSaveable { mutableStateOf(60) }
+    var styleRef by remember { mutableStateOf<PickedAudio?>(null) }
     var preview by rememberSaveable { mutableStateOf(false) }
     var aceOpen by remember { mutableStateOf(false) }
     var bpm by rememberSaveable { mutableStateOf("") }
@@ -513,7 +517,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
 
     // Style
     LabelRow("Style")
-    Field(caption, { caption = it }, "Genre, mood, instruments, voice", lines = 2, placeholder = "e.g. upbeat indie pop, female vocals, jangly guitars")
+    Field(caption, { caption = it }, "Genre, mood, instruments, voice", lines = 2, placeholder = "e.g. alpine folk-rock, male choir, accordion and stomping drums")
     TagChips(SONG_CHIPS, { Regex("\\b${Regex.escape(it)}\\b", RegexOption.IGNORE_CASE).containsMatchIn(caption) }, { "+ $it" }) { chip ->
         caption = caption.trimEnd().trimEnd(',').let { if (it.isBlank()) chip else "$it, $chip" }
     }
@@ -536,7 +540,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         OutlinedTextField(
             value = lyrics,
             onValueChange = { lyrics = it },
-            placeholder = { Text("[verse]\nYour first verse…\n\n[chorus]\nThe hook…") },
+            placeholder = { Text("[verse]\nThe first lines…\n\n[chorus]\nThe part everyone sings…") },
             minLines = 8,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -581,10 +585,16 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
                     Dropdown("Key", listOf("" to "Auto") + KEYS.map { it to it }, keyScale) { keyScale = it }
                     Dropdown("Time signature", TIME_SIGS, timeSig) { timeSig = it }
                     if (vocals) Dropdown("Sung in", ACE_LANGS, vocalLang) { vocalLang = it }
-                    Field(avoid, { avoid = it }, "Avoid (optional)", placeholder = "e.g. drums, distortion")
+                    Field(avoid, { avoid = it }, "Avoid (optional)", placeholder = "e.g. vocals, heavy bass")
                 }
             }
         }
+    }
+
+    // Style reference: a clip of music whose feel the song borrows (models that take one)
+    if (sm.styleRef) {
+        LabelRow("Style reference", "optional · a WAV, ${if (sm.ace) "5" else "10"}–30 s of music whose feel the song borrows")
+        AudioInput(styleRef, arrayOf("audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"), "Upload a WAV…") { styleRef = it }
     }
 
     // Length
@@ -616,8 +626,16 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         else -> 10 + secs * 3.2
     }
     val bpmN = bpm.toIntOrNull()
+    val refSecs = styleRef?.seconds
     val why = notReady ?: when {
         caption.isBlank() -> "Describe the style."
+        // The Tiiny takes a WAV clip only: 10 s at least for SongGeneration, 5 s for AceStep (Tiiny Studio's check).
+        sm.styleRef && styleRef != null && !(styleRef!!.bytes.size > 12 && String(styleRef!!.bytes, 0, 4) == "RIFF") ->
+            "The style reference must be a WAV file."
+        sm.styleRef && styleRef != null && refSecs != null && refSecs < (if (sm.ace) 5.0 else if (sm.yue) 0.0 else 10.0) ->
+            "The style reference must be at least ${if (sm.ace) 5 else 10} s long."
+        sm.styleRef && styleRef != null && refSecs != null && refSecs > 120.0 -> "The style reference can be at most 120 s long (30 s is plenty)."
+        sm.styleRef && (styleRef?.bytes?.size ?: 0) > 25 * 1024 * 1024 -> "The style reference is too big: use a shorter clip (up to 25 MB)."
         vocals && lyrics.text.isBlank() -> "Add lyrics, or switch to Instrumental."
         sm.ace && bpm.isNotBlank() && (bpmN == null || bpmN !in 30..300) -> "Tempo is a number of beats per minute (30–300)."
         else -> null
@@ -625,6 +643,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     RunPanel("song", (if (usePreview) "Compose preview" else "Compose") + "  ·  ${about(est)}", why == null, why, st) {
         val cfg = JSONObject().put("caption", caption.trim()).put("generation_type", t).put("seed", seedOf(seed))
         if (vocals) cfg.put("lyrics", lyrics.text.trim())
+        if (sm.styleRef) styleRef?.let { cfg.put("reference_audio_base64", android.util.Base64.encodeToString(it.bytes, android.util.Base64.NO_WRAP)) }
         steps.toIntOrNull()?.let { cfg.put("steps", it) }
         temperature.toDoubleOrNull()?.let { cfg.put("temperature", it) }
         topK.toIntOrNull()?.let { cfg.put("top_k", it) }

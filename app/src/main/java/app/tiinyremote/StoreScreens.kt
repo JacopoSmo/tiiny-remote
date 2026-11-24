@@ -67,17 +67,18 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(d.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1, modifier = Modifier.weight(1f))
                         Text(
-                            (d.progress?.let { "${Math.round(it)}%" } ?: "") + if (d.paused) " · paused" else "",
+                            (d.progress?.let { "${Math.round(it)}%" } ?: "") + if (d.failed) " · stopped by an error" else if (d.paused) " · paused" else "",
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
                     LinearProgressIndicator(
                         progress = { ((d.progress ?: 0.0) / 100).toFloat().coerceIn(0f, 1f) },
-                        color = if (d.paused) MaterialTheme.colorScheme.outline else ORANGE,
+                        color = if (d.failed) MaterialTheme.colorScheme.error else if (d.paused) MaterialTheme.colorScheme.outline else ORANGE,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     )
                     Row {
-                        if (d.paused) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Resume", Icons.Filled.PlayArrow) }
+                        if (d.failed) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Retry", Icons.Filled.Refresh) }
+                        else if (d.paused) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Resume", Icons.Filled.PlayArrow) }
                         else TextButton(onClick = { vm.pauseDownload(d) }) { BtnLabel("Pause", symbol = "❚❚") }
                         Spacer(Modifier.weight(1f))
                         DangerButton("Cancel", onClick = { cancel = d }, icon = Icons.Filled.Close)
@@ -85,7 +86,7 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
                 }
             }
             Text(
-                "The Tiiny downloads over its own Wi-Fi; the progress updates every 5 s.",
+                "The Tiiny downloads over its own Wi-Fi (without internet there, a download stops with an error); the progress updates every 5 s.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -34,6 +34,10 @@ data class DeviceStats(
 )
 
 object Stats {
+    /** The Tiiny's free storage as last read (GB), or null: jobs need room for their results there. */
+    @Volatile
+    var freeGb: Double? = null
+
     /** The models on the NPU as the app last saw them ("A 49% + B 29%"), for the log when a fault happens. */
     @Volatile
     var onNpu: String = ""
@@ -189,7 +193,10 @@ object Stats {
             val v = if (dTotal != null && dUsed != null && dTotal > 0) (dTotal - dUsed).coerceAtLeast(0.0) / 1e9 to dTotal / 1e9 else null
             disk = System.currentTimeMillis() to v
         }
-        disk?.second?.let { (f, t) -> s = s.copy(diskFreeGb = f, diskTotalGb = t) }
+        disk?.second?.let { (f, t) ->
+            s = s.copy(diskFreeGb = f, diskTotalGb = t)
+            freeGb = f
+        }
 
         // The on-device dashboard (port 9109), when installed: board power, NPU load and every temperature.
         val host = try {

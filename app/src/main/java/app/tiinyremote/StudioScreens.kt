@@ -122,8 +122,8 @@ private val TOOLS = listOf(
 internal val KEYS = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
     .flatMap { listOf("$it major", "$it minor") }
 
-internal const val LYRICS_TEMPLATE = "[verse]\nCity lights are fading slow\nI keep walking where the rivers go\n\n" +
-    "[chorus]\nHold on, hold on to the night\nWe're burning like a paper kite"
+internal const val LYRICS_TEMPLATE = "[verse]\nMorning mist above the lake\nEvery ripple, every wake\n\n" +
+    "[chorus]\nRise up, rise up with the sun\nThe long way home has just begun"
 
 // ---------------- the Create tab ----------------
 
@@ -179,7 +179,7 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                         // "Translates" is on every chat model: no news in a chat's model list.
                         val labels = m.abilities.filter { it != "Translates" } + if (m.isMoE) listOf("MoE") else emptyList()
                         if (labels.isNotEmpty()) {
-                            Text(
+                            SignText(
                                 tags(labels),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
@@ -299,7 +299,7 @@ internal fun Field(value: String, onChange: (String) -> Unit, label: String, lin
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
-        label = { Text(label) },
+        label = if (label.isBlank()) null else { { Text(label) } },
         placeholder = { if (placeholder.isNotEmpty()) Text(placeholder) },
         singleLine = lines == 1,
         minLines = lines,
@@ -594,8 +594,8 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
     val over = est > VIDEO_LIMIT
     LaunchedEffect(over) { if (!over) longOk = false }
 
-    Text("Prompt", style = MaterialTheme.typography.labelLarge)
-    Field(prompt, { prompt = it }, "Describe the clip", lines = 4, placeholder = "What happens in the clip: subject, motion, camera, sound…")
+    Text("Describe the clip", style = MaterialTheme.typography.labelLarge)
+    Field(prompt, { prompt = it }, "", lines = 4, placeholder = "e.g. A paper boat drifts down a rainy gutter, the camera follows it low and slow, raindrops splashing around it")
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer), modifier = Modifier.fillMaxWidth()) {
         Text(
             "Video is slow on the Tiiny: about ${Tools.fmtDuration(est.toLong())} for these settings (2 s at 480p with 4 steps took 7 minutes). " +
@@ -1114,7 +1114,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 val shownDepth = if (model?.alwaysThinks == true && depth == "off") "low" else depth
                 Box {
                     TextButton(onClick = { options = true }) {
-                        Text(listOfNotNull(
+                        SignText(listOfNotNull(
                             if (thinksNow && shownDepth != "off") sign("Thinking") else null,
                             if (canMake) sign("Can make things") else null,
                             if (web && hasSearx) sign("Web search") else null,
@@ -1178,7 +1178,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = canMake, onClick = { canMake = !canMake }, label = { Text("Can make things") })
             Spacer(Modifier.width(8.dp))
-            FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { Text("Web search") })
+            FilterChip(selected = web && hasSearx, onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") }, enabled = hasSearx, label = { SignText(tag("Web search")) })
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = suggest, onClick = { toggleSuggest() }, label = { Text("Suggestions") })
             Spacer(Modifier.width(8.dp))

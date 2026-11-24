@@ -318,6 +318,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Runs a tool in the background; its result lands in the library. */
     fun run(tool: String, block: (DeviceClient, ResultStore, Progress, RemoteJob) -> ResultEntry) {
+        // A job writes its result on the Tiiny first: under 2 GB free it can fail half-way (as Tiiny Studio checks).
+        Stats.freeGb?.let { free ->
+            if (free < 2.0) {
+                note("The Tiiny has only ${"%.1f".format(free)} GB free; a job needs about 2 GB. Delete a model you don't use (Models) first.")
+                return
+            }
+        }
         if (_job.value?.running == true) {
             note("Something is already running on the Tiiny. Wait for it, or cancel it.")
             return
@@ -522,6 +529,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             prefs.edit().putString("chat.drafts", JSONObject(drafts.toMap()).toString()).apply()
         }
     }
+
+    /** Chat|file pairs already warned about, so the warning comes once, not with every answer. */
+    private val warned = java.util.Collections.synchronizedSet(HashSet<String>())
 
     private val _saving = MutableStateFlow(prefs.getString("chat.save", "1") != "0")
     /** Chats are saved on the phone; off = incognito: nothing new is written, chats already saved stay. */
@@ -772,10 +782,24 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             Tools.transcribe(c, store, m, clip.bytes, clip.mime, clip.name, "", Progress({ _, _ -> }, { false })).text
         }, onDone)
 
-    fun improvePrompt(text: String, edit: Boolean, models: List<ModelInfo>, onDone: (String) -> Unit) =
-        helperRun(if (edit) "Improving the instruction…" else "Improving the prompt…", "chat", models, { it.isChat }, { c, m ->
-            Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200)
+    /**
+     * The prompt (or edit instruction) rewritten. A loaded Qwen-Image prompt enhancer is used first (-PE-T2I for
+     * prompts, -PE-I2I for edits; made for exactly this), else the helper or a chat model.
+     */
+    fun improvePrompt(text: String, edit: Boolean, models: List<ModelInfo>, onDone: (String) -> Unit) {
+        val pe = models.firstOrNull { it.running && it.id.contains(if (edit) "-PE-I2I" else "-PE-T2I", true) }
+        helperRun(if (edit) "Improving the instruction…" else "Improving the prompt…", "chat", models, { if (pe != null) it.id == pe.id else it.isChat }, { c, m ->
+            unwrapEnhancer(Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200))
         }, onDone)
+    }
+
+    /** PE-I2I answers an edit as a small JSON object ({"action", "description"}): only its text is kept. */
+    private fun unwrapEnhancer(text: String): String = try {
+        val o = JSONObject(text)
+        listOf("description", "prompt", "instruction", "text").firstNotNullOfOrNull { k -> o.optString(k).trim().takeIf { it.isNotEmpty() } } ?: text
+    } catch (e: Exception) {
+        text
+    }
 
     /** The current chat summarised by the helper (or the chat model), for a dialog. */
     fun summariseChat(models: List<ModelInfo>, onDone: (String) -> Unit) {
@@ -888,7 +912,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         run("song") { c, store, p, _ ->
             val out = Tools.song(c, store, model, config, seconds, preview, null, p)
             out.session?.let { sid ->
-                prefs.edit().putString("resume_${out.entry.id}", JSONObject().put("session", sid).put("model", model).put("config", config).toString()).apply()
+                // Kept for "Continue to the full song", without the style reference's audio (megabytes; the session has it).
+                val keep = JSONObject(config.toString()).apply { remove("reference_audio_base64") }
+                prefs.edit().putString("resume_${out.entry.id}", JSONObject().put("session", sid).put("model", model).put("config", keep).toString()).apply()
             }
             out.entry
         }
@@ -1374,12 +1400,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private fun asMessage(m: ChatMsg, latest: Boolean = true): JSONObject {
         // An attached file goes along as text, marked as the file's content (data, not instructions). After its first
         // answer, a long file goes as its summary (the whole text again with every question would slow each answer).
+        // Between <untrusted> delimiters the model is told never to obey (Safety.RULE in the system prompt).
         val text = when {
             m.fileText == null -> m.text
             !latest && m.fileSummary != null ->
-                "${m.text}\n\n[Attached file \"${m.fileName}\" — a summary of it (the whole text was read for the first answer), as data:]\n${m.fileSummary}\n[End of the summary]".trim()
-            else -> "${m.text}\n\n[Attached file \"${m.fileName}\" — its content, as data:]\n${m.fileText}\n[End of the file]".trim()
-        }
+                "${m.text}\n\n" + Safety.wrap("${m.fileName} (condensed; the whole file was read for the first answer)", m.fileSummary)
+            else -> "${m.text}\n\n" + Safety.wrap(m.fileName ?: "document", m.fileText)
+        }.trim()
         return if (m.image != null) {
             val content = JSONArray()
                 .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", m.image)))
@@ -1445,11 +1472,26 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * when it's clearly faster. [depth] is the Thinking slider, [chatMode] Normal, Socratic or Student.
      */
     fun send(
-        model: String, text: String, image: String?, depth: String, chatMode: String, canMake: Boolean, web: Boolean,
+        model: String, text: String, image: String?, depth: String, chatMode: String, wantsTools: Boolean, wantsWeb: Boolean,
         suggest: Boolean, models: List<ModelInfo>, file: PickedFile? = null,
     ) {
         val id = _currentChat.value
         if (id in _busyChats.value || (text.isBlank() && image == null && file == null)) return
+        // A file in this chat that looks like it gives the model instructions: it still goes along (as data), but this
+        // answer runs without tools and web search, so a manipulated file can't make anything or send anything out.
+        val files = (_all.value[id].orEmpty().mapNotNull { m -> m.fileName?.let { it to (m.fileText ?: "") } }) +
+            listOfNotNull(file?.let { it.name to it.text })
+        val suspicious = files.mapNotNull { (name, body) -> Safety.screen(name + "\n" + body).takeIf { it.isNotEmpty() }?.let { name to it } }
+        val canMake = wantsTools && suspicious.isEmpty()
+        val web = wantsWeb && suspicious.isEmpty()
+        if (suspicious.isNotEmpty() && (wantsTools || wantsWeb)) {
+            val (name, why) = suspicious.first()
+            ApiLog.add("$name looks like it carries instructions for the model (${why.joinToString("; ")}): this answer runs without tools and web search", "Chat", isProblem = true)
+            if (warned.add(id + "|" + name)) note(
+                "📄 $name looks like it carries instructions for the model (${why.joinToString("; ")}). It still goes along, " +
+                    "marked as data, but while it's in this chat, answers run without tools and web search.",
+            )
+        }
         _suggestions.update { it - id }
         lastModels[id] = model
         if (_resumed.value == id) _resumed.value = null
@@ -1501,7 +1543,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         else -> depth
                     }
                     val firstQuestion = shown.count { it.role == "user" } == 1
-                    var system = SYSTEM_PROMPT + (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
+                    var system = SYSTEM_PROMPT +
+                        (if (shown.any { it.fileText != null }) "\n\n" + Safety.RULE else "") +
+                        (if (shown.any { it.image != null }) "\n\n" + Safety.IMAGE_RULE else "") +
+                        (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
                         (if (mode == "switch" || level == "max") depthPrompt(level) else "") +
                         when (chatMode) {
                             "socratic" -> SOCRATIC_PROMPT

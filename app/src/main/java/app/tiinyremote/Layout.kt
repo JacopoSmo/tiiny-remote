@@ -1,5 +1,8 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Share
@@ -39,6 +42,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.semantics.contentDescription
@@ -74,15 +79,94 @@ val TAG_ICONS = linkedMapOf(
     // The chat's switches use the same signs as the model labels.
     "Thinking" to "💭",
     "Can make things" to "🛠",
-    "Web search" to "🔍",
-    "Automate" to "🔁",
-    "Translates" to "🌐",
-    "Translate" to "🌐",
+    // Drawn pictograms (a character only stands in for them; SignText draws them): web search a globe with a
+    // magnifier, Translate and Automate the same as their pages.
+    "Web search" to SIGN_WEB,
+    "Automate" to SIGN_AUTOMATE,
+    "Translates" to SIGN_TRANSLATE,
+    "Translate" to SIGN_TRANSLATE,
     "Coding" to "💻",
     "Suggestions" to "💡",
     "Socratic" to "🤔",
     "Student" to "🎓",
 )
+
+/** Characters standing in for drawn pictograms in labels (private use, never typed); SignText draws them. */
+const val SIGN_WEB = "\uE101"
+const val SIGN_TRANSLATE = "\uE102"
+const val SIGN_AUTOMATE = "\uE103"
+const val SIGN_AGENT = "\uE104"
+const val SIGN_PROCESS = "\uE105"
+
+/** Agent (Automate): a robot head. */
+val AgentIcon by lazy {
+    pathIcon(
+        "Agent",
+        "M12,2a2,2 0 0 1 2,2c0,0.74 -0.4,1.39 -1,1.73V7h1a7,7 0 0 1 7,7h1a1,1 0 0 1 1,1v3a1,1 0 0 1 -1,1h-1v1a2,2 0 0 1 -2,2H5a2,2 0 0 1 -2,-2v-1H2" +
+            "a1,1 0 0 1 -1,-1v-3a1,1 0 0 1 1,-1h1a7,7 0 0 1 7,-7h1V5.73c-0.6,-0.34 -1,-0.99 -1,-1.73a2,2 0 0 1 2,-2M7.5,13A2.5,2.5 0 0 0 5,15.5" +
+            "A2.5,2.5 0 0 0 7.5,18a2.5,2.5 0 0 0 2.5,-2.5A2.5,2.5 0 0 0 7.5,13m9,0a2.5,2.5 0 0 0 -2.5,2.5a2.5,2.5 0 0 0 2.5,2.5a2.5,2.5 0 0 0 2.5,-2.5" +
+            "a2.5,2.5 0 0 0 -2.5,-2.5z",
+    )
+}
+
+/** Process (Automate): a numbered list, fixed steps in order. */
+val ProcessIcon by lazy {
+    pathIcon(
+        "Process",
+        "M2,17h2v0.5H3v1h1v0.5H2v1h3v-4H2v1zM3,8h1V4H2v1h1V8zM2,11h1.8L2,13.1v0.9h3v-1H3.2L5,10.9V10H2v1zM7,5v2h14V5H7zM7,19h14v-2H7v2zM7,13h14v-2H7v2z",
+    )
+}
+
+/** Web search: a globe with a magnifier (Material's "travel explore"), blue. */
+val WebSearchIcon by lazy {
+    pathIcon(
+        "Web search",
+        "M19.3,16.9c0.4,-0.7 0.7,-1.5 0.7,-2.4c0,-2.5 -2,-4.5 -4.5,-4.5S11,12 11,14.5s2,4.5 4.5,4.5c0.9,0 1.7,-0.3 2.4,-0.7l3.2,3.2l1.4,-1.4L19.3,16.9z" +
+            "M15.5,17c-1.4,0 -2.5,-1.1 -2.5,-2.5s1.1,-2.5 2.5,-2.5s2.5,1.1 2.5,2.5S16.9,17 15.5,17z" +
+            "M12,20v2C6.48,22 2,17.52 2,12C2,6.48 6.48,2 12,2c4.84,0 8.87,3.44 9.8,8h-2.07c-0.64,-2.46 -2.4,-4.47 -4.73,-5.41V5" +
+            "c0,1.1 -0.9,2 -2,2h-2v2c0,0.55 -0.45,1 -1,1H8v2h2v3H9l-4.79,-4.79C4.08,10.79 4,11.38 4,12C4,16.41 7.59,20 12,20z",
+    )
+}
+
+private val WEB_BLUE = androidx.compose.ui.graphics.Color(0xFF1E88E5)
+
+/**
+ * Text that may hold drawn pictograms (SIGN_WEB, SIGN_TRANSLATE, SIGN_AUTOMATE): each is drawn in its place at the
+ * text's size, web search in blue, the others in the text's colour. Plain text otherwise.
+ */
+@Composable
+fun SignText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: androidx.compose.ui.text.TextStyle = androidx.compose.material3.LocalTextStyle.current,
+    color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+    fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
+) {
+    val signs = mapOf(SIGN_WEB to "web", SIGN_TRANSLATE to "translate", SIGN_AUTOMATE to "automate", SIGN_AGENT to "agent", SIGN_PROCESS to "process")
+    if (signs.keys.none { it in text }) {
+        Text(text, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight)
+        return
+    }
+    val annotated = androidx.compose.ui.text.buildAnnotatedString {
+        for (ch in text) {
+            val key = signs[ch.toString()]
+            if (key != null) appendInlineContent(key, ch.toString()) else append(ch)
+        }
+    }
+    val tint = if (color != androidx.compose.ui.graphics.Color.Unspecified) color else androidx.compose.material3.LocalContentColor.current
+    fun box(icon: androidx.compose.ui.graphics.vector.ImageVector, c: androidx.compose.ui.graphics.Color) = androidx.compose.foundation.text.InlineTextContent(
+        androidx.compose.ui.text.Placeholder(1.25.em, 1.25.em, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+    ) { androidx.compose.material3.Icon(icon, null, tint = c, modifier = Modifier.fillMaxSize()) }
+    Text(
+        annotated, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight,
+        inlineContent = mapOf(
+            "web" to box(WebSearchIcon, WEB_BLUE), "translate" to box(TranslateIcon, tint), "automate" to box(AutomationIcon, tint),
+            "agent" to box(AgentIcon, tint), "process" to box(ProcessIcon, tint),
+        ),
+    )
+}
 
 /** The sign alone, for places that show only signs (the chat's compact switch summary). */
 fun sign(word: String): String = TAG_ICONS[word] ?: word
@@ -164,6 +248,11 @@ val LAYOUTS = listOf(
     "auto" to "Auto (from the screen's shape)",
     "square" to "Square · compact (Unihertz Titan 2, 1:1)",
     "tall" to "Tall phone (19.5:9 and similar)",
+)
+val THEMES = listOf(
+    "auto" to "Auto (as the phone is set)",
+    "dark" to "Dark",
+    "light" to "Light",
 )
 val UI_SCALES = listOf("0.85" to "Small", "1.0" to "Normal", "1.15" to "Large")
 val TEXT_SCALES = listOf("0.9" to "Small", "1.0" to "Normal", "1.15" to "Large", "1.3" to "Extra large")
@@ -418,5 +507,45 @@ val CodeIcon by lazy {
     pathIcon(
         "Code",
         "M9.4,16.6L4.8,12l4.6,-4.6L8,6l-6,6 6,6 1.4,-1.4zM14.6,16.6l4.6,-4.6 -4.6,-4.6L16,6l6,6 -6,6 -1.4,-1.4z",
+    )
+}
+
+/**
+ * "How to set it up (Terminal)": the commands to run over SSH (Termius, Termux…) on the NAS, step by step, each in
+ * its own box with Copy. [steps]: what the step does, then its commands.
+ */
+@Composable
+fun TerminalGuide(title: String, steps: List<Pair<String, String>>, note: String, onClose: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 680.dp),
+        title = { ClosableTitle(onClose) { Text(title) } },
+        text = {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for ((what, cmd) in steps) {
+                    Text(what, style = MaterialTheme.typography.bodyMedium)
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                    ) {
+                        Text(
+                            cmd,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        )
+                        androidx.compose.material3.TextButton(
+                            onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(cmd)) },
+                            modifier = Modifier.align(Alignment.End),
+                        ) { BtnLabel("Copy", symbol = "⧉") }
+                    }
+                }
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {},
     )
 }

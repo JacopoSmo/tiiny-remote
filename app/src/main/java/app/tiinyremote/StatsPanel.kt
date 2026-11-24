@@ -276,7 +276,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                                     }
                                     val labels = listOfNotNull(role, if (m.isMoE) "MoE" else null)
                                     if (labels.isNotEmpty() || m.busy) Row {
-                                        if (labels.isNotEmpty()) Text(tags(labels), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                                        if (labels.isNotEmpty()) SignText(tags(labels), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
                                         // As on the Models page: the model is answering or making something right now.
                                         if (m.busy) Text(
                                             (if (labels.isNotEmpty()) "  ·  " else "") + tag("working"),

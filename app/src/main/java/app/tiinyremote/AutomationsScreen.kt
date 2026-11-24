@@ -198,7 +198,7 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            FilterChip(selected = section == "list", onClick = { section = "list" }, label = { Text(sign("Automate") + " Automate") })
+            FilterChip(selected = section == "list", onClick = { section = "list" }, label = { SignText(sign("Automate") + " Automate") })
             FilterChip(selected = section == "results", onClick = { section = "results"; av.refresh() }, label = { Text("Results") })
             FilterChip(selected = section == "connectors", onClick = { section = "connectors" }, label = { Text("Connectors") })
         }
@@ -223,9 +223,9 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     // Alphabetical: Agent, then Process.
                     OutlinedButton(onClick = { editing = Automation("", "New agent", kind = "agent", time = "", tools = setOf("web", "pages")) }) {
-                        BtnLabel("Agent", symbol = "🤖")
+                        BtnLabel("Agent", AgentIcon)
                     }
-                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", symbol = "📋") }
+                    OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", ProcessIcon) }
                     TextButton(onClick = { agentInfo = true }) { Text("ⓘ") }
                 }
                 Text("Start from an example:", style = MaterialTheme.typography.labelMedium)
@@ -259,7 +259,7 @@ private fun AutomationCard(a: Automation, doing: String?, last: AutoRun?, onEdit
     Card(Modifier.fillMaxWidth().clickable(onClick = onEdit)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text((if (a.kind == "agent") "🤖 " else "📋 ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                SignText((if (a.kind == "agent") "$SIGN_AGENT " else "$SIGN_PROCESS ") + a.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Switch(checked = a.enabled, onCheckedChange = onEnable)
             }
             val what = if (a.kind == "agent") "Tools: " + a.tools.sorted().joinToString(", ").ifBlank { "none" }
@@ -362,7 +362,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("✉ Email (IMAP, read-only)", style = MaterialTheme.typography.titleSmall)
+            Text("✉️ Email (IMAP, read-only)", style = MaterialTheme.typography.titleSmall)
             Text(
                 "Your mail server's IMAP address and an app password (Gmail, Outlook, GMX, Bluewin… all offer one). Nothing is " +
                     "marked as read, moved or deleted.",
@@ -416,7 +416,10 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel) {
                 }
                 TextButton(onClick = { terminal = true }) { Text("How to set it up (Terminal)") }
             }
-            if (terminal) NasTerminalGuide { terminal = false }
+            if (terminal) TerminalGuide(
+                "NAS agent from the terminal", NAS_STEPS,
+                "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
+            ) { terminal = false }
         }
     }
 }
@@ -437,46 +440,10 @@ private val NAS_STEPS = listOf(
         "sudo docker logs tiiny-agent\ncurl -s -H \"Authorization: Bearer \$TOKEN\" http://localhost:8765/status\nhostname -I",
     "5. Here in the app: address http://<NAS address>:8765 and the token, Save, Test. Later, to update the agent:" to
         "cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d",
+    "6. Optional, after an update: delete the old images nothing uses any more, to free space on the NAS (images of " +
+        "running containers stay):" to "sudo docker image prune -f",
 )
 
-@Composable
-private fun NasTerminalGuide(onClose: () -> Unit) {
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    ScaledAlertDialog(
-        onDismissRequest = onClose,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.96f).widthIn(max = 680.dp),
-        title = { ClosableTitle(onClose) { Text("NAS agent from the terminal") } },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                for ((what, cmd) in NAS_STEPS) {
-                    Text(what, style = MaterialTheme.typography.bodyMedium)
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant, androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                            .padding(8.dp),
-                    ) {
-                        Text(
-                            cmd,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        )
-                        TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(cmd)) }, modifier = Modifier.align(Alignment.End)) {
-                            BtnLabel("Copy", symbol = "⧉")
-                        }
-                    }
-                }
-                Text(
-                    "Keep port 8765 on your home network (don't forward it on the router); away from home you reach it through WireGuard.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        confirmButton = {},
-    )
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -491,7 +458,7 @@ private fun AutomationEditor(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
         modifier = Modifier.fillMaxWidth(0.94f).widthIn(max = 640.dp),
-        title = { ClosableTitle(onClose) { Text(if (a.kind == "agent") "🤖 Agent" else "📋 Process") } },
+        title = { ClosableTitle(onClose) { SignText(if (a.kind == "agent") "$SIGN_AGENT Agent" else "$SIGN_PROCESS Process") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(a.name, { a = a.copy(name = it.take(60)) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -543,8 +510,8 @@ private fun AutomationEditor(
                 } else {
                     Text("Tools the agent may use", style = MaterialTheme.typography.titleSmall)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        for ((k, label) in listOf("web" to "🔍 Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉ Email")) {
-                            FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { Text(label) })
+                        for ((k, label) in listOf("web" to "$SIGN_WEB Web search", "news" to "📰 News", "pages" to "📄 Open pages", "calendar" to "📅 Calendar", "email" to "✉️ Email")) {
+                            FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { SignText(label) })
                         }
                     }
                     if (a.tools.any { it in setOf("calendar", "email") } && a.tools.any { it in setOf("web", "news", "pages") }) {
@@ -600,9 +567,9 @@ private fun AgentInfo(onClose: () -> Unit) {
         title = { ClosableTitle(onClose) { Text("Agents and processes") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("🤖 Agent: a goal and tools", fontWeight = FontWeight.Bold)
+                SignText("$SIGN_AGENT Agent: a goal and tools", fontWeight = FontWeight.Bold)
                 Text("You give a goal; the model decides itself what to search, which pages to read, what to look up, step by step, until it has an answer (or reaches the step limit). Good for research. Slower, and a smaller model can lose its way: a chat model of 20B or more works best.")
-                Text("📋 Process: fixed steps", fontWeight = FontWeight.Bold)
+                SignText("$SIGN_PROCESS Process: fixed steps", fontWeight = FontWeight.Bold)
                 Text("Always the same: get something (news, calendar, email), the model works on it, you get the result. Predictable and quick: the right choice for daily summaries.")
                 Text("Where it runs", fontWeight = FontWeight.Bold)
                 Text("• On the phone: nothing to set up. It runs when the phone is on and can reach the Tiiny (home or VPN).\n• On the NAS: a small Docker service runs it around the clock, even with the phone off. A bit of setup once (nas-agent/ on GitHub).")

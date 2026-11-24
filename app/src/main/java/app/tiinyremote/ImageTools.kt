@@ -242,7 +242,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         value = prompt,
         onValueChange = { prompt = it; before = null },
         placeholder = {
-            Text(if (edit) "Change the background to a sunny beach, keep the subject exactly the same" else "A watercolor fox in a misty pine forest, soft morning light")
+            Text(if (edit) "e.g. Make it winter: snow on the roofs and trees, keep everything else exactly the same" else "e.g. A red tram crossing an old stone bridge in the rain, evening lights reflecting on the wet street")
         },
         minLines = 3,
         modifier = Modifier.fillMaxWidth(),
@@ -334,7 +334,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
                 OutlinedTextField(
                     value = negative,
                     onValueChange = { negative = it; st.setSetting("img.$mid.neg", it) },
-                    placeholder = { Text("blurry, low quality, watermark") },
+                    placeholder = { Text("e.g. text, extra fingers, oversaturated colours") },
                     minLines = 2,
                     modifier = Modifier.fillMaxWidth(),
                 )

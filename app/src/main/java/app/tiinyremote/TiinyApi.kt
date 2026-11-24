@@ -74,7 +74,8 @@ data class ModelInfo(
     val isImageGen get() = type == "Text-to-Image" || type == "Image-to-Image"
     /** Same test as Tiiny Studio: "Image Editing" listed, or images accepted as input. */
     val canEditImages get() = isImageGen && ("Image Editing" in supported || IMAGE_WORD.containsMatchIn(input))
-    val isOcr get() = type == "Image-to-Text"
+    /** PP-DocLayoutV3 is "Image-to-Text" too, but finds page layouts and reads no text (Tiiny Studio). */
+    val isOcr get() = type == "Image-to-Text" && !id.contains("DocLayout", true)
     val isSpeech get() = type == "Text-to-Speech"
     val isAsr get() = type == "ASR"
     val isMusic get() = type == "Music Generation"
@@ -108,14 +109,18 @@ data class StoreModel(
 )
 
 /** States of an installed model, never a download (whatever list they appear in). */
-private val INSTALLED_STATES = setOf("downloaded", "running", "loading", "starting", "stopping", "stopped", "ready", "loaded", "idle", "busy")
+private val INSTALLED_STATES = setOf("downloaded", "running", "loading", "unloading", "starting", "stopping", "stopped", "ready", "loaded", "idle", "busy")
 
 /** Words in a download's state: downloading, paused, queued, pending, waiting. */
 private val DOWNLOAD_STATE = Regex("download|pause|queue|pend|wait")
 
 /** A model the Tiiny is downloading (or has paused): status as the Tiiny says it, progress in %. */
 data class Download(val id: String, val name: String, val status: String, val progress: Double?) {
-    val paused get() = status.contains("pause", true)
+    /** A paused download reads "download_stop" on TiinyOS 0.1.39 (Tiiny Studio's DEVICE-API). */
+    val paused get() = status.contains("pause", true) || status.equals("download_stop", true)
+
+    /** Stopped by a problem, e.g. the Tiiny's own Wi-Fi without internet: "Retry" starts it again. */
+    val failed get() = status.equals("error", true)
 }
 
 /** Answer of /api/v1/models/{id}/unload_candidate: does the model fit, and what to unload if not. */

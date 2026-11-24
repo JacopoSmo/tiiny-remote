@@ -12,6 +12,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -57,14 +58,20 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            AppTheme { AppRoot(vm) }
+            val theme = vm.state.collectAsState().value.settings.theme
+            AppTheme(theme) { AppRoot(vm) }
         }
     }
 }
 
 @Composable
-fun AppTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun AppTheme(theme: String = "auto", content: @Composable () -> Unit) {
+    // Settings → Display → Mode: as the phone is set, or always dark / light.
+    val dark = when (theme) {
+        "dark" -> true
+        "light" -> false
+        else -> isSystemInDarkTheme()
+    }
     val ctx = LocalContext.current
     val scheme = when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
