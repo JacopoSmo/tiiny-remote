@@ -1147,14 +1147,14 @@ private fun LogRow(e: LogEntry, chosen: Boolean, choosing: Boolean, onChoose: ()
 }
 
 @Composable
-internal fun SecretField(value: String, onChange: (String) -> Unit, label: String) {
+internal fun SecretField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier.fillMaxWidth()) {
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         trailingIcon = {

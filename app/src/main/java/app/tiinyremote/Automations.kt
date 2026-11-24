@@ -150,7 +150,7 @@ data class Connectors(
     val imapPassword: String = "",
     /** On: SSL/TLS from the start (port 993). Off: STARTTLS on port 143, never plain text. */
     val imapSsl: Boolean = true,
-    /** For the NAS agent, which can't read the phone's calendar: a calendar's private iCal (.ics) link. */
+    /** For the NAS agent, which can't read the phone's calendar: private iCal (.ics) links, one per line (one per calendar). */
     val icsUrl: String = "",
     val nasUrl: String = "",
     val nasToken: String = "",
@@ -159,6 +159,7 @@ data class Connectors(
 ) {
     val emailReady get() = imapHost.isNotBlank() && imapUser.isNotBlank() && imapPassword.isNotBlank()
     val nasReady get() = nasUrl.isNotBlank() && nasToken.isNotBlank()
+    val icsLinks get() = icsUrl.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 }
 
 /** Automations, their runs and the connectors, in the app's private storage; passwords encrypted (Android Keystore). */
@@ -725,7 +726,9 @@ object NasAgent {
             .put("searx_url", s.searxUrl)
             .put("imap", JSONObject().put("host", c.imapHost).put("port", c.imapPort).put("user", c.imapUser)
                 .put("password", c.imapPassword).put("ssl", c.imapSsl))
-            .put("ics_url", c.icsUrl)
+            // Every calendar link; ics_url (the first) is for agents older than 1.3, which read only one.
+            .put("ics_urls", JSONArray(c.icsLinks))
+            .put("ics_url", c.icsLinks.firstOrNull() ?: "")
             .put("ntfy_url", c.ntfyUrl)
             // The phone's time zone: "every day at 07:00" means 07:00 where you are, wherever the NAS's clock is set.
             .put("time_zone", java.time.ZoneId.systemDefault().id)

@@ -355,11 +355,12 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
     var ssl by remember(conn) { mutableStateOf(conn.imapSsl) }
     var nasUrl by remember(conn) { mutableStateOf(conn.nasUrl) }
     var token by remember(conn) { mutableStateOf(conn.nasToken) }
-    var ics by remember(conn) { mutableStateOf(conn.icsUrl) }
+    // One field per calendar; at least one (empty) field.
+    var ics by remember(conn) { mutableStateOf(conn.icsLinks.ifEmpty { listOf("") }) }
     var ntfy by remember(conn) { mutableStateOf(conn.ntfyUrl) }
     fun current() = Connectors(
         host.trim(), port.toIntOrNull()?.takeIf { it in 1..65535 } ?: if (ssl) 993 else 143, user.trim(), pw, ssl,
-        ics.trim(), nasUrl.trim(), token.trim(), ntfy.trim(),
+        ics.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("\n"), nasUrl.trim(), token.trim(), ntfy.trim(),
     )
     Text(
         "Choose how much to connect: nothing, the calendar, email, or both. Everything stays between your phone, your " +
@@ -417,8 +418,28 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
             )
             OutlinedTextField(nasUrl, { nasUrl = it }, label = { Text("Address, e.g. http://192.168.3.10:8765") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             SecretField(token, { token = it }, "Token (AGENT_TOKEN on the NAS)")
-            Text("The NAS can't read this phone's calendar: give it your calendar's private iCal link instead (optional).", style = MaterialTheme.typography.bodySmall)
-            SecretField(ics, { ics = it }, "Private iCal (.ics) link")
+            Text(
+                "The NAS can't read this phone's calendar: give it your calendars' private iCal links instead (optional, one per " +
+                    "calendar, up to 10).",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            ics.forEachIndexed { i, link ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    SecretField(
+                        link,
+                        { v ->
+                            // Several links pasted at once (one per line) become several fields.
+                            val parts = v.split('\n', '\r', ' ').filter { it.isNotBlank() }
+                            ics = if (parts.size > 1) (ics.take(i) + parts + ics.drop(i + 1)).take(10)
+                            else ics.toMutableList().also { it[i] = v.trim() }
+                        },
+                        if (ics.size > 1) "Private iCal (.ics) link ${i + 1}" else "Private iCal (.ics) link",
+                        Modifier.weight(1f),
+                    )
+                    if (ics.size > 1) TextButton(onClick = { ics = ics.filterIndexed { j, _ -> j != i } }) { Text("✕") }
+                }
+            }
+            if (ics.size < 10 && ics.last().isNotBlank()) TextButton(onClick = { ics = ics + "" }) { BtnLabel("Another calendar", symbol = "＋") }
             OutlinedTextField(ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row {
                 TextButton(onClick = { av.saveConnectors(current()) }) { BtnLabel("Save", symbol = "✓") }
@@ -468,7 +489,9 @@ private val ICAL_STEPS = listOf(
     "## iCloud" to "",
     "Only from an iPhone, iPad or Mac: Calendar → the calendar's ⓘ → Public Calendar on → share the link. This link is public, not secret." to "",
     "## Then here" to "",
-    "Paste the link into \"Private iCal (.ics) link\" above, then Save. The NAS reads it whenever an automation needs your calendar." to "",
+    "Paste the link into \"Private iCal (.ics) link\" above, then Save. For more calendars, tap \"＋ Another calendar\" and paste " +
+        "the next link (up to 10). The NAS reads them whenever an automation needs your calendar, merges them by time and marks " +
+        "each event with its calendar's name." to "",
 )
 
 /** ntfy: push messages for NAS results, from the public ntfy.sh or from ntfy on the NAS itself. */
