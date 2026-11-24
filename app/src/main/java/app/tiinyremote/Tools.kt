@@ -695,10 +695,6 @@ object Tools {
                     }
                 }
             }
-            // Its session isn't needed any more (Tiiny Studio does the same).
-            res.optString("session_id").takeIf { it.isNotBlank() && it != "null" }?.let { sid ->
-                try { direct.request("DELETE", "/v1/sessions/${c.quote(sid)}", null, 15, log = false) } catch (e: Exception) { }
-            }
         }
         val kindLabel = when {
             preview && !plain -> "Song preview"
