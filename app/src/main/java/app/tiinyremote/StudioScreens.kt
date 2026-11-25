@@ -1139,8 +1139,21 @@ fun ResultCard(
                     )
                 }
                 "mesh" -> file?.let { f ->
+                    // Shown in the app's own 3D viewer: phones rarely have one.
+                    var view3d by remember(e.id) { mutableStateOf(false) }
+                    var viewed by remember(e.id) { mutableStateOf(0) }
+                    val pic = remember(e.id, viewed) { st.store.pictureOf(e) }
+                    pic?.let { p ->
+                        rememberThumbnail(p, 768)?.let {
+                            Image(it.asImageBitmap(), e.title, Modifier.fillMaxWidth().heightIn(max = 320.dp).clickable { view3d = true }, contentScale = ContentScale.Fit)
+                        }
+                    }
                     if (e.text.isNotBlank()) Text(e.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = { st.open(f.name) }) { BtnLabel("Open in a 3D viewer", androidx.compose.material.icons.Icons.AutoMirrored.Filled.ExitToApp) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = { view3d = true }) { BtnLabel("View in 3D", symbol = "🧊") }
+                        TextButton(onClick = { st.open(f.name) }) { BtnLabel("Other app", androidx.compose.material.icons.Icons.AutoMirrored.Filled.ExitToApp) }
+                    }
+                    if (view3d) MeshViewer(e.title, f, st.store.renderOf(e)) { view3d = false; viewed++ }
                 }
             }
             if (e.kind in TEXT_KINDS && e.text.isNotBlank()) {
@@ -1194,6 +1207,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         handed?.let { h ->
             h.image?.let { image = listOf(it) }
             h.file?.let { file = it }
+            // A question to finish (from Models → Store): in the box, with "Can make things" on so it can look up models.
+            h.draft?.let { input = it; canMake = true }
             st.toChatTaken()
         }
     }

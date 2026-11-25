@@ -89,9 +89,17 @@ class ResultStore(private val ctx: Context) {
         write(listOf(e) + all().filter { it.id != e.id })
     }
 
+    /** A 3D model's picture of itself, taken the first time it's viewed (for the Gallery). */
+    fun renderOf(e: ResultEntry) = File(dir, "${e.id}-render.png")
+    /** The image a 3D model was made from, until it has been viewed once. */
+    fun posterOf(e: ResultEntry) = File(dir, "${e.id}-poster.png")
+    /** What to show for a 3D model: its own picture, else the image it came from, else nothing. */
+    fun pictureOf(e: ResultEntry): File? = listOf(renderOf(e), posterOf(e)).firstOrNull { it.exists() }
+
     @Synchronized
     fun delete(e: ResultEntry) {
         e.files.forEach { runCatching { file(it).delete() } }
+        runCatching { renderOf(e).delete(); posterOf(e).delete() }
         write(all().filter { it.id != e.id })
     }
 

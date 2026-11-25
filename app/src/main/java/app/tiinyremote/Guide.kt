@@ -63,7 +63,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("▶", "Load and unload", "▶ loads a model (the card says roughly how long it takes), ■ unloads it. If it doesn't fit beside the loaded ones, the app offers to swap.", "Right on each card"),
         GuideStep("★", "Favourites, names, info", "★ keeps a model at the top, ✎ gives it a shorter name in this app, ⓘ tells what it can do, 🗑 deletes it from the Tiiny.", "On each card"),
         GuideStep("🔎", "Find the right one", "Installed / Store switches between your models and the Model Store. Types filters by kind (also Coding). The chips (💬 chat, 🛠 tools, 👁 images, 💭 thinking…) filter by ability; the orange ▶ puts loaded models first; Sort orders them.", "Top of the list"),
-        GuideStep("⤓", "The Store", "Download new models; free space on the Tiiny is shown. Downloads continue in the background.", "Store"),
+        GuideStep("⤓", "The Store", "Download new models; free space on the Tiiny is shown. Downloads continue in the background. 💡 Help me choose: say in Chat what you want to do, and the chat model suggests a model from your Tiiny or the Store.", "Store"),
         GuideStep("🔐", "VPN card", "Shows whether WireGuard is on and whether you're at home. The app switches it by itself; Turn on / Turn off does it by hand.", "Top"),
     )
     1 -> "Create" to listOf(
@@ -74,7 +74,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🙂", "Characters (Image)", "Describe someone once; tick them and they look the same in every image.", "Image → Characters"),
         GuideStep("👁", "Live preview (Image)", "Watch the image form. Makes images slower; off by default.", "Image → Advanced"),
         GuideStep("🎵", "Songs", "Over Wi-Fi or WireGuard a song is complete and exactly as long as chosen, with vocals and backing as extra files. Over USB a shorter song is the opening of a full-length one.", "Audio → Song"),
-        GuideStep("🖼", "Results", "Everything made lands in the Gallery. Under a result: Send to chat, Edit (images), Share."),
+        GuideStep("🖼", "Results", "Everything made lands in the Gallery. Under a result: Send to chat, Edit (images), Share. 3D models open in the app's own 3D viewer: turn them with a finger."),
     )
     2 -> "Chat" to listOf(
         GuideStep("🧠", "The model", "The button on top picks the chat model (● = loaded); ▶ loads it. A3B models answer fast, 27B ones more carefully.", "Top"),
@@ -107,7 +107,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🔗", "Connectors", "Your calendar, your email (read-only, via IMAP) and optionally your NAS, which can run automations even with the phone off.", "Connectors"),
     )
     6 -> "Gallery" to listOf(
-        GuideStep("🖼", "Everything you made", "Images, sound, video, 3D and texts from Create, newest first."),
+        GuideStep("🖼", "Everything you made", "Images, sound, video, 3D and texts from Create, newest first. Images and 3D models (🧊) as tiles: tap one to see it big, or to turn the 3D model."),
         GuideStep("🗂", "Filter and search", "The chips filter by kind and task; search finds words in descriptions.", "Top"),
         GuideStep("📅", "Order", "Newest or oldest first, grouped by day, month, year or not at all.", "Top"),
         GuideStep("⤴", "Open, share, redo", "Tap an item to open it: share, delete, send to chat or edit it.", "Each item"),

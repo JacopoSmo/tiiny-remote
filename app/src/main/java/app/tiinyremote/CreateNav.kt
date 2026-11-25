@@ -139,6 +139,8 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     var newest by rememberSaveable { mutableStateOf(true) }
     var group by rememberSaveable { mutableStateOf("day") }
     var full by remember { mutableStateOf<ResultEntry?>(null) }
+    var viewing by remember { mutableStateOf<ResultEntry?>(null) }
+    var viewed by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     // Long-press marks results; then a tap marks or unmarks, and the bar on top shares or deletes them.
     var selected by remember { mutableStateOf(setOf<String>()) }
     var askDelete by remember { mutableStateOf(false) }
@@ -232,12 +234,14 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
             if (title.isNotEmpty()) item(key = "h-$title") {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
             }
-            // Pictures as a grid of three; everything else as cards.
-            val pics = list.filter { it.kind == "image" && it.mainFile != null }
+            // Images and 3D models as a grid of three; everything else as cards.
+            val pics = list.filter { (it.kind == "image" || it.kind == "mesh") && it.mainFile != null }
             for (row in pics.chunked(3)) item(key = "g-" + row.joinToString("-") { it.id }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (e in row) Thumb(e, st, Modifier.weight(1f), e.id in selected, onLongPress = { toggle(e) }) {
-                        if (marked.isNotEmpty()) toggle(e) else full = e
+                    for (e in row) androidx.compose.runtime.key(e.id, viewed) {
+                        Thumb(e, st, Modifier.weight(1f), e.id in selected, onLongPress = { toggle(e) }) {
+                            if (marked.isNotEmpty()) toggle(e) else if (e.kind == "mesh") viewing = e else full = e
+                        }
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -256,12 +260,17 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     }
     }
     full?.let { e -> FullView(e, st) { full = null } }
+    viewing?.let { e ->
+        e.mainFile?.let { MeshViewer(e.title, st.store.file(it), st.store.renderOf(e)) { viewing = null; viewed++ } }
+    }
 }
 
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun Thumb(e: ResultEntry, st: StudioViewModel, modifier: Modifier, marked: Boolean, onLongPress: () -> Unit, onOpen: () -> Unit) {
-    val bmp = rememberThumbnail(st.store.file(e.mainFile ?: return), 384)
+    // A 3D model shows its picture (or the image it came from) with a 🧊 in the corner.
+    val pic = if (e.kind == "mesh") st.store.pictureOf(e) else st.store.file(e.mainFile ?: return)
+    val bmp = pic?.let { rememberThumbnail(it, 384) }
     Box(
         modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp))
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
@@ -269,6 +278,12 @@ private fun Thumb(e: ResultEntry, st: StudioViewModel, modifier: Modifier, marke
     ) {
         if (bmp != null) Image(bmp.asImageBitmap(), e.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Text(e.title, style = MaterialTheme.typography.labelSmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(6.dp))
+        if (e.kind == "mesh") Text(
+            "🧊 3D", style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
+                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
+            color = androidx.compose.ui.graphics.Color.White,
+        )
         if (marked) Text(
             "✓", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)).padding(horizontal = 6.dp),

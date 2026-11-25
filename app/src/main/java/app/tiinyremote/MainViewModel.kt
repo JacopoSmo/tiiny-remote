@@ -874,7 +874,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 ApiLog.add("Couldn't update the NAS agent: ${e.message}", "Automate")
             }
         }
-        _state.update { it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") }
+        // Only a new address or key makes the Tiiny's state unknown again; other settings keep "Online" as it is.
+        val old = _state.value.settings
+        val reconnect = s.tiinyUrl != old.tiinyUrl || s.apiKey != old.apiKey
+        _state.update { if (reconnect) it.copy(settings = s, device = DeviceState.CHECKING, deviceMessage = "") else it.copy(settings = s) }
         lastAutoUnlock = 0L
         autoUnlockFails = 0
         vpnPausedUntil = 0L

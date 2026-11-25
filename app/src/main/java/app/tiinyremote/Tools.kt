@@ -1385,6 +1385,8 @@ object Tools {
         val mesh = have["mesh"] ?: have["preview"] ?: throw MediaException("The Tiiny returned no 3D model.")
         val id = store.newId()
         val file = store.saveFile(id, "model.glb", mesh.data)
+        // The image it came from stands in for it in the Gallery until it's been viewed (then a picture of the model).
+        runCatching { store.saveFile(id, "poster.png", image) }
         val details = listOfNotNull(
             "Took ${fmtDuration((System.currentTimeMillis() - started) / 1000)}",
             if (opts.cutoutModel != null) "cut out by ${short(opts.cutoutModel)}" else null,

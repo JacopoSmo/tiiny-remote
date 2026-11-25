@@ -1,9 +1,14 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.19 (test build, with NAS agent 1.5.6)
-- **Chat → 🕘 Chats** opens as a window: rename (✎) and delete (🗑, tap twice) react again. In the drop-down, taps on them only closed the menu.
+## What's new in 4.1.21 (test build, with NAS agent 1.5.6)
+- **3D models open in the app** (tested by you: TRELLIS made a textured model, but no app on the phone could open it): "View in 3D" shows it in the app's own viewer, to turn with a finger and pinch to zoom. "Other app" still hands it on.
+- **3D models in the Gallery** as tiles with 🧊, like images: the image it was made from at first, a picture of the model itself once it's been viewed.
+- **💡 Help me choose** in Models → Store: Chat opens with "Which model … fits best for this:", you add what you want to do, and the chat model looks through your Tiiny and the Store (new tool find_models) and suggests one or two.
+- **Models → Types:** every type has its pictogram in front, shown as Settings → Labels says.
+- **Settings → Save** no longer flashes the status strip red: it stays Online unless the Tiiny's address or key changed. While checking, the strip is amber ("One moment…").
 
-## What's new in 4.1.18 (test build, with NAS agent 1.5.6)
+## What's new in 4.1.18 – 4.1.20 (test builds, with NAS agent 1.5.6)
+- **Chat → 🕘 Chats** opens as a window: rename (✎) and delete (🗑, tap twice) react again. In the drop-down, taps on them only closed the menu.
 - **Code:** ▶ Preview (tested: opens, the page works) and ⋮ (the project's actions) sit right after the project; a page sized to the screen is no longer cut off at the top.
 
 ## What's new in 4.1.16 (test build, with NAS agent 1.5.6)

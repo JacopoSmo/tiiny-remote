@@ -104,7 +104,7 @@ private fun storeAbilities(m: StoreModel): String = buildList {
 
 /** The Model Store: search, every model with its size, NPU share and an ⓘ, and Download. */
 @Composable
-internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Set<String> = emptySet()) {
+internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Set<String> = emptySet(), onAsk: (String) -> Unit = {}) {
     var query by remember { mutableStateOf("") }
     var info by remember { mutableStateOf<StoreModel?>(null) }
     var confirm by remember { mutableStateOf<StoreModel?>(null) }
@@ -122,6 +122,10 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Se
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { vm.loadStore() }) { Icon(Icons.Filled.Refresh, contentDescription = "Reload the store") }
+        }
+        // Not sure which one? The chat model looks through both lists and suggests one for what you have in mind.
+        OutlinedButton(onClick = { onAsk("Which model, on my Tiiny or in the Store, fits best for this: ") }) {
+            BtnLabel("Help me choose", symbol = "💡")
         }
         if (freeGb != null) {
             Text(

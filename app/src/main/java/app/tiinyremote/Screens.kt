@@ -671,7 +671,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                             val nCode = if (storeView) s.store?.count { (it.type == "Text Generation" || it.type == "Image-Text-to-Text") && codesByName(it.id) } ?: 0
                                 else s.models.count { it.codes }
                             DropdownMenuItem(
-                                text = { Text((if (CODING in typeSel) "☑ " else "☐ ") + "Coding 💻  ($nCode)") },
+                                text = { Text((if (CODING in typeSel) "☑ " else "☐ ") + choiceLabel("💻", "Coding") + "  ($nCode)") },
                                 onClick = {
                                     typeSel = if (CODING in typeSel) typeSel - CODING else typeSel + CODING
                                     prefs.edit().putStringSet("types", typeSel).apply()
@@ -680,7 +680,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                             for (t in typeOrder) {
                                 val n = if (storeView) s.store?.count { it.type == t } ?: 0 else s.models.count { it.type == t }
                                 DropdownMenuItem(
-                                    text = { Text((if (t in typeSel) "☑ " else "☐ ") + t + "  ($n)") },
+                                    text = { Text((if (t in typeSel) "☑ " else "☐ ") + choiceLabel(typeIcon(t), t) + "  ($n)") },
                                     onClick = {
                                         typeSel = if (t in typeSel) typeSel - t else typeSel + t
                                         prefs.edit().putStringSet("types", typeSel).apply()
@@ -693,7 +693,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
             }
             if (s.downloads.isNotEmpty()) item { DownloadsCard(s, vm) }
             if (storeView) {
-                item { StoreList(s, vm, stats?.diskFreeGb, typeSel) }
+                item { StoreList(s, vm, stats?.diskFreeGb, typeSel, onAsk = { st.askInChat(it) }) }
             } else {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1955,6 +1955,26 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
 
 @Composable
 private fun AboutHead(t: String) = Text(t, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+
+/** A pictogram for each kind of model the Tiiny lists (shown before the name, as Settings → Labels says). */
+internal fun typeIcon(type: String): String = when (type.lowercase()) {
+    "asr", "automatic-speech-recognition", "speech-to-text" -> "👂"
+    "image-text-to-text" -> "👁"
+    "image-to-3d", "text-to-3d" -> "🧊"
+    "image-to-text" -> "🔍"
+    "image-to-image" -> "🖌"
+    "image-to-video" -> "🎞"
+    "music generation", "text-to-audio", "audio generation" -> "🎵"
+    "text classification" -> "🏷"
+    "text embedding" -> "🧭"
+    "text generation" -> "💬"
+    "text reranking" -> "🔢"
+    "text-to-image" -> "🖼"
+    "text-to-speech" -> "🗣"
+    "text-to-video" -> "🎬"
+    "translation" -> "🌐"
+    else -> "▫"
+}
 
 @Composable
 private fun AboutBody(t: String) = Text(t, style = MaterialTheme.typography.bodyMedium)

@@ -83,8 +83,12 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
     val st = stats
     val online = s.device == DeviceState.ONLINE
     val loaded = s.models.count { it.running }
-    // Light green while the Tiiny is online, light red when it isn't.
-    val hue = if (online) Color(0xFF43A047) else Color(0xFFE53935)
+    // Light green while the Tiiny is online, amber while it's being checked, light red when it isn't reachable.
+    val hue = when (s.device) {
+        DeviceState.ONLINE -> Color(0xFF43A047)
+        DeviceState.CHECKING -> Color(0xFFFFA000)
+        else -> Color(0xFFE53935)
+    }
     var stripHeight by remember { mutableStateOf(0) }
     // A new NPU fault: the strip pulses red until it's tapped (the fault itself stays in the panel).
     val seen by vm.faultSeen.collectAsState()
@@ -130,7 +134,7 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
                 }
             }
             if (!online) {
-                Text("Tap for details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                Text(if (s.device == DeviceState.CHECKING) "One moment…" else "Tap for details", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             } else {
                 val mu = st?.npuMemUsedMb
                 val mt = st?.npuMemTotalMb

@@ -67,7 +67,9 @@ private const val TOOLS_PROMPT = " When the user wants something made (an image,
     "loop, a song), call the matching tool instead of describing it; write rich, specific prompts for it. Nothing is " +
     "made unless you call a tool: never claim you made or changed something without calling the tool in this turn. " +
     "The result appears in the chat and in the app's results, so after the tool returns just tell the user briefly " +
-    "what you made. Making things can take a minute or more because models may be swapped on the device."
+    "what you made. Making things can take a minute or more because models may be swapped on the device. " +
+    "When the user asks which model fits a task, call find_models and recommend one or two from that list in plain words: " +
+    "why it fits, whether it's installed or first needs downloading (Models → Store), and how much of the NPU it takes."
 
 private fun webPrompt() = " You can search the web with web_search, get current headlines with news, and read a page with open_page. Today is " +
     java.text.SimpleDateFormat("EEEE d MMMM yyyy", java.util.Locale.ENGLISH).format(java.util.Date()) + ". For anything " +
@@ -214,6 +216,11 @@ private fun toolSpecs(): JSONArray {
             JSONObject().put("tags", str("Comma-separated tags: one instrument first, then character, phrase and effect tags."))
                 .put("bpm", JSONObject().put("type", "integer").put("minimum", 100).put("maximum", 150)),
             "tags")))
+        .put(fn("find_models", "List AI models: those installed on the user's Tiiny and those in its Model Store, each with " +
+            "its type, what it's for, its share of the NPU (models loaded together must stay under 100 %) and its download size. " +
+            "Call it whenever the user asks which model to use, load, download or install for something.", obj(
+            JSONObject().put("where", JSONObject().put("type", "string").put("enum", JSONArray(listOf("both", "installed", "store")))
+                .put("description", "Which list; \"both\" if unsure.")))))
         .put(fn("make_song", "Make a short song (about 30 seconds).", obj(
             JSONObject().put("caption", str("Genre, mood, instruments, voice."))
                 .put("lyrics", str("Lyrics with [verse] and [chorus] tags on their own lines. Empty for an instrumental.")),
@@ -969,8 +976,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val _editSource = MutableStateFlow<String?>(null) // a file in the results store
     val editSource: StateFlow<String?> = _editSource.asStateFlow()
 
-    /** A result handed to the chat: a picture as the next message's image, a text as its attached file. */
-    class ToChat(val image: PickedImage?, val file: PickedFile?)
+    /** A result handed to the chat: a picture as the next message's image, a text as its attached file, or a question to finish. */
+    class ToChat(val image: PickedImage?, val file: PickedFile?, val draft: String? = null)
 
     private val _toChat = MutableStateFlow<ToChat?>(null)
     val toChat: StateFlow<ToChat?> = _toChat.asStateFlow()
@@ -990,6 +997,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (out == null) note("This result can't go to the chat.") else _toChat.value = out
         }
+    }
+
+    /** Opens Chat with a question in the message box, to finish and send (Models → Store → "Help me choose"). */
+    fun askInChat(draft: String) {
+        _toChat.value = ToChat(null, null, draft)
     }
 
     fun toChatTaken() {
@@ -1102,6 +1114,42 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         upd(id) { list -> if (list.isEmpty()) list else list.dropLast(1) + list.last().copy(status = text) }
     }
 
+    /**
+     * The models for the chat model to recommend from: installed ones (from the app's list) and the Model Store's
+     * (asked from the Tiiny), one line each, with what each is for. Descriptions are shortened to keep it small.
+     */
+    private fun modelCatalogue(where: String, models: List<ModelInfo>): String {
+        fun gb(b: Long) = if (b > 0) " · %.1f GB".format(java.util.Locale.ROOT, b / 1e9) else ""
+        fun npu(n: Double?) = n?.let { " · ${it.toInt()} % NPU" } ?: ""
+        fun desc(d: String) = d.replace(Regex("\\s+"), " ").trim().take(160).let { if (it.isBlank()) "" else " — $it" }
+        val out = StringBuilder()
+        val installedIds = models.map { it.id }.toSet()
+        if (where != "store") {
+            out.append("INSTALLED on the Tiiny (${models.size}):\n")
+            for (m in models.sortedBy { it.type + it.name }) out.append(
+                "- ${m.name} [${m.type}]${npu(m.npuUsage)}" + (if (m.running) " · loaded now" else "") +
+                    (if (m.supported.isNotEmpty()) " · can: ${m.supported.joinToString(", ")}" else "") + desc(m.desc) + "\n",
+            )
+        }
+        if (where != "installed") {
+            val cfg = settingsStore.load()
+            val store = try {
+                TiinyApi(cfg.tiinyUrl, cfg.apiKey).store().filter { it.id !in installedIds }
+            } catch (e: Exception) {
+                null
+            }
+            if (store == null) out.append("\nThe Model Store didn't answer.\n")
+            else {
+                out.append("\nIN THE MODEL STORE, not installed (${store.size}), download in Models → Store:\n")
+                for (m in store.sortedBy { it.type + it.name }) out.append(
+                    "- ${m.name} [${m.type}]" + (if (m.params.isNotBlank()) " · ${m.params}" else "") + npu(m.npuUsage) + gb(m.sizeBytes) +
+                        (if (m.supported.isNotEmpty()) " · can: ${m.supported.joinToString(", ")}" else "") + desc(m.desc) + "\n",
+                )
+            }
+        }
+        return out.toString()
+    }
+
     /** Runs web_search or open_page and notes the sources on the reply. */
     /**
      * Runs web_search, news or open_page and notes the sources on the reply. With a fast helper model loaded, an
@@ -1188,6 +1236,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Runs one tool call for the chat model; returns (result or null, text for the model). */
     private fun runTool(id: String, c: DeviceClient, name: String, args: JSONObject, models: List<ModelInfo>, p: Progress): Pair<ResultEntry?, String> {
+        if (name == "find_models") return null to modelCatalogue(args.optString("where", "both"), models)
         val (tool, fits) = when (name) {
             "create_image" -> "image" to { m: ModelInfo -> m.isImageGen }
             "edit_image" -> "edit" to { m: ModelInfo -> m.canEditImages }
