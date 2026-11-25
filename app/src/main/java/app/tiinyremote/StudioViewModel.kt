@@ -1718,6 +1718,18 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             if (done.calls.isEmpty() && done.finish == "length" && (_all.value[id]?.lastOrNull()?.text ?: "").isBlank()) {
                                 throw MediaException("The model reasoned until it ran out of room and gave no answer. Try again, or ask for less.")
                             }
+                            // Cut off at the length limit: said so, instead of an answer that just stops mid-sentence.
+                            // Or the Tiiny stopped sending without saying it was done (another app's request, say).
+                            val cut = when {
+                                done.calls.isNotEmpty() || chatStop.get() -> null
+                                done.finish == "length" -> "Cut off: the answer reached the length limit. Say \"go on\" for the rest, or set Thinking higher for more room."
+                                !done.ended && done.content.isNotBlank() -> "The Tiiny stopped sending before the answer was done. Say \"go on\" for the rest."
+                                else -> null
+                            }
+                            if (cut != null) upd(id) { list ->
+                                val last = list.lastOrNull() ?: return@upd list
+                                list.dropLast(1) + last.copy(text = last.text.trimEnd() + "\n\n*($cut)*")
+                            }
                             break
                         }
                         val calls = JSONArray()

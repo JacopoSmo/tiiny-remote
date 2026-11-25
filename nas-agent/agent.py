@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -123,8 +123,8 @@ def tiiny(path, body=None, timeout=60, method=None):
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Authorization": "Bearer " + t.get("api_key", ""), "Content-Type": "application/json"}
     # "Busy" isn't "broken": error 150004 (already working, for the phone say; can come with HTTP 200), "xh2a backend
-    # fail" just after a load and 502 "Upstream model server request failed" while another model loads are tried
-    # again after 5, 10 and 20 s (found by Story Lantern and Tiiny's API notes on TiinyVerse).
+    # fail" just after a load, and 502/503/504 (another model loading, or the gateway tired of waiting behind a long
+    # answer for the phone) are tried again after 5, 10 and 20 s (Story Lantern and Tiiny's API notes on TiinyVerse).
     for wait in (5, 10, 20, None):
         try:
             _, _, raw = http(url + path, data, headers, timeout, method)
@@ -136,13 +136,14 @@ def tiiny(path, body=None, timeout=60, method=None):
             break
         except urllib.error.HTTPError as e:
             detail = e.read(2000).decode("utf-8", "replace")
-            if wait and ("150004" in detail or "xh2a backend fail" in detail
-                         or (e.code == 502 and "upstream model server request failed" in detail.lower())):
+            if wait and ("150004" in detail or "xh2a backend fail" in detail or e.code in (502, 503, 504)):
                 log(f"The Tiiny is busy (HTTP {e.code}); trying again in {wait} s")
                 time.sleep(wait)
                 continue
-            if e.code == 502:
-                raise RuntimeError("The Tiiny is locked or its services are starting (HTTP 502).")
+            if e.code in (502, 503, 504):
+                said = " ".join(detail.split())[:200]
+                raise RuntimeError(f"The Tiiny didn't answer (HTTP {e.code}, also when tried again): it may be locked, "
+                                   f"starting, or busy with something long." + (f" It said: {said}" if said else ""))
             raise RuntimeError(f"The Tiiny answered HTTP {e.code}: {detail[:300]}")
         except OSError as e:
             raise RuntimeError(f"The Tiiny isn't reachable from the NAS ({e}).")

@@ -172,6 +172,8 @@ class DeviceClient(url: String, private val key: String) {
     class Completion(
         val content: String, val reasoning: String, val calls: List<ToolCall>, val finish: String,
         val tokens: Int = 0, val seconds: Double = 0.0, val alone: Boolean = false,
+        /** The Tiiny said it was done ([DONE] or a finish reason); false when the stream just stopped. */
+        val ended: Boolean = true,
     )
 
     /**
@@ -261,6 +263,7 @@ class DeviceClient(url: String, private val key: String) {
         val reasoning = StringBuilder()
         val calls = java.util.TreeMap<Int, ToolCall>()
         var finish = ""
+        var sawDone = false
         try {
             val bytes = body.toString().toByteArray(Charsets.UTF_8)
             conn.doOutput = true
@@ -283,7 +286,7 @@ class DeviceClient(url: String, private val key: String) {
                     val line = reader.readLine() ?: break
                     if (!line.startsWith("data:")) continue
                     val data = line.removePrefix("data:").trim()
-                    if (data == "[DONE]") break
+                    if (data == "[DONE]") { sawDone = true; break }
                     val o = try {
                         JSONObject(data)
                     } catch (e: Exception) {
@@ -339,6 +342,6 @@ class DeviceClient(url: String, private val key: String) {
         }
         // The first piece isn't timed (it's the wait before writing), so it's left out of the count too.
         val tokens = (if (usage > 0) usage else pieces) - 1
-        return Completion(content.toString(), reasoning.toString(), calls.values.toList(), finish, tokens.coerceAtLeast(0), (last - first) / 1e9, alone)
+        return Completion(content.toString(), reasoning.toString(), calls.values.toList(), finish, tokens.coerceAtLeast(0), (last - first) / 1e9, alone, sawDone || finish.isNotBlank() || stop())
     }
 }

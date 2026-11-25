@@ -1,5 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.1.1 (test build, with NAS agent 1.5.4)
+- **Cut-off answers say so:** an answer that reaches the length limit, or that the Tiiny stops sending early, ends with a note ("go on" gets the rest) instead of stopping mid-sentence.
+- **NAS agent 1.5.4:** when the Tiiny is busy with a long answer for the phone and gives up waiting (HTTP 502/503/504), the agent tries again after 5, 10 and 20 s; if it still fails, the result shows what the Tiiny said.
+
 ## What's new in 4.1.0
 Everything from the 4.0.7–4.0.24 test builds, tested on the phone, plus a final review.
 
