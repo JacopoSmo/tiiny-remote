@@ -616,7 +616,7 @@ private val NTFY_STEPS = listOf(
         "      NTFY_CACHE_FILE: \"/var/cache/ntfy/cache.db\"\n    volumes:\n      - ntfy-cache:/var/cache/ntfy\nvolumes:\n  ntfy-cache:\nEOF\ncat docker-compose.yml",
     "2. Start it (if \"compose\" isn't known: sudo docker-compose up -d):" to "sudo docker compose up -d",
     "3. In the ntfy app: ＋ → topic \"tiiny\" → \"Use another server\" → http://<NAS address>:8090 → Subscribe. In the subscription's " +
-        "settings, turn on instant delivery (your own server has no Google push). Then send a test; it should pop up on the phone:" to
+        "settings, turn on instant delivery (your own server has no Google push). Then send a test from the NAS terminal (the SSH app, as in step 1); it should pop up on the phone:" to
         "curl -d \"Hello from the NAS\" http://localhost:8090/tiiny",
     "4. Here, in \"Push via ntfy\" above: http://<NAS address>:8090/tiiny, then Save. Nothing leaves your home network; away from home " +
         "the phone gets the messages once WireGuard is on." to "",
