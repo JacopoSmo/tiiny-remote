@@ -513,10 +513,11 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     var topK by rememberSaveable { mutableStateOf("") }
     var topP by rememberSaveable { mutableStateOf("") }
 
-    val t = if (sm.yue) "mixed" else type
+    // Separate tracks come only from SongGeneration's own port: not for AceStep or YuE2.
+    val t = if (sm.yue || (sm.plain && type == "separate")) "mixed" else type
     val secs = seconds.coerceIn(15, sm.maxSeconds)
     val vocals = t != "bgm"
-    val usePreview = preview && !sm.plain
+    val usePreview = preview && !sm.plain && t != "separate"
 
     // Mode
     LabelRow("Mode")
@@ -525,8 +526,10 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         Triple("mixed", "With vocals", "Singing over music"),
         Triple("bgm", "Instrumental", "No vocals"),
         Triple("vocal", "Vocals only", "A cappella vocal track"),
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    ) + (if (sm.plain) emptyList() else listOf(
+        Triple("separate", "Separate tracks", "The song, plus vocals and backing as their own files (over Wi-Fi or WireGuard; over USB only the song)"),
+    ))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for ((v, l, _) in modes) FilterChip(selected = t == v, onClick = { type = v }, label = { Text(l) })
     }
     Hint(modes.firstOrNull { it.first == t }?.third ?: "")

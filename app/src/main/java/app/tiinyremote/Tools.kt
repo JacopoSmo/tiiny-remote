@@ -641,6 +641,8 @@ object Tools {
         // SongGeneration on its own port (Wi-Fi, WireGuard): a complete song of exactly the asked length, with its
         // separate tracks. Over the gateway alone (USB) it can only make the opening of a full-length arrangement.
         val direct = if (!plain && !preview && resume == null) ownPort(c, model) else null
+        // Separate tracks need the model's own port; over the gateway the song comes as one mix.
+        if (direct == null && config.optString("generation_type") == "separate") config.put("generation_type", "mixed")
 
         // Show the device's own progress while the long request runs.
         val done = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -748,7 +750,7 @@ object Tools {
         val text = buildString {
             append(caption)
             append(" · ")
-            append(mapOf("bgm" to "instrumental", "vocal" to "vocals only").getOrDefault(config.optString("generation_type"), "with vocals"))
+            append(mapOf("bgm" to "instrumental", "vocal" to "vocals only", "separate" to "with vocals, separate tracks").getOrDefault(config.optString("generation_type"), "with vocals"))
             if (lyrics.isNotBlank()) append("\n\n").append(lyrics)
         }
         val entry = ResultEntry(id, "song", "$kindLabel: ${caption.take(60)}", files, text, model, System.currentTimeMillis())

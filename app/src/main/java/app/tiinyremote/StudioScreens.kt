@@ -1106,6 +1106,16 @@ fun ResultCard(
                     }
                     val playing = Player.playing == f.name
                     Button(onClick = { Player.toggle(f) }) { BtnLabel(if (playing) "Stop" else "Play", symbol = if (playing) "■" else "▶") }
+                    // A song's separate tracks (SongGeneration: vocals, backing), each to play on its own.
+                    val tracks = e.files.drop(1)
+                    if (e.kind == "song" && tracks.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (t in tracks) {
+                            val tf = st.store.file(t)
+                            val on = Player.playing == tf.name
+                            val label = t.substringAfterLast('/').substringBeforeLast('.').removePrefix("song-").replace('_', ' ').replaceFirstChar { it.uppercase() }
+                            OutlinedButton(onClick = { Player.toggle(tf) }) { Text((if (on) "■ " else "▶ ") + label) }
+                        }
+                    }
                     if (e.kind == "song" && st.canContinue(e)) {
                         OutlinedButton(onClick = { st.continueSong(e) }) { Text("Continue to full song") }
                         Text("Takes about 15 minutes; the Tiiny keeps the preview's session only for a while.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

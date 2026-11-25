@@ -1,6 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.12 (test build, with NAS agent 1.5.6)
+## What's new in 4.1.13 (test build, with NAS agent 1.5.6)
+- **Song → Separate tracks** (SongGeneration, over Wi-Fi/WireGuard): the song plus vocals and backing as their own files, each with its own ▶ on the result card.
 - **"From your audio"** beside Record and Upload: a voice clip, song or loop made here can be the clip for a new (cloned) voice, transcribed, or (WAVs) a song's style reference.
 - **Pushes and notifications in plain text:** NAS pushes via ntfy (agent 1.5.6), phone notifications and the result cards' preview line show links as their words and lists with bullets, instead of raw ** and [text](link).
 - **Code → ⋮ → Preview** opens again (it showed nothing): the page fills the screen, with Close at the top.
