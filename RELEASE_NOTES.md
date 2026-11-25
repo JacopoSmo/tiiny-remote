@@ -1,6 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.5 (test build, with NAS agent 1.5.5)
+## What's new in 4.1.6 (test build, with NAS agent 1.5.5)
+- **Live preview** (tested: previews show while the image forms) says "Step 12 of 40" with a progress bar, and from the second image on shows previews up to the last step.
 - **Set up ntfy:** step 3 says the test is typed in the NAS terminal (SSH app).
 - **ntfy push:** an address without a topic is pointed out ("Add the topic at the end, e.g. …/tiiny"). Save says that results also come as pushes; Test (🔌) has the NAS send a test push, the same way results go out, and says whether ntfy took it. The agent's log notes each push.
 - **Full view:** the zoom magnifier is larger, on a faint round backing, and clear of the phone's bottom bar.

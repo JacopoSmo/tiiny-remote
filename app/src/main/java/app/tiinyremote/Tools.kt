@@ -164,9 +164,12 @@ object Tools {
             when {
                 event == "preview" -> {
                     val step = o.optInt("step")
+                    // Each preview names the model's step count: shown with the step, kept for its next images.
+                    val total = o.optInt("total_steps").takeIf { it > 0 } ?: steps
+                    if (steps0 == null && total != null) modelSteps[body.optString("model")] = total
                     o.optString("image").ifBlank { o.optString("preview") }.let { it.substringAfter("base64,", it) }.takeIf { it.length > 100 }
                         ?.let { try { livePreview.value = unb64(it) to step } catch (e: Exception) { } }
-                    p.update("Step $step" + (steps?.let { " of $it" } ?: ""), steps?.let { step * 100 / it })
+                    p.update("Step $step" + (total?.let { " of $it" } ?: ""), total?.let { step * 100 / it })
                 }
                 event == "completed" -> image = o.optString("image").let { it.substringAfter("base64,", it) }.takeIf { it.length > 100 }
                 event == "error" || o.optString("status") == "error" -> {
