@@ -1,38 +1,48 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.21 (test build, with NAS agent 1.5.6)
-- **3D models open in the app** (tested by you: TRELLIS made a textured model, but no app on the phone could open it): "View in 3D" shows it in the app's own viewer, to turn with a finger and pinch to zoom. "Other app" still hands it on.
-- **3D models in the Gallery** as tiles with 🧊, like images: the image it was made from at first, a picture of the model itself once it's been viewed.
-- **💡 Help me choose** in Models → Store: Chat opens with "Which model … fits best for this:", you add what you want to do, and the chat model looks through your Tiiny and the Store (new tool find_models) and suggests one or two.
-- **Models → Types:** every type has its pictogram in front, shown as Settings → Labels says.
-- **Settings → Save** no longer flashes the status strip red: it stays Online unless the Tiiny's address or key changed. While checking, the strip is amber ("One moment…").
+## What's new in 4.2.0 (with NAS agent 1.6.0)
+Everything from the 4.1.1–4.1.23 test builds, tested on the phone, plus a full review (as programmer, white-hat and attacker) of the app and the NAS agent.
 
-## What's new in 4.1.18 – 4.1.20 (test builds, with NAS agent 1.5.6)
-- **Chat → 🕘 Chats** opens as a window: rename (✎) and delete (🗑, tap twice) react again. In the drop-down, taps on them only closed the menu.
-- **Code:** ▶ Preview (tested: opens, the page works) and ⋮ (the project's actions) sit right after the project; a page sized to the screen is no longer cut off at the top.
+**Gallery and results**
+- **Swipe** left or right in the full view to the next or previous result, in the Gallery's order (a result with several images turns its pages first).
+- **Tiles** for images, **videos (🎬, a frame from the clip)** and **3D models (🧊)**; texts and sound stay cards.
+- **3D models open in the app:** its own viewer (turn with a finger, pinch to zoom; nothing is loaded from the internet). "Other app" still hands the file on. The tile shows the model itself once viewed.
+- Several at once: long-press to mark, then share or delete; delete always asks first.
+- Send to chat from a result; descriptions and OCR text show formatted.
 
-## What's new in 4.1.16 (test build, with NAS agent 1.5.6)
-- **Separate tracks** (tested: a folk song came with backing and vocals): the buttons say "▶ Backing" and "▶ Vocals"; "Preview first" is hidden in that mode (tracks come only from a whole song).
-- **Code:** ▶ Preview sits right in the top row once there's a web page. The ⋮ actions (new project, new file, share, GitHub, clear, delete) open in a small window: in the drop-down menu, taps on them got lost.
-- **Loop → Key** can be chosen again: its button was pushed off the screen and left an empty gap.
-- **Buttons in alphabetical order:** the loop's instruments, character, phrase and effects, the song styles and the voice styles.
-- **Song → Separate tracks** (SongGeneration, over Wi-Fi/WireGuard): the song plus vocals and backing as their own files, each with its own ▶ on the result card.
-- **"From your audio"** beside Record and Upload: a voice clip, song or loop made here can be the clip for a new (cloned) voice, transcribed, or (WAVs) a song's style reference.
-- **Pushes and notifications in plain text:** NAS pushes via ntfy (agent 1.5.6), phone notifications and the result cards' preview line show links as their words and lists with bullets, instead of raw ** and [text](link).
-- **Code → ⋮ → Preview** opens again (it showed nothing): the page fills the screen, with Close at the top.
-- **Code: Enter sends** like in Chat (Shift+Enter for a new line), following the same setting.
-- **Making room on the NPU:** when a model doesn't fit, the app picks what to unload itself: the smallest loaded model that frees enough, otherwise the fewest models together, named in one question ("Unload A (29%) and B (4%)?"). Before, it followed the Tiiny's suggestion one model at a time, which was often too small, so models were unloaded for nothing (also when a Create job or a chat tool loads its model).
-- **Choosing an image:** Describe and Video have the row "From your images" (one tap), like Edit and 3D; Translate's photo has "From the Gallery".
-- **"From the Gallery"** beside "Choose an image" in Describe image, Edit image, Video's first frame, 3D and Translate's photo: your own made images, not only the phone's photos.
-- **Descriptions and read text (OCR)** show formatted (bold, lists, code) instead of raw ** and ` signs, in the card and the full view.
-- **Attached files:** without a helper model, the chat model only condenses really long files (over 24,000 characters) for follow-up questions. Before, it spent up to two minutes on an ordinary PDF and everything after it (a translation, say) waited. A condensed text that's barely shorter is not used.
-- **Live preview** (tested: previews show while the image forms) says "Step 12 of 40" with a progress bar, and from the second image on shows previews up to the last step.
-- **Set up ntfy:** step 3 says the test is typed in the NAS terminal (SSH app).
-- **ntfy push:** an address without a topic is pointed out ("Add the topic at the end, e.g. …/tiiny"). Save says that results also come as pushes; Test (🔌) has the NAS send a test push, the same way results go out, and says whether ntfy took it. The agent's log notes each push.
-- **Full view:** the zoom magnifier is larger, on a faint round backing, and clear of the phone's bottom bar.
-- **Live preview:** the log notes what the image stream sent (to check the previews arrive).
-- **Cut-off answers say so:** an answer that reaches the length limit, or that the Tiiny stops sending early, ends with a note ("go on" gets the rest) instead of stopping mid-sentence.
-- **NAS agent 1.5.4:** when the Tiiny is busy with a long answer for the phone and gives up waiting (HTTP 502/503/504), the agent tries again after 5, 10 and 20 s; if it still fails, the result shows what the Tiiny said.
+**Pictograms**
+- One set across the app: the help (?), hints and the legend now show exactly the pictograms on the buttons (history, save, microphone, share, delete…), and each page's help starts with its sidebar pictogram.
+- 👂 for speech-to-text (ASR) everywhere; a drawn OCR pictogram for reading text from images.
+- Models → Types: pictogram and name for every type, whatever the Labels setting.
+- Settings → Labels → ⓘ lists every pictogram, the model types included.
+
+**Models**
+- **🧭 Help me choose** (top right): Chat opens with "Which model … fits best for this:"; the chat model looks through your Tiiny and the Store (new tool find_models) and suggests one or two.
+- Making room on the NPU: the app picks what to unload itself (the smallest loaded model that frees enough, otherwise the fewest), named in one question.
+
+**Chat**
+- Chats (history) open as a small window: rename and delete (tap the red bin twice) react reliably.
+- Cut-off answers say so ("go on" gets the rest); long files are condensed only when really long.
+- Images from the Gallery; a warning when the model can't see images.
+
+**Create**
+- Characters (same person in every image), live preview ("Step 12 of 40"), Song → Separate tracks (vocals and backing), "From your audio" as a voice clip or style reference, Loop → Key back on screen.
+
+**Code**
+- ⋮ (project actions) and ▶ Preview right after the project; the preview fills the screen, isn't cut off, and can't show any file of the phone's outside the project.
+- Enter sends, as in Chat.
+
+**Status bar and Settings**
+- Save no longer flashes the status bar red: it stays green unless the Tiiny's address or key changed; while checking it's amber ("One moment…").
+
+**Automate and NAS agent 1.6.0**
+- ntfy pushes in plain text, a test push from the app (🔌), a topic check, and a note in the agent's log for each push.
+- The agent retries when the Tiiny is busy (HTTP 502/503/504, code 150004, recognised as the app does).
+- Safer: a web page whose name switches to a home-network address after the check (DNS rebinding) is refused; calendar links must be web addresses (never a file on the NAS); connections that send nothing are dropped after 30 s.
+- **Update the agent** to get 1.6.0: on the NAS (SSH), `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d` (also in Set up NAS, step 5).
+
+**Under the hood**
+- File names from the Tiiny are cleaned before saving; a 3D model's picture is size-checked; deprecated icons replaced.
 
 ## What's new in 4.1.0
 Everything from the 4.0.7–4.0.24 test builds, tested on the phone, plus a final review.

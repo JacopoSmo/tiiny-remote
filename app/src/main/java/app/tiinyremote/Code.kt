@@ -71,7 +71,7 @@ private val CODE_MODES = listOf(
 private val MODE_HINTS = mapOf(
     "ask" to "Ask: questions about code or your project, snippets to copy. The model may read the project's files; it changes none.",
     "build" to "Build: the model writes and changes the project's files itself (watch the ✎ lines). Try a web page first: " +
-        "\"make a simple to-do list as a web page\", then ▶ Preview at the top.",
+        "\"make a simple to-do list as a web page\", then $SIGN_PLAY Preview at the top.",
     "learn" to "Learn: step by step, one idea at a time, with small examples and a question to check. Good to start coding.",
 )
 
@@ -133,7 +133,7 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 }
                 // The project's actions: in the row (at its right edge, taps on the ⋮ button got lost).
                 AssistChip(onClick = { menu = true }, label = { Icon(Icons.Filled.MoreVert, contentDescription = "Project actions", modifier = Modifier.size(18.dp)) })
-                if (cv.previewFile() != null) AssistChip(onClick = { preview = true }, label = { Text("▶ Preview") })
+                if (cv.previewFile() != null) AssistChip(onClick = { preview = true }, label = { SignText("$SIGN_PLAY Preview") })
                 for ((key, icon, word) in CODE_MODES) FilterChip(
                     selected = mode == key,
                     onClick = { mode = key; st.setSetting("code.mode", key) },
@@ -156,12 +156,12 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                             @Composable
                             fun Act(label: String, enabled: Boolean = true, onClick: () -> Unit) =
                                 TextButton(onClick = { menu = false; onClick() }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-                                    Text(label, modifier = Modifier.fillMaxWidth())
+                                    SignText(label, modifier = Modifier.fillMaxWidth())
                                 }
-                            Act("＋ New project") { newProject = true }
-                            Act("▶ Preview (web page)", cv.previewFile() != null) { preview = true }
+                            Act("$SIGN_ADD New project") { newProject = true }
+                            Act("$SIGN_PLAY Preview (web page)", cv.previewFile() != null) { preview = true }
                             Act("📄 New file", current != null) { editing = "" }
-                            Act("⤴ Share as .zip", files.isNotEmpty()) {
+                            Act("$SIGN_SHARE Share as .zip", files.isNotEmpty()) {
                                 cv.zip()?.let { z ->
                                     val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", z)
                                     ctx.startActivity(Intent.createChooser(
@@ -173,7 +173,7 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                             }
                             Act("🐙 GitHub…") { github = true }
                             Act("🧹 Clear this conversation", msgs.isNotEmpty() && busy == null) { cv.clearChat() }
-                            Act("🗑 Delete project", current != null && busy == null) { confirmDelete = true }
+                            Act("$SIGN_DELETE Delete project", current != null && busy == null) { confirmDelete = true }
                         }
                     },
                     confirmButton = { TextButton(onClick = { menu = false }) { Text("Close") } },
@@ -192,9 +192,9 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (msgs.isEmpty()) {
-                Text(
+                SignText(
                     (MODE_HINTS[mode] ?: "") + "\n\nYour projects stay on this phone; the model runs on your Tiiny, so nothing leaves home " +
-                        "unless you push it to GitHub. Code can't be run here, but a web page can be previewed (▶ Preview at the top).",
+                        "unless you push it to GitHub. Code can't be run here, but a web page can be previewed ($SIGN_PLAY Preview at the top).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp),
@@ -399,14 +399,24 @@ private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
                             settings.domStorageEnabled = true
                             @Suppress("DEPRECATION")
                             settings.allowFileAccess = true
+                            settings.allowContentAccess = false
                             // Only this project's own files, or the web (libraries from a CDN): no other file of the phone's.
                             val folder = file.parentFile!!.canonicalPath
+                            fun inside(path: String?) = java.io.File(path ?: "").canonicalPath.let { it == folder || it.startsWith(folder + java.io.File.separator) }
                             webViewClient = object : android.webkit.WebViewClient() {
+                                // Everything the page loads (images, scripts, frames), not only where it navigates: a file
+                                // of the phone's outside this project is refused, so a page can't show the app's own data.
+                                override fun shouldInterceptRequest(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+                                    val u = request.url
+                                    val outside = u.scheme.equals("file", true) && !inside(u.path) ||
+                                        u.scheme.equals("content", true)
+                                    return if (outside) android.webkit.WebResourceResponse("text/plain", "utf-8", 403, "Not this project's", emptyMap(), "".byteInputStream()) else null
+                                }
                                 override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
                                     val u = request.url
                                     return when (u.scheme?.lowercase()) {
                                         "http", "https", "about", "data" -> false
-                                        "file" -> !(java.io.File(u.path ?: "").canonicalPath.startsWith(folder))
+                                        "file" -> !inside(u.path)
                                         else -> true
                                     }
                                 }

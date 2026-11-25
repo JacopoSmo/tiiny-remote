@@ -837,7 +837,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val img = images.firstOrNull()
     val cm = cutoutModel(models)
     val cuts = cutout && cm != null && img?.transparent != true
-    val cutSecs = if (cuts && cm != null) 85 + (if (cm.running) 0 else 2 * (cm.loadTimeSec ?: 30)) else 0
+    val cutSecs = if (cuts) 85 + (if (cm.running) 0 else 2 * (cm.loadTimeSec ?: 30)) else 0
     val est = Tools.meshEstimate(t, prec, qual, nFaces, tex, cutSecs)
     val plan = listOfNotNull(if (cuts) "cutout" else null, "shape", if (nFaces > 0) "simplify" else null) + (if (tex) listOf("texture", "export") else emptyList())
 

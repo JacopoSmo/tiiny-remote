@@ -1,5 +1,8 @@
 package app.tiinyremote
 
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.filled.Refresh
@@ -134,6 +137,11 @@ const val SIGN_SEND = "\uE118"
 const val SIGN_SEARCH = "\uE119"
 const val SIGN_CODE = "\uE11A"
 const val SIGN_BACK = "\uE11B"
+// The sidebar's pages, as drawn there.
+const val SIGN_MODELS = "\uE11C"
+const val SIGN_CREATE = "\uE11D"
+const val SIGN_CHAT = "\uE11E"
+const val SIGN_ACTIVITY = "\uE11F"
 
 /** Agent (Automate): a robot head. */
 val AgentIcon by lazy {
@@ -215,8 +223,12 @@ val SIGN_ICONS: Map<String, androidx.compose.ui.graphics.vector.ImageVector> by 
         SIGN_MORE to i.MoreVert, SIGN_SEARCH to i.Search,
         SIGN_SEND to androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send,
         SIGN_BACK to androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+        SIGN_MODELS to i.Home, SIGN_CREATE to i.Create, SIGN_CHAT to SIGN_ICONS_CHAT, SIGN_ACTIVITY to SIGN_ICONS_LIST,
     )
 }
+
+private val SIGN_ICONS_CHAT get() = androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send
+private val SIGN_ICONS_LIST get() = androidx.compose.material.icons.Icons.AutoMirrored.Filled.List
 
 /** OCR: a page with lines of text, read through a viewfinder ("OCR" inside it). */
 val OcrIcon by lazy {

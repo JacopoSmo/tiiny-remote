@@ -312,7 +312,7 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
                         BtnLabel("Agent", AgentIcon)
                     }
                     OutlinedButton(onClick = { editing = Automation("", "New process") }) { BtnLabel("Process", ProcessIcon) }
-                    TextButton(onClick = { agentInfo = true }) { Text("ⓘ") }
+                    TextButton(onClick = { agentInfo = true }) { SignText(SIGN_INFO) }
                 }
                 Text("Start from an example:", style = MaterialTheme.typography.labelMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

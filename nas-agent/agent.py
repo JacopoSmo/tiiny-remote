@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.6"
+VERSION = "1.6.0"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -43,6 +43,7 @@ RUNS_F = os.path.join(DATA, "runs.json")
 DONE_F = os.path.join(DATA, "done.json")
 UA = "Mozilla/5.0 (X11; Linux x86_64) TiinyRemoteNasAgent/" + VERSION
 DEADLINE_S = 15 * 60
+BUSY_CODE = re.compile(r'"(?:code|error_code|err_code)"\s*:\s*"?150004')  # as the app recognises it
 
 
 def zone():
@@ -129,7 +130,7 @@ def tiiny(path, body=None, timeout=60, method=None):
         try:
             _, _, raw = http(url + path, data, headers, timeout, method)
             text = raw.decode("utf-8", "replace").strip()
-            if wait and text.startswith("{") and '"code": 150004' in text.replace('"code":150004', '"code": 150004'):
+            if wait and text.startswith("{") and BUSY_CODE.search(text) and '"choices"' not in text:
                 log(f"The Tiiny is busy; trying again in {wait} s")
                 time.sleep(wait)
                 continue
@@ -150,16 +151,31 @@ def tiiny(path, body=None, timeout=60, method=None):
     return json.loads(text) if text.startswith(("{", "[")) else {}
 
 
+def not_public(ip):
+    ip = ipaddress.ip_address(str(ip).split("%")[0])
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified \
+        or (ip.version == 4 and ip in ipaddress.ip_network("100.64.0.0/10"))
+
+
 def public_only(url):
     """Pages are only fetched from the internet: never from the NAS's own network (no peeking at the router, say)."""
     u = urllib.parse.urlparse(url)
     if u.scheme not in ("http", "https") or not u.hostname:
         raise RuntimeError("Only web addresses (http/https) can be opened.")
     for info in socket.getaddrinfo(u.hostname, None):
-        ip = ipaddress.ip_address(info[4][0].split("%")[0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified \
-                or (ip.version == 4 and ip in ipaddress.ip_network("100.64.0.0/10")):
+        if not_public(info[4][0]):
             raise RuntimeError("Pages on a private network can't be opened.")
+
+
+def peer_is_public(r):
+    """The address really connected to: a name that pointed elsewhere a moment before (DNS rebinding) is caught here."""
+    try:
+        sock = r.fp.raw._sock
+        return not not_public(sock.getpeername()[0])
+    except Exception:
+        return True  # not knowable on this Python: the check before connecting stands
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -174,6 +190,8 @@ def read_page(url, limit=8000):
         req = urllib.request.Request(url, headers={"User-Agent": UA})
         try:
             with urllib.request.build_opener(NoRedirect).open(req, timeout=25) as r:
+                if not peer_is_public(r):
+                    raise RuntimeError("Pages on a private network can't be opened.")
                 ctype = r.headers.get("Content-Type", "")
                 raw = r.read(3_000_000)
                 break
@@ -355,6 +373,8 @@ def read_calendar(rng="today"):
     for i, url in enumerate(urls[:10], 1):
         try:
             link = re.sub(r"^webcals?://", "https://", url.strip(), flags=re.I)  # webcal:// is the same link over https
+            if not link.lower().startswith(("http://", "https://")):
+                raise RuntimeError("not a web address")  # never a file on the NAS (file://…)
             _, _, raw = http(link, timeout=30, max_bytes=8_000_000)
             name, found = parse_ics(raw, start, end, ZONE)
             name = name or f"Calendar {i}"
@@ -679,6 +699,7 @@ def scheduler():
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "TiinyRemoteNasAgent/" + VERSION
+    timeout = 30  # a connection that sends nothing (or drip-feeds) is dropped instead of holding a thread
 
     def log_message(self, fmt, *args):  # no request log: it would show paths and addresses only
         pass
@@ -707,7 +728,10 @@ class Handler(BaseHTTPRequestHandler):
         return u.path
 
     def body(self):
-        n = int(self.headers.get("Content-Length", "0") or 0)
+        try:
+            n = int(self.headers.get("Content-Length", "0") or 0)
+        except ValueError:
+            raise ValueError("bad size")
         if n < 0 or n > 1_000_000:
             raise ValueError("bad size")
         return json.loads(self.rfile.read(n) or b"{}")

@@ -51,15 +51,15 @@ val WELCOME_TOUR = listOf(
     GuideStep(SIGN_SETTINGS, "First: connect your Tiiny", "In Settings, enter your Tiiny's address and its API key (from Tiiny Studio). For use away from home, add your WireGuard tunnel: the app switches it on and off by itself.", "Sidebar → Settings"),
     GuideStep(SIGN_MENU, "The sidebar", "The $SIGN_MENU top left opens it. At the top are the things you do: Chat, Code, Create, Gallery, Automate, Translate. At the bottom are the ones that look after the Tiiny: Activity, Models, Settings. Its $SIGN_SETTINGS sets the start screen and the order; the red $SIGN_POWER at the bottom shuts the app down completely.", "Top left"),
     GuideStep("▤", "The status bar", "Under the title: online (green), checking (amber) or not reachable (red), how many models are loaded, how busy the NPU and CPU are. Tap it for the details. It pulses red when the NPU reports a new fault.", "Below the title"),
-    GuideStep("🧠", "Models first", "A model must be loaded on the Tiiny before it can work. In Models (or straight from the model button in Chat, Create…), tap $SIGN_PLAY to load and ■ to unload. Two can be loaded side by side if they fit together.", "Sidebar → Models"),
-    GuideStep("💬", "Then chat", "Pick a model, type or dictate ($SIGN_MIC), add an image or a file with $SIGN_ADD. Earlier chats are under $SIGN_HISTORY; $SIGN_SAVE green means chats are saved, red means incognito.", "Sidebar → Chat"),
+    GuideStep(SIGN_MODELS, "Models first", "A model must be loaded on the Tiiny before it can work. In Models (or straight from the model button in Chat, Create…), tap $SIGN_PLAY to load and ■ to unload. Two can be loaded side by side if they fit together.", "Sidebar → Models"),
+    GuideStep(SIGN_CHAT, "Then chat", "Pick a model, type or dictate ($SIGN_MIC), add an image or a file with $SIGN_ADD. Earlier chats are under $SIGN_HISTORY; $SIGN_SAVE green means chats are saved, red means incognito.", "Sidebar → Chat"),
     GuideStep("❓", "Help on every page", "The ? next to each page's title walks you through that page. Settings → Labels → $SIGN_INFO explains every pictogram.", "Next to the title"),
 )
 
 /** The page guide behind each title's ?. */
 fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
     0 -> "Models" to listOf(
-        GuideStep("🧠", "Your models", "Everything installed on your Tiiny. Loaded ones show \"Loaded\" in orange; each one takes a share of the NPU (\"59% NPU\")."),
+        GuideStep(SIGN_MODELS, "Your models", "Everything installed on your Tiiny. Loaded ones show \"Loaded\" in orange; each one takes a share of the NPU (\"59% NPU\")."),
         GuideStep(SIGN_PLAY, "Load and unload", "$SIGN_PLAY loads a model (the card says roughly how long it takes), ■ unloads it. If it doesn't fit beside the loaded ones, the app offers to swap.", "Right on each card"),
         GuideStep("★", "Favourites, names, info", "★ keeps a model at the top, $SIGN_EDIT gives it a shorter name in this app, $SIGN_INFO tells what it can do, $SIGN_DELETE deletes it from the Tiiny.", "On each card"),
         GuideStep("🔎", "Find the right one", "Installed / Store switches between your models and the Model Store. Types filters by kind (👂 ASR, $SIGN_OCR OCR, 🧊 3D, 🎬 video… and 💻 Coding). The chips (💬 chat, 🛠 tools, 👁 images, 💭 thinking…) filter by ability; the orange $SIGN_PLAY puts loaded models first; Sort orders them.", "Top of the list"),
@@ -68,7 +68,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🔐", "VPN card", "Shows whether WireGuard is on and whether you're at home. The app switches it by itself; Turn on / Turn off does it by hand.", "Top"),
     )
     1 -> "Create" to listOf(
-        GuideStep("✦", "Make something", "Images, speech, music, video, 3D models, text from photos and more, each with a model made for it."),
+        GuideStep(SIGN_CREATE, "Make something", "Images, speech, music, video, 3D models, text from photos and more, each with a model made for it."),
         GuideStep("🗂", "Choose what", "The first row picks the kind (3D, Audio, Image, Text, Video), the second the task (Create, Edit, Voice, Song…).", "Top"),
         GuideStep("🧠", "The model", "The model button shows which one is used; ● means loaded. $SIGN_PLAY Load loads it, swapping others out if needed.", "Under the choices"),
         GuideStep("✍", "Describe and start", "Fill in what it asks for (a description, a photo, a text) and start. Long jobs keep running in the background; you get a notice when they're done.", "Middle"),
@@ -86,7 +86,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("⧉", "Answers", "Copy (⧉) or $SIGN_SHARE share an answer, or $SIGN_TRANSLATE translate it; when you've scrolled up, ↓ jumps back to the newest message.", "Under each answer"),
     )
     3 -> "Activity" to listOf(
-        GuideStep("📜", "Logs", "Everything the app did and what the Tiiny answered, newest first. Problems are red with ⚠."),
+        GuideStep(SIGN_ACTIVITY, "Logs", "Everything the app did and what the Tiiny answered, newest first. Problems are red with ⚠."),
         GuideStep("🏷", "Filters", "The chips show one kind only (Device, Models, VPN, Chat…); ⚠ Problems only hides the rest.", "Top"),
         GuideStep(SIGN_LOCK, "Unlock", "$SIGN_LOCK unlocks the Tiiny's system pages, when it asks for that.", "Top right"),
         GuideStep("📊", "Tiiny stats", "📊 adds what the Tiiny itself counted (requests, errors).", "Above the list"),
@@ -108,7 +108,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🔗", "Connectors", "Your calendar, your email (read-only, via IMAP) and optionally your NAS, which can run automations even with the phone off.", "Connectors"),
     )
     6 -> "Gallery" to listOf(
-        GuideStep("🖼", "Everything you made", "Images, sound, video, 3D and texts from Create, newest first. Images, videos (🎬) and 3D models (🧊) show as tiles: tap one to see it big, play it or turn it."),
+        GuideStep(SIGN_GALLERY, "Everything you made", "Images, sound, video, 3D and texts from Create, newest first. Images, videos (🎬) and 3D models (🧊) show as tiles: tap one to see it big, play it or turn it."),
         GuideStep("🗂", "Filter and search", "The chips filter by kind and task; search finds words in descriptions.", "Top"),
         GuideStep("📅", "Order", "Newest or oldest first, grouped by day, month, year or not at all.", "Top"),
         GuideStep("↔", "Open and browse", "Tap an item to open it big; swipe left or right for the next or previous one. There: $SIGN_DELETE delete, send to chat, $SIGN_EDIT edit (images), $SIGN_SHARE share.", "Each item"),
@@ -125,7 +125,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("📁", "Projects", "The 📁 button picks a project or makes a new one; $SIGN_MORE beside it has more (new file, preview, share as .zip, GitHub, clear, delete).", "Top"),
         GuideStep("💬", "Ask · Build · Learn", "💬 Ask: questions and code to copy. 🛠 Build: the model writes and changes the files itself (✎ lines). 🎓 Learn: step by step, with a question at the end.", "Top"),
         GuideStep("📄", "Files", "Files shows the project's files; tap one to read or edit it yourself.", "Top"),
-        GuideStep(SIGN_PLAY, "Preview", "Code can't run on the phone, but a web page can: ▶ Preview at the top shows index.html. A good first try: Build \"a simple to-do list as a web page\".", "Top row"),
+        GuideStep(SIGN_PLAY, "Preview", "Code can't run on the phone, but a web page can: $SIGN_PLAY Preview at the top shows index.html. A good first try: Build \"a simple to-do list as a web page\".", "Top row"),
         GuideStep("🐙", "GitHub", "Copy a repository into a new project, push a project in one commit, or make a new private repository. Needs a GitHub token (the dialog links to where you make one).", "$SIGN_MORE → GitHub"),
     )
     else -> "This page" to emptyList()

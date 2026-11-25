@@ -72,8 +72,9 @@ class ResultStore(private val ctx: Context) {
 
     /** Saves bytes as a result file; the name starts with the date so file managers sort them. */
     fun saveFile(id: String, suffix: String, bytes: ByteArray): String {
-        val name = "$id-$suffix"
-        File(dir, name).writeBytes(bytes)
+        // Only plain characters: a name from the network can't lead out of the results folder.
+        val name = "$id-$suffix".replace(Regex("[^A-Za-z0-9._-]"), "_").replace("..", "_")
+        file(name).writeBytes(bytes)
         return name
     }
 

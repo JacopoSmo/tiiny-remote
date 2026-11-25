@@ -61,7 +61,7 @@ fun MeshViewer(title: String, glb: File, render: File, onClose: () -> Unit) {
                                 @JavascriptInterface fun picture(dataUrl: String) {
                                     runCatching {
                                         val bytes = Base64.decode(dataUrl.substringAfter("base64,"), Base64.DEFAULT)
-                                        if (bytes.size > 1000) render.writeBytes(bytes)
+                                        if (bytes.size in 1000..20_000_000) render.writeBytes(bytes)
                                     }
                                 }
                             }, "Tiiny")

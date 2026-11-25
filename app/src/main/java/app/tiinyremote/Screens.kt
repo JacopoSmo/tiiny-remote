@@ -2,6 +2,7 @@
 
 package app.tiinyremote
 
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.semantics.semantics
@@ -1633,9 +1634,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             helper = it
             vm.setDisplay(cur.copy(helperModel = it))
         }
-        Text(
+        SignText(
             "A small chat model loaded beside your main one. It names chats, suggests follow-ups, condenses long chats and files, and runs Improve prompt, lyrics and tags. " +
-                "It condenses web pages only if the speed test found it at least 25% faster (ⓘ). Never loaded by itself: without it, the chat model does all this.",
+                "It condenses web pages only if the speed test found it at least 25% faster ($SIGN_INFO). Never loaded by itself: without it, the chat model does all this.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -2149,8 +2150,8 @@ internal fun topOrder(saved: String): List<Int> {
 internal fun navEntry(i: Int): Triple<String, androidx.compose.ui.graphics.vector.ImageVector, Int> = when (i) {
     0 -> Triple("Models", Icons.Filled.Home, 0)
     1 -> Triple("Create", Icons.Filled.Create, 1)
-    2 -> Triple("Chat", Icons.Filled.Send, 2)
-    3 -> Triple("Activity", Icons.Filled.List, 3)
+    2 -> Triple("Chat", Icons.AutoMirrored.Filled.Send, 2)
+    3 -> Triple("Activity", Icons.AutoMirrored.Filled.List, 3)
     5 -> Triple("Automate", AutomationIcon, 5)
     6 -> Triple("Gallery", GalleryIcon, 6)
     7 -> Triple("Translate", TranslateIcon, 7)
