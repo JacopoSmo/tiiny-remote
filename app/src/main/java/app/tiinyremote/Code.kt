@@ -176,7 +176,6 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     },
                     confirmButton = { TextButton(onClick = { menu = false }) { Text("Close") } },
                 )
-                }
             }
         }
         if (showFiles) {
