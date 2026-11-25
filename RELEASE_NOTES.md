@@ -1,6 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.3 (test build, with NAS agent 1.5.4)
+## What's new in 4.1.4 (test build, with NAS agent 1.5.5)
+- **ntfy push:** an address without a topic is pointed out ("Add the topic at the end, e.g. …/tiiny"). Save says that results also come as pushes; Test (🔌) has the NAS send a test push, the same way results go out, and says whether ntfy took it. The agent's log notes each push.
 - **Full view:** the zoom magnifier is larger, on a faint round backing, and clear of the phone's bottom bar.
 - **Live preview:** the log notes what the image stream sent (to check the previews arrive).
 - **Cut-off answers say so:** an answer that reaches the length limit, or that the Tiiny stops sending early, ends with a note ("go on" gets the rest) instead of stopping mid-sentence.

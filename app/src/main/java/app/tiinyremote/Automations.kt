@@ -726,8 +726,18 @@ object NasAgent {
         val (_, t) = call(c, "GET", "/status")
         val o = JSONObject(t)
         val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
-        return "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
+        val agent = "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
             if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
+        // With ntfy set: a test push, sent by the NAS itself, the way results go out.
+        if (c.ntfyUrl.isBlank()) return agent
+        val push = try {
+            val r = JSONObject(call(c, "POST", "/notify-test", JSONObject()).second)
+            if (r.optBoolean("ok")) "Test push sent via ntfy: it should show in the ntfy app now."
+            else "The push didn't work: ${r.optString("error")}"
+        } catch (e: MediaException) {
+            if (e.message?.contains("HTTP 404") == true) "To test the push, update the agent (1.5.5 or newer)." else "The push didn't work: ${e.message}"
+        }
+        return "$agent\n$push"
     }
 
     /** Sends the NAS automations and what they need (Tiiny address and key, search, email, calendar link, push). */

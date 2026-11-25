@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.4"
+VERSION = "1.5.5"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -583,15 +583,23 @@ def agent(a, model, steps, started):
     return out
 
 
-def notify(title, text):
-    url = config().get("ntfy_url", "")
+def notify(title, text, strict=False):
+    """Posts to the ntfy topic, if one is set. strict: raise instead of logging (the app's Test)."""
+    url = config().get("ntfy_url", "").strip()
     if not url:
+        if strict:
+            raise RuntimeError("No ntfy address is set.")
         return
     try:
+        if not urllib.parse.urlsplit(url).path.strip("/"):
+            raise RuntimeError(f"{url} has no topic: add it at the end, e.g. {url.rstrip('/')}/tiiny")
         sep = "&" if "?" in url else "?"
         http(url + sep + "title=" + urllib.parse.quote(title[:120]), text[:3800].encode("utf-8"), timeout=15, method="POST")
+        log(f"ntfy: sent \"{title[:60]}\"")
     except Exception as e:
         log(f"ntfy failed: {e}")
+        if strict:
+            raise RuntimeError(f"ntfy didn't take it: {e}")
 
 
 def run(a, app="normal"):
@@ -744,6 +752,12 @@ class Handler(BaseHTTPRequestHandler):
         path = self.route()
         if not self.authorized():
             return
+        if path == "/notify-test":
+            try:
+                notify("Tiiny Remote", "Test push from the NAS agent: results will arrive like this.", strict=True)
+                return self.reply(200, {"ok": True})
+            except Exception as e:
+                return self.reply(200, {"ok": False, "error": str(e)})
         m = re.fullmatch(r"/run/([\w-]{1,64})", path)
         if not m:
             return self.reply(404, {"error": "not found"})

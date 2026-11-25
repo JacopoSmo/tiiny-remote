@@ -241,7 +241,8 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { NasAgent.push(getApplication()) }
-                answerAt?.let { _tests.value = _tests.value + (it to TestResult(true, "Saved and sent to the NAS agent.")) }
+                val push = if (_conn.value.ntfyUrl.isNotBlank()) " Results also come as ntfy pushes (Test sends one)." else ""
+                answerAt?.let { _tests.value = _tests.value + (it to TestResult(true, "Saved and sent to the NAS agent.$push")) }
             } catch (e: Exception) {
                 val msg = "Saved on this phone, but the NAS agent couldn't be updated: ${e.message}"
                 if (answerAt != null) _tests.value = _tests.value + (answerAt to TestResult(false, msg)) else _note.value = msg
@@ -533,11 +534,18 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
                 "A calendar link starts with https:// (or webcal://).", color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
             )
-            val ntfyBad = ntfy.isNotBlank() && !ntfy.trim().startsWith("https://") && !ntfy.trim().startsWith("http://")
+            // ntfy needs the whole address and a topic at its end (http://192.168.3.10:8090/tiiny).
+            val nt = ntfy.trim()
+            val ntfyWhy = when {
+                nt.isBlank() -> null
+                !nt.startsWith("https://") && !nt.startsWith("http://") -> "The whole address, starting with https:// or http://"
+                Regex("^https?://[^/]+/?$").matches(nt) -> "Add the topic at the end, e.g. ${nt.trimEnd('/')}/tiiny"
+                else -> null
+            }
             OutlinedTextField(
                 ntfy, { ntfy = it }, label = { Text("Push via ntfy (optional), e.g. https://ntfy.sh/your-topic") }, singleLine = true,
-                isError = ntfyBad, modifier = Modifier.fillMaxWidth(),
-                supportingText = if (ntfyBad) ({ Text("The whole address, starting with https://") }) else null,
+                isError = ntfyWhy != null, modifier = Modifier.fillMaxWidth(),
+                supportingText = ntfyWhy?.let { w -> { Text(w) } },
             )
             Row {
                 TextButton(onClick = { av.saveConnectors(current(), "nas") }) { BtnLabel("Save", symbol = "✓") }
