@@ -1,5 +1,12 @@
 package app.tiinyremote
 
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.foundation.layout.navigationBarsPadding
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -191,11 +198,27 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )
+        var shiftEnter by remember { mutableStateOf(false) }
+        val canSend = model?.running == true && input.isNotBlank() && current != null && busy == null
+        fun doSend() { model?.let { cv.send(it.id, mode, think, input, it.makesThings); input = "" } }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = if (ui.compact) 4.dp else 8.dp)) {
             OutlinedTextField(
                 value = input,
-                onValueChange = { input = it },
-                modifier = Modifier.weight(1f).heightIn(max = 160.dp),
+                // As in Chat: with "Enter sends" on, Enter sends and Shift+Enter makes a new line, also through keyboard
+                // apps that turn a hardware Enter into a typed line break.
+                onValueChange = { v ->
+                    if (ui.enterSends && !shiftEnter && v.length == input.length + 1 && v.endsWith("\n") && v.dropLast(1) == input) {
+                        if (canSend) doSend()
+                    } else input = v
+                    shiftEnter = false
+                },
+                modifier = Modifier.weight(1f).heightIn(max = 160.dp).onPreviewKeyEvent { k ->
+                    if ((k.key == Key.Enter || k.key == Key.NumPadEnter) && k.isShiftPressed) shiftEnter = true
+                    if (ui.enterSends && (k.key == Key.Enter || k.key == Key.NumPadEnter) && !k.isShiftPressed) {
+                        if (k.type == KeyEventType.KeyDown && canSend) doSend()
+                        true
+                    } else false
+                },
                 // Send needs a project and a loaded model: the placeholder says what's missing instead of a silent grey button.
                 placeholder = {
                     Text(
@@ -213,8 +236,8 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 OutlinedButton(onClick = { cv.stopNow() }) { BtnLabel("Stop", symbol = "■") }
             } else {
                 Button(
-                    onClick = { model?.let { cv.send(it.id, mode, think, input, it.makesThings); input = "" } },
-                    enabled = model?.running == true && input.isNotBlank() && current != null,
+                    onClick = { doSend() },
+                    enabled = canSend,
                 ) { BtnLabel("Send", Icons.AutoMirrored.Filled.Send) }
             }
         }
@@ -342,40 +365,44 @@ private fun FileEditor(cv: CodeViewModel, path: String, onClose: () -> Unit) {
  */
 @Composable
 private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
-    ScaledAlertDialog(
+    // A plain full-screen window: an alert dialog measures its content in a way a web view can't answer, and showed nothing.
+    androidx.compose.ui.window.Dialog(
         onDismissRequest = onClose,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.98f),
-        title = { ClosableTitle(onClose) { Text("Preview: ${file.name}") } },
-        text = {
-            AndroidView(
-                factory = { c ->
-                    android.webkit.WebView(c).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        // Only this project's folder: the page can load its own files, nothing else of the app's.
-                        @Suppress("DEPRECATION")
-                        settings.allowFileAccess = true
-                        // Only this project's own files, or the web (libraries from a CDN): no other file of the phone's.
-                        val folder = file.parentFile!!.canonicalPath
-                        webViewClient = object : android.webkit.WebViewClient() {
-                            override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
-                                val u = request.url
-                                return when (u.scheme?.lowercase()) {
-                                    "http", "https", "about", "data" -> false
-                                    "file" -> !(java.io.File(u.path ?: "").canonicalPath.startsWith(folder))
-                                    else -> true
+    ) {
+        androidx.compose.material3.Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Preview: ${file.name}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(8.dp))
+                    TextButton(onClick = onClose) { Text("Close") }
+                }
+                AndroidView(
+                    factory = { c ->
+                        android.webkit.WebView(c).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            @Suppress("DEPRECATION")
+                            settings.allowFileAccess = true
+                            // Only this project's own files, or the web (libraries from a CDN): no other file of the phone's.
+                            val folder = file.parentFile!!.canonicalPath
+                            webViewClient = object : android.webkit.WebViewClient() {
+                                override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
+                                    val u = request.url
+                                    return when (u.scheme?.lowercase()) {
+                                        "http", "https", "about", "data" -> false
+                                        "file" -> !(java.io.File(u.path ?: "").canonicalPath.startsWith(folder))
+                                        else -> true
+                                    }
                                 }
                             }
+                            loadUrl(android.net.Uri.fromFile(file).toString())
                         }
-                        loadUrl(android.net.Uri.fromFile(file).toString())
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().height(460.dp),
-            )
-        },
-        confirmButton = {},
-    )
+                    },
+                    modifier = Modifier.fillMaxWidth().weight(1f).navigationBarsPadding(),
+                )
+            }
+        }
+    }
 }
 
 /** GitHub: the token, this project's repository (or a new one), Push, and copying a repository into a new project. */

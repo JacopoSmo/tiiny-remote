@@ -1433,7 +1433,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = cur.enterSends, onCheckedChange = { vm.setDisplay(cur.copy(enterSends = it)) })
             Spacer(Modifier.width(10.dp))
-            Text("Enter key sends chat messages (Shift+Enter for a new line), for the hardware keyboard")
+            Text("Enter key sends messages in Chat and Code (Shift+Enter for a new line), for the hardware keyboard")
         }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
