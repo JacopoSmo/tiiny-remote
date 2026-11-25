@@ -1,7 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
 ## What's new in 4.1.18 (test build, with NAS agent 1.5.6)
-- **Code → ▶ Preview** (tested: opens, the page works) sits right after the project, and a page sized to the screen is no longer cut off at the top.
+- **Code:** ▶ Preview (tested: opens, the page works) and ⋮ (the project's actions) sit right after the project; a page sized to the screen is no longer cut off at the top.
 
 ## What's new in 4.1.16 (test build, with NAS agent 1.5.6)
 - **Separate tracks** (tested: a folk song came with backing and vocals): the buttons say "▶ Backing" and "▶ Vocals"; "Preview first" is hidden in that mode (tracks come only from a whole song).

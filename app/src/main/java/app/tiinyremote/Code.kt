@@ -1,5 +1,6 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AssistChip
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEventType
@@ -130,6 +131,8 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         DropdownMenuItem(text = { Text("⤓ From GitHub…") }, onClick = { github = true; projMenu = false })
                     }
                 }
+                // The project's actions: in the row (at its right edge, taps on the ⋮ button got lost).
+                AssistChip(onClick = { menu = true }, label = { Icon(Icons.Filled.MoreVert, contentDescription = "Project actions", modifier = Modifier.size(18.dp)) })
                 if (cv.previewFile() != null) AssistChip(onClick = { preview = true }, label = { Text("▶ Preview") })
                 for ((key, icon, word) in CODE_MODES) FilterChip(
                     selected = mode == key,
@@ -144,7 +147,6 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 FilterChip(selected = showFiles, onClick = { showFiles = !showFiles }, label = { Text("Files ${files.size}") })
             }
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Project menu") }
                 // The project's actions in a small window: in a drop-down menu here, taps on its items got lost.
                 if (menu) ScaledAlertDialog(
                     onDismissRequest = { menu = false },
