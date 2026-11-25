@@ -130,6 +130,7 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         DropdownMenuItem(text = { Text("⤓ From GitHub…") }, onClick = { github = true; projMenu = false })
                     }
                 }
+                if (cv.previewFile() != null) AssistChip(onClick = { preview = true }, label = { Text("▶ Preview") })
                 for ((key, icon, word) in CODE_MODES) FilterChip(
                     selected = mode == key,
                     onClick = { mode = key; st.setSetting("code.mode", key) },
@@ -141,7 +142,6 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     label = { Text(sign("Thinking")) },
                 )
                 FilterChip(selected = showFiles, onClick = { showFiles = !showFiles }, label = { Text("Files ${files.size}") })
-                if (cv.previewFile() != null) AssistChip(onClick = { preview = true }, label = { Text("▶ Preview") })
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Project menu") }
@@ -409,7 +409,16 @@ private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
                                     }
                                 }
                             }
-                            loadUrl(android.net.Uri.fromFile(file).toString())
+                            layoutParams = android.view.ViewGroup.LayoutParams(android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                            // Loaded once the view has its size: loaded at once, a page sized to the screen's height
+                            // (100vh) saw almost none and was cut off at the top.
+                            var loaded = false
+                            addOnLayoutChangeListener { v, _, top, _, bottom, _, _, _, _ ->
+                                if (!loaded && bottom - top > 0) {
+                                    loaded = true
+                                    (v as android.webkit.WebView).loadUrl(android.net.Uri.fromFile(file).toString())
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().weight(1f).navigationBarsPadding(),
