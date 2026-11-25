@@ -347,7 +347,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                 }
                 when (e.kind) {
                     "image" -> {
-                        if (name != null) Box(Modifier.weight(1f).fillMaxWidth()) {
+                        if (name != null) Box(Modifier.weight(1f).fillMaxWidth().then(if (e.files.size > 1) Modifier else Modifier.navigationBarsPadding())) {
                             ZoomImage(st.store.file(name), Modifier.fillMaxSize())
                             ZoomHint(Modifier.align(Alignment.BottomEnd).padding(12.dp))
                         }
@@ -592,8 +592,11 @@ fun TerminalGuide(
 /** A faint magnifier in the image's corner: pinch or double-tap to zoom. */
 @Composable
 private fun ZoomHint(modifier: Modifier) {
-    val c = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-    androidx.compose.foundation.Canvas(modifier.size(28.dp).semantics { contentDescription = "Pinch or double-tap to zoom" }) {
+    val c = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.7f)
+    androidx.compose.foundation.Canvas(
+        modifier.size(36.dp).background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.3f), androidx.compose.foundation.shape.CircleShape)
+            .padding(6.dp).semantics { contentDescription = "Pinch or double-tap to zoom" },
+    ) {
         val w = size.minDimension
         val r = w * 0.32f
         val cx = w * 0.4f
