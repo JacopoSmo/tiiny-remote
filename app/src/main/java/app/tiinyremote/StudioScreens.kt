@@ -1112,7 +1112,9 @@ fun ResultCard(
                         for (t in tracks) {
                             val tf = st.store.file(t)
                             val on = Player.playing == tf.name
-                            val label = t.substringAfterLast('/').substringBeforeLast('.').removePrefix("song-").replace('_', ' ').replaceFirstChar { it.uppercase() }
+                            val part = t.substringBeforeLast('.').substringAfterLast("song-")
+                            val label = mapOf("bgm" to "Backing", "vocal" to "Vocals", "vocals" to "Vocals", "drums" to "Drums", "bass" to "Bass")[part.lowercase()]
+                                ?: part.replace('_', ' ').replaceFirstChar { it.uppercase() }
                             OutlinedButton(onClick = { Player.toggle(tf) }) { Text((if (on) "■ " else "▶ ") + label) }
                         }
                     }

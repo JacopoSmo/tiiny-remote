@@ -587,7 +587,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     }
 
     // Preview first (SongGeneration only)
-    if (!sm.plain) {
+    if (!sm.plain && t != "separate") { // separate tracks come only from a whole song
         SwitchRow(preview, title = "Preview first (8 s)", detail = "Hear the opening in about a minute, then continue to the full song only if you like it") {
             preview = it
         }

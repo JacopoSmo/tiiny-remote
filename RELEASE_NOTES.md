@@ -1,6 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.15 (test build, with NAS agent 1.5.6)
+## What's new in 4.1.16 (test build, with NAS agent 1.5.6)
+- **Separate tracks** (tested: a folk song came with backing and vocals): the buttons say "▶ Backing" and "▶ Vocals"; "Preview first" is hidden in that mode (tracks come only from a whole song).
 - **Code:** ▶ Preview sits right in the top row once there's a web page. The ⋮ actions (new project, new file, share, GitHub, clear, delete) open in a small window: in the drop-down menu, taps on them got lost.
 - **Loop → Key** can be chosen again: its button was pushed off the screen and left an empty gap.
 - **Buttons in alphabetical order:** the loop's instruments, character, phrase and effects, the song styles and the voice styles.
