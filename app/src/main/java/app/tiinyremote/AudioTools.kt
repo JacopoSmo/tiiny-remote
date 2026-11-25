@@ -62,10 +62,10 @@ private val ASR_LANGS = listOf(
     "ru" to "Russian", "ar" to "Arabic", "hi" to "Hindi", "vi" to "Vietnamese", "th" to "Thai", "id" to "Indonesian",
 )
 
-private val STYLE_CHIPS = listOf("Calm and warm", "Excited and upbeat", "Whispering", "Like a news anchor", "Slow and clear", "Sad, quiet")
+private val STYLE_CHIPS = listOf("Calm and warm", "Excited and upbeat", "Whispering", "Like a news anchor", "Slow and clear", "Sad, quiet").sorted()
 private val DESIGN_CHIPS = listOf(
     "A calm, warm narrator", "A bright, fast young woman", "A deep, slow old man", "A cheerful child", "A gravelly movie-trailer voice",
-)
+).sorted()
 
 private val FAMILIES = linkedMapOf(
     "Synth" to listOf("Wavetable Synth", "Supersaw", "FM Synth", "Analog Pad", "Pluck Synth", "Lead Synth"),
@@ -79,15 +79,16 @@ private val FAMILIES = linkedMapOf(
     "Vocals" to listOf("Choir", "Vocal Chops"),
     "Plucked" to listOf("Harp", "Koto", "Pizzicato"),
 )
-private val CHARACTER = listOf("warm", "bright", "dark", "airy", "gritty", "wide", "punchy", "soft", "glassy", "metallic")
-private val PHRASE = listOf("chord progression", "melody", "arp", "bassline", "rising", "complex", "simple")
-private val FX = listOf("reverb", "delay", "chorus", "distortion", "sidechain", "lo-fi")
+// Buttons are shown alphabetically.
+private val CHARACTER = listOf("warm", "bright", "dark", "airy", "gritty", "wide", "punchy", "soft", "glassy", "metallic").sorted()
+private val PHRASE = listOf("chord progression", "melody", "arp", "bassline", "rising", "complex", "simple").sorted()
+private val FX = listOf("reverb", "delay", "chorus", "distortion", "sidechain", "lo-fi").sorted()
 private val BPMS = listOf(100, 110, 120, 128, 130, 140, 150)
 
 private val SONG_CHIPS = listOf(
     "pop", "rock", "lofi", "edm", "jazz", "folk", "cinematic", "hip hop", "male vocals", "female vocals",
     "upbeat", "melancholic", "chill", "energetic", "piano", "acoustic guitar", "synth",
-)
+).sorted()
 private val ACE_LANGS = listOf(
     "" to "Auto", "en" to "English", "zh" to "Chinese", "ja" to "Japanese", "ko" to "Korean", "es" to "Spanish",
     "fr" to "French", "de" to "German", "it" to "Italian", "pt" to "Portuguese", "ru" to "Russian",
@@ -430,8 +431,8 @@ internal fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     }
 
     LabelRow("Instrument")
-    TagChips(FAMILIES.keys.toList(), { it == family }) { family = it; role = FAMILIES.getValue(it).first(); custom = null }
-    TagChips(FAMILIES.getValue(family), { it == role }) { role = it; custom = null }
+    TagChips(FAMILIES.keys.sorted(), { it == family }) { family = it; role = FAMILIES.getValue(it).first(); custom = null }
+    TagChips(FAMILIES.getValue(family).sorted(), { it == role }) { role = it; custom = null }
     LabelRow("Character")
     TagChips(CHARACTER, { it in chars }) { character = toggle(character, it); custom = null }
     LabelRow("Phrase")
@@ -448,7 +449,8 @@ internal fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
             }
         }
         Spacer(Modifier.width(16.dp))
-        Column {
+        // weight: without it the key's button took the whole width and was pushed off the screen (an empty gap).
+        Column(Modifier.weight(1f)) {
             LabelRow("Key")
             Dropdown("Key", KEYS.map { it to it }, key) { key = it; custom = null }
         }
