@@ -1,5 +1,6 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Home
@@ -424,11 +425,24 @@ fun FullView(entries: List<ResultEntry>, start: Int, st: StudioViewModel, onClos
     }
 }
 
+/**
+ * A dialog over the whole screen, drawn edge to edge, with its content kept clear of the status bar and the phone's
+ * bottom buttons. (A plain full-size dialog is placed below the status bar but keeps the screen's full height, so its
+ * bottom ran off the screen.)
+ */
+@Composable
+fun FullScreenDialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Box(Modifier.fillMaxSize().safeDrawingPadding()) { content() }
+        }
+    }
+}
+
 /** A result on the whole screen: pictures to zoom, a video, a 3D model's picture, or the text to read and copy. */
 @Composable
 fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position: String? = null, onSwipe: ((Int) -> Unit)? = null) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    FullScreenDialog(onClose) {
             Column(Modifier.fillMaxSize()) {
                 var page by remember(e.id) { mutableStateOf(0) }
                 // A swipe turns the pages of a result with several images first, then goes to the next result.
@@ -519,7 +533,6 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                     }
                 }
             }
-        }
     }
 }
 

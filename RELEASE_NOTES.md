@@ -1,5 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.2.1 (test build, with NAS agent 1.6.0)
+- **Full screens no longer run off the bottom** (tested on 4.2.0: the 3D page's "View in 3D" was cut off): the full view, the 3D viewer and Code's preview now fit between the status bar and the phone's bottom edge.
+
 ## What's new in 4.2.0 (with NAS agent 1.6.0)
 Everything from the 4.1.1–4.1.23 test builds, tested on the phone, plus a full review (as programmer, white-hat and attacker) of the app and the NAS agent.
 

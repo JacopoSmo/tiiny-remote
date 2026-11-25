@@ -12,10 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,8 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import java.io.File
 
 /**
@@ -36,8 +32,7 @@ import java.io.File
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun MeshViewer(title: String, glb: File, render: File, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) {
+    FullScreenDialog(onClose) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(8.dp))
@@ -89,10 +84,9 @@ fun MeshViewer(title: String, glb: File, render: File, onClose: () -> Unit) {
                         }
                     },
                     onRelease = { it.destroy() },
-                    modifier = Modifier.fillMaxWidth().weight(1f).navigationBarsPadding(),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             }
-        }
     }
 }
 

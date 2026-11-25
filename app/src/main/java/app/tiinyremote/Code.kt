@@ -382,11 +382,7 @@ private fun FileEditor(cv: CodeViewModel, path: String, onClose: () -> Unit) {
 @Composable
 private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
     // A plain full-screen window: an alert dialog measures its content in a way a web view can't answer, and showed nothing.
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onClose,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        androidx.compose.material3.Surface(Modifier.fillMaxSize()) {
+    FullScreenDialog(onClose) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Preview: ${file.name}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(8.dp))
@@ -436,7 +432,6 @@ private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().weight(1f).navigationBarsPadding(),
                 )
             }
-        }
     }
 }
 
