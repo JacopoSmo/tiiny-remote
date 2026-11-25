@@ -2,6 +2,10 @@
 
 package app.tiinyremote
 
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.mutableStateListOf
@@ -382,6 +386,10 @@ fun AppRoot(vm: MainViewModel) {
                                 }
                                 IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             }
+                            // Models: "Help me choose" asks the chat model which model fits what you want to do.
+                            if (tab == 0) IconButton(onClick = { st.askInChat(HELP_CHOOSE_DRAFT) }) {
+                                Text("🧭", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Help me choose a model" })
+                            }
                             IconButton(onClick = { vm.refreshNow(); if (tab == 5) av.refresh() }) { // in Automate: its results too
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                             }
@@ -630,7 +638,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
         contentPadding = PaddingValues(if (LocalUi.current.compact) 10.dp else 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // Online/offline and the loaded models are in the strip at the top; this card only shows when something needs doing.
+        // Online/offline and the loaded models are in the status bar at the top; this card only shows when something needs doing.
         if (s.device in setOf(DeviceState.LOCKED, DeviceState.NOT_CONFIGURED, DeviceState.UNAUTHORIZED, DeviceState.ERROR) ||
             (s.device == DeviceState.UNREACHABLE && s.deviceMessage.isNotBlank())
         ) {
@@ -671,7 +679,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                             val nCode = if (storeView) s.store?.count { (it.type == "Text Generation" || it.type == "Image-Text-to-Text") && codesByName(it.id) } ?: 0
                                 else s.models.count { it.codes }
                             DropdownMenuItem(
-                                text = { Text((if (CODING in typeSel) "☑ " else "☐ ") + choiceLabel("💻", "Coding") + "  ($nCode)") },
+                                text = { Text((if (CODING in typeSel) "☑ " else "☐ ") + "💻 Coding  ($nCode)") },
                                 onClick = {
                                     typeSel = if (CODING in typeSel) typeSel - CODING else typeSel + CODING
                                     prefs.edit().putStringSet("types", typeSel).apply()
@@ -680,7 +688,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                             for (t in typeOrder) {
                                 val n = if (storeView) s.store?.count { it.type == t } ?: 0 else s.models.count { it.type == t }
                                 DropdownMenuItem(
-                                    text = { Text((if (t in typeSel) "☑ " else "☐ ") + choiceLabel(typeIcon(t), t) + "  ($n)") },
+                                    text = { SignText((if (t in typeSel) "☑ " else "☐ ") + typeIcon(t) + " " + t + "  ($n)") },
                                     onClick = {
                                         typeSel = if (t in typeSel) typeSel - t else typeSel + t
                                         prefs.edit().putStringSet("types", typeSel).apply()
@@ -693,7 +701,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
             }
             if (s.downloads.isNotEmpty()) item { DownloadsCard(s, vm) }
             if (storeView) {
-                item { StoreList(s, vm, stats?.diskFreeGb, typeSel, onAsk = { st.askInChat(it) }) }
+                item { StoreList(s, vm, stats?.diskFreeGb, typeSel) }
             } else {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1192,29 +1200,39 @@ internal fun SettingDropdown(label: String, options: List<Pair<String, String>>,
 private fun PictogramLegend(onClose: () -> Unit) {
     // A Material icon or a text symbol, as the buttons use them.
     val signs = listOf<Pair<Any, String>>(
+        Icons.Filled.Menu to "Sidebar: all pages",
+        Icons.AutoMirrored.Filled.ArrowBack to "Back to where you were",
+        "?" to "Help for this page",
         Icons.Filled.PlayArrow to "Load a model, resume a download",
         "■" to "Unload a model, stop",
         "⤓" to "Download, save to the phone",
         "⟳" to "Update a model",
         "❚❚" to "Pause a download",
         Icons.Filled.Close to "Cancel, remove, close",
-        Icons.Filled.Edit to "Edit, rename",
+        Icons.Filled.Edit to "Edit, rename; in the chat: improve your message",
         Icons.Filled.Check to "Save",
         Icons.Filled.Share to "Share",
         "⧉" to "Copy",
-        PowerIcon to "Power off the Tiiny",
+        Icons.AutoMirrored.Filled.Send to "Send",
+        Icons.Filled.Search to "Search",
+        Icons.Filled.MoreVert to "More actions (Code: the project's)",
+        Icons.Filled.Info to "About this, what it can do",
+        PowerIcon to "Power off the Tiiny; in the sidebar: shut the app down",
         Icons.Filled.Refresh to "Try again, check again, restart the Tiiny",
         Icons.Filled.Lock to "Unlock the Tiiny",
         Icons.Filled.Settings to "Open Settings",
-        "▶" to "Run an automation now",
+        "▶" to "Run an automation now; Code: preview a web page",
         "🔌" to "Test a connection (email, NAS agent)",
         Icons.Filled.Delete to "Delete",
         "📊" to "Statistics: the Tiiny's own request counts (Activity), speed tests and chat speeds (Settings → Fast helper model)",
         HistoryIcon to "History: earlier chats, past speed tests",
-        GalleryIcon to "Open Gallery",
         Icons.Filled.Add to "New chat; beside the message: attach an image or a file",
         MicIcon to "Dictate a message (needs a speech-to-text model)",
         SaveIcon to "Chat: green, chats are saved; red, incognito",
+        "🧭" to "Models: help me choose a model (asks the chat)",
+        "🧊" to "A 3D model: opens in the app's 3D viewer",
+        "🎬" to "A video",
+        "↓" to "Jump to the newest message",
     )
     ScaledAlertDialog(
         onDismissRequest = onClose,
@@ -1261,8 +1279,16 @@ private fun PictogramLegend(onClose: () -> Unit) {
                 for (c in CATEGORIES) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(c.icon, modifier = Modifier.width(36.dp))
-                        Text(c.label + ": " + c.tools.joinToString(", ") { t -> CHOICES[t]?.let { (i, w) -> if (i.isEmpty()) w else "$i $w" } ?: t },
+                        SignText(c.label + ": " + c.tools.joinToString(", ") { t -> CHOICES[t]?.let { (i, w) -> if (i.isEmpty()) w else "$i $w" } ?: t },
                             style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text("Model types (Models → Types)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                for (t in listOf("ASR", "Image-Text-to-Text", "Image-to-3D", "Image-to-Text", "Image-to-Video", "Music Generation",
+                    "Text Classification", "Text Embedding", "Text Generation", "Text Reranking", "Text-to-Image", "Text-to-Speech", "Text-to-Video")) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SignText(typeIcon(t), modifier = Modifier.width(36.dp))
+                        Text(t, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
@@ -1274,7 +1300,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                     }
                 }
                 Text(
-                    "A button with no pictogram always shows its word (OCR, ASR). Others: ● loaded, ▾ opens a menu, ★ favourite.",
+                    "Others: ● loaded, ▾ opens a menu, ★ favourite, 📁 Code's projects.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1571,13 +1597,13 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         for ((label, on, kind) in listOf(
-            Triple("Speech-to-text (dictation, Translate speech, ASR)", cur.keepAsr) { m: ModelInfo -> m.isAsr },
-            Triple("OCR (text from photos)", cur.keepOcr) { m: ModelInfo -> m.isOcr },
+            Triple("👂 Speech-to-text (dictation, Translate speech, ASR)", cur.keepAsr) { m: ModelInfo -> m.isAsr },
+            Triple("$SIGN_OCR OCR (text from photos)", cur.keepOcr) { m: ModelInfo -> m.isOcr },
         )) {
             val m = s.models.filter(kind).minByOrNull { it.npuUsage ?: 100.0 }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                    SignText(label, style = MaterialTheme.typography.bodyLarge)
                     Text(
                         m?.let { "${it.name} · ${Math.round(it.npuUsage ?: 0.0)}% of the NPU" + if (it.running) " · loaded" else "" }
                             ?: "No such model on the Tiiny (Models → Store).",
@@ -1586,7 +1612,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     )
                 }
                 Switch(checked = on, enabled = m != null || on, onCheckedChange = {
-                    vm.setDisplay(if (label.startsWith("Speech")) cur.copy(keepAsr = it) else cur.copy(keepOcr = it))
+                    vm.setDisplay(if ("Speech" in label) cur.copy(keepAsr = it) else cur.copy(keepOcr = it))
                 })
             }
         }
@@ -1956,19 +1982,19 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
 @Composable
 private fun AboutHead(t: String) = Text(t, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
 
-/** A pictogram for each kind of model the Tiiny lists (shown before the name, as Settings → Labels says). */
+/** A pictogram for each kind of model the Tiiny lists, the same as Create's; in Models → Types always with the name. */
 internal fun typeIcon(type: String): String = when (type.lowercase()) {
     "asr", "automatic-speech-recognition", "speech-to-text" -> "👂"
     "image-text-to-text" -> "👁"
     "image-to-3d", "text-to-3d" -> "🧊"
-    "image-to-text" -> "🔍"
+    "image-to-text" -> SIGN_OCR
     "image-to-image" -> "🖌"
     "image-to-video" -> "🎞"
     "music generation", "text-to-audio", "audio generation" -> "🎵"
     "text classification" -> "🏷"
-    "text embedding" -> "🧭"
+    "text embedding" -> "🔗"
     "text generation" -> "💬"
-    "text reranking" -> "🔢"
+    "text reranking" -> "🥇"
     "text-to-image" -> "🖼"
     "text-to-speech" -> "🗣"
     "text-to-video" -> "🎬"

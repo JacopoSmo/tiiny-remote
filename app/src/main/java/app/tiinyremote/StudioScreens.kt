@@ -1060,6 +1060,7 @@ private val dateFmt = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
 fun ResultCard(
     e: ResultEntry, st: StudioViewModel, expanded: Boolean = false,
     marked: Boolean = false, selecting: Boolean = false, onMark: (() -> Unit)? = null,
+    onFull: (() -> Unit)? = null, // the Gallery's full view, which swipes through its results
 ) {
     var open by remember(e.id) { mutableStateOf(expanded) }
     var confirmDelete by remember(e.id) { mutableStateOf(false) }
@@ -1077,7 +1078,7 @@ fun ResultCard(
         Column(Modifier.padding(if (LocalUi.current.compact) 10.dp else 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = if (open) 4 else 1, modifier = Modifier.weight(1f))
-                if (canFull && open) TextButton(onClick = { full = true }) { Text("⛶ Full") }
+                if (canFull && open) TextButton(onClick = { if (onFull != null) onFull() else full = true }) { Text("⛶ Full") }
             }
             Text(
                 "${dateFmt.format(Date(e.created))} · ${e.model.substringAfterLast('/')}",
@@ -1369,8 +1370,8 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (msgs.isEmpty()) {
-                Text(
-                    "Earlier chats: 🕘 top right. \"A3B\" models answer fast; 27B ones are slower but more careful.",
+                SignText(
+                    "Earlier chats: $SIGN_HISTORY top right. \"A3B\" models answer fast; 27B ones are slower but more careful.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 12.dp),

@@ -225,7 +225,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ApiLog.add(if (on.isEmpty()) "On the NPU now: no model." else "On the NPU now: $text (together ${Math.round(total)}% of the NPU).", "Models")
     }
 
-    /** The NPU fault the strip blinks for, once tapped: it stops blinking (the fault stays in the panel). */
+    /** The NPU fault the status bar blinks for, once tapped: it stops blinking (the fault stays in the panel). */
     private val _faultSeen = MutableStateFlow<String?>(null)
     val faultSeen: StateFlow<String?> = _faultSeen.asStateFlow()
     fun sawFault(f: String?) {

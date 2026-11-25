@@ -68,7 +68,7 @@ private const val TOOLS_PROMPT = " When the user wants something made (an image,
     "made unless you call a tool: never claim you made or changed something without calling the tool in this turn. " +
     "The result appears in the chat and in the app's results, so after the tool returns just tell the user briefly " +
     "what you made. Making things can take a minute or more because models may be swapped on the device. " +
-    "When the user asks which model fits a task, call find_models and recommend one or two from that list in plain words: " +
+    "When the user asks which model fits a task, call find_models (not web search: it knows the Tiiny's own lists) and recommend one or two from that list in plain words: " +
     "why it fits, whether it's installed or first needs downloading (Models → Store), and how much of the NPU it takes."
 
 private fun webPrompt() = " You can search the web with web_search, get current headlines with news, and read a page with open_page. Today is " +

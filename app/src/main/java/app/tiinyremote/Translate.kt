@@ -103,7 +103,7 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Chips(
-            listOf("text" to choiceLabel("Aa", "Text"), "photo" to choiceLabel("📷", "Photo"), "voice" to choiceLabel("🎙", "Speech")),
+            listOf("text" to choiceLabel("Aa", "Text"), "photo" to choiceLabel("📷", "Photo"), "voice" to choiceLabel("👂", "Speech")),
             mode,
         ) { mode = it; st.setSetting("translate.mode", it); result = null }
         // From → To, with a swap.

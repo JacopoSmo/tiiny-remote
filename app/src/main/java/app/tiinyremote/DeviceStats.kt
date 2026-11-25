@@ -26,7 +26,7 @@ data class DeviceStats(
     val temps: List<Pair<String, Double>> = emptyList(),
     /** A fault the NPU reported (e.g. a PCIe transfer timeout), with when it happened, while the Tiiny reports it. */
     val npuIssue: String? = null,
-    /** A fault that happened while the app was watching (not an old one still in the status): the strip blinks for it. */
+    /** A fault that happened while the app was watching (not an old one still in the status): the status bar blinks for it. */
     val npuFaultNew: String? = null,
     val gateway: Boolean = false,
     val dashboard: Boolean = false,
@@ -42,7 +42,7 @@ object Stats {
     @Volatile
     var onNpu: String = ""
 
-    /** A fault seen happening, kept until the NPU restarts cleanly, so the strip keeps blinking until it's looked at. */
+    /** A fault seen happening, kept until the NPU restarts cleanly, so the status bar keeps blinking until it's looked at. */
     @Volatile
     private var newFault: String? = null
 

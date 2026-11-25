@@ -73,7 +73,7 @@ internal fun chatRoles(s: UiState, studio: StudioViewModel): Pair<ModelInfo?, Mo
 }
 
 /**
- * A slim strip under the top bar with the live numbers: NPU and CPU load (colour-coded), board power and the hottest
+ * The status bar under the top bar with the live numbers: NPU and CPU load (colour-coded), board power and the hottest
  * temperature. Tap it for the full panel.
  */
 @Composable
@@ -89,8 +89,8 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
         DeviceState.CHECKING -> Color(0xFFFFA000)
         else -> Color(0xFFE53935)
     }
-    var stripHeight by remember { mutableStateOf(0) }
-    // A new NPU fault: the strip pulses red until it's tapped (the fault itself stays in the panel).
+    var barHeight by remember { mutableStateOf(0) }
+    // A new NPU fault: the status bar pulses red until it's tapped (the fault itself stays in the panel).
     val seen by vm.faultSeen.collectAsState()
     val fault = st?.npuFaultNew?.takeIf { it != seen }
     val pulse = if (fault != null) {
@@ -107,7 +107,7 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .onSizeChanged { stripHeight = it.height }
+                .onSizeChanged { barHeight = it.height }
                 .background(back.compositeOver(MaterialTheme.colorScheme.surface))
                 .clickable { open = true; vm.statsPanel(true); if (fault != null) vm.sawFault(fault) }
                 .padding(horizontal = 12.dp, vertical = 4.dp),
@@ -165,7 +165,7 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
             }
             Text(if (open) "▴" else "▾", style = MaterialTheme.typography.labelMedium)
         }
-        // The overlay under the strip, as before, a bit wider (60% of the screen, 330–560 dp). Its own layout, not a
+        // The overlay under the status bar, as before, a bit wider (60% of the screen, 330–560 dp). Its own layout, not a
         // drop-down menu: the header stays in place and only the body scrolls, so nothing gets cut at the top.
         if (open) {
             val close = { open = false; vm.statsPanel(false) }
@@ -173,7 +173,7 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
             val width = (conf.screenWidthDp * 0.6f).coerceIn(330f, 560f).dp
             androidx.compose.ui.window.Popup(
                 alignment = Alignment.TopStart,
-                offset = androidx.compose.ui.unit.IntOffset(0, stripHeight),
+                offset = androidx.compose.ui.unit.IntOffset(0, barHeight),
                 onDismissRequest = close,
                 properties = androidx.compose.ui.window.PopupProperties(focusable = true),
             ) {

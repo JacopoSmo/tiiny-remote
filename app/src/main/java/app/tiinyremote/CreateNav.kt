@@ -57,10 +57,10 @@ internal val CATEGORIES = listOf(
     Category("video", "Video", "🎬", listOf("video")),
 )
 
-/** The choices' names and pictograms; OCR and ASR are known by their letters, so they get none. */
+/** The choices' names and pictograms (the same as Models → Types). */
 internal val CHOICES = mapOf(
-    "image" to ("✦" to "Create"), "describe" to ("👁" to "Describe"), "edit" to ("✎" to "Edit"), "ocr" to ("" to "OCR"),
-    "speech" to ("🗣" to "Voice"), "loop" to ("➰" to "Loop"), "song" to ("🎵" to "Song"), "transcribe" to ("" to "ASR"),
+    "image" to ("✦" to "Create"), "describe" to ("👁" to "Describe"), "edit" to ("✎" to "Edit"), "ocr" to (SIGN_OCR to "OCR"),
+    "speech" to ("🗣" to "Voice"), "loop" to ("➰" to "Loop"), "song" to ("🎵" to "Song"), "transcribe" to ("👂" to "ASR"),
     "classify" to ("🏷" to "Classification"), "embed" to ("🔗" to "Embedding"), "rerank" to ("🥇" to "Reranking"),
     "mesh" to ("🧊" to "3D model"), "video" to ("🎬" to "Video"),
 )
@@ -105,7 +105,7 @@ internal fun CreateHeader(current: String, setTool: (String) -> Unit, openGaller
                 selected = c.id == cat.id,
                 // A kind opens on its first choice (Image → Create); Back returns to where you were.
                 onClick = { if (c.id != cat.id) setTool(c.tools.first()) },
-                label = { Text(choiceLabel(c.icon, c.label)) },
+                label = { SignText(choiceLabel(c.icon, c.label)) },
             )
         }
     }
@@ -113,7 +113,7 @@ internal fun CreateHeader(current: String, setTool: (String) -> Unit, openGaller
         if (cat.tools.size > 1) Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (t in cat.tools) {
                 val (icon, word) = CHOICES[t] ?: ("" to t)
-                FilterChip(selected = t == current, onClick = { if (t != current) setTool(t) }, label = { Text(choiceLabel(icon, word)) })
+                FilterChip(selected = t == current, onClick = { if (t != current) setTool(t) }, label = { SignText(choiceLabel(icon, word)) })
             }
         } else Spacer(Modifier.weight(1f))
         TextButton(onClick = { openGallery(current) }) { BtnLabel("Gallery", GalleryIcon) }
@@ -192,7 +192,7 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
                     FilterChip(selected = cat == null, onClick = { cat = null; sub = null }, label = { Text("All ${results.size}") })
                     for (c in CATEGORIES) {
                         val n = results.count { categoryOf(toolOf(it)).id == c.id }
-                        FilterChip(selected = cat == c.id, onClick = { cat = c.id; sub = null }, label = { Text(choiceLabel(c.icon, c.label) + " $n") })
+                        FilterChip(selected = cat == c.id, onClick = { cat = c.id; sub = null }, label = { SignText(choiceLabel(c.icon, c.label) + " $n") })
                     }
                 }
                 val c = CATEGORIES.firstOrNull { it.id == cat }
@@ -201,7 +201,7 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
                     for (t in c.tools) {
                         val (icon, word) = CHOICES[t] ?: ("" to t)
                         val n = results.count { toolOf(it) == t }
-                        FilterChip(selected = sub == t, onClick = { sub = t }, label = { Text(choiceLabel(icon, word) + " $n") })
+                        FilterChip(selected = sub == t, onClick = { sub = t }, label = { SignText(choiceLabel(icon, word) + " $n") })
                     }
                 }
                 OutlinedTextField(
@@ -224,7 +224,7 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
                     )
                     // Back to Create, at the place that makes this kind of thing.
                     val target = sub ?: c?.tools?.first()
-                    if (target != null) TextButton(onClick = { openTool(target) }) { Text(choiceLabel("✦", "Create more")) }
+                    if (target != null) TextButton(onClick = { openTool(target) }) { SignText(choiceLabel("✦", "Create more")) }
                 }
                 if (results.isEmpty()) Text("Nothing made yet: what you create appears here.", style = MaterialTheme.typography.bodyMedium)
                 else if (shown.isEmpty()) Text("Nothing matches.", style = MaterialTheme.typography.bodyMedium)
@@ -234,8 +234,8 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
             if (title.isNotEmpty()) item(key = "h-$title") {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
             }
-            // Images and 3D models as a grid of three; everything else as cards.
-            val pics = list.filter { (it.kind == "image" || it.kind == "mesh") && it.mainFile != null }
+            // Images, videos and 3D models as a grid of three; everything else as cards.
+            val pics = list.filter { it.kind in TILE_KINDS && it.mainFile != null }
             for (row in pics.chunked(3)) item(key = "g-" + row.joinToString("-") { it.id }) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (e in row) androidx.compose.runtime.key(e.id, viewed) {
@@ -247,7 +247,7 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
                 }
             }
             items(list.filter { it !in pics }, key = { it.id }) { e ->
-                ResultCard(e, st, marked = e.id in selected, selecting = marked.isNotEmpty(), onMark = { toggle(e) })
+                ResultCard(e, st, marked = e.id in selected, selecting = marked.isNotEmpty(), onMark = { toggle(e) }, onFull = { full = e })
             }
         }
         item {
@@ -259,18 +259,48 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
         }
     }
     }
-    full?.let { e -> FullView(e, st) { full = null } }
+    // The full view swipes through the results in the order they're shown here (tiles first in each group).
+    full?.let { e ->
+        val browse = sections.flatMap { (_, l) -> l.filter { it.kind in TILE_KINDS && it.mainFile != null } + l.filter { !(it.kind in TILE_KINDS && it.mainFile != null) } }
+            .filter(::browsable)
+        FullView(browse, browse.indexOfFirst { it.id == e.id }.coerceAtLeast(0), st) { full = null }
+    }
     viewing?.let { e ->
         e.mainFile?.let { MeshViewer(e.title, st.store.file(it), st.store.renderOf(e)) { viewing = null; viewed++ } }
     }
 }
 
+/** Shown as tiles in the Gallery (the rest as cards). */
+private val TILE_KINDS = setOf("image", "mesh", "video")
+
+/** A frame from a video (one second in, or the first), for its tile. */
+@Composable
+private fun rememberVideoFrame(file: java.io.File): android.graphics.Bitmap? =
+    androidx.compose.runtime.produceState<android.graphics.Bitmap?>(null, file.path) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val r = android.media.MediaMetadataRetriever()
+            try {
+                r.setDataSource(file.absolutePath)
+                (r.getFrameAtTime(1_000_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC) ?: r.frameAtTime)
+                    ?.let { b -> val k = 384f / maxOf(b.width, b.height); if (k < 1f) android.graphics.Bitmap.createScaledBitmap(b, (b.width * k).toInt(), (b.height * k).toInt(), true) else b }
+            } catch (_: Exception) {
+                null
+            } finally {
+                runCatching { r.release() }
+            }
+        }
+    }.value
+
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 private fun Thumb(e: ResultEntry, st: StudioViewModel, modifier: Modifier, marked: Boolean, onLongPress: () -> Unit, onOpen: () -> Unit) {
-    // A 3D model shows its picture (or the image it came from) with a 🧊 in the corner.
-    val pic = if (e.kind == "mesh") st.store.pictureOf(e) else st.store.file(e.mainFile ?: return)
-    val bmp = pic?.let { rememberThumbnail(it, 384) }
+    // A 3D model shows its picture (or the image it came from) with 🧊 in the corner; a video a frame from it with 🎬.
+    val main = st.store.file(e.mainFile ?: return)
+    val bmp = when (e.kind) {
+        "mesh" -> st.store.pictureOf(e)?.let { rememberThumbnail(it, 384) }
+        "video" -> rememberVideoFrame(main)
+        else -> rememberThumbnail(main, 384)
+    }
     Box(
         modifier.aspectRatio(1f).clip(RoundedCornerShape(8.dp))
             .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
@@ -278,8 +308,8 @@ private fun Thumb(e: ResultEntry, st: StudioViewModel, modifier: Modifier, marke
     ) {
         if (bmp != null) Image(bmp.asImageBitmap(), e.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Text(e.title, style = MaterialTheme.typography.labelSmall, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(6.dp))
-        if (e.kind == "mesh") Text(
-            "🧊 3D", style = MaterialTheme.typography.labelSmall,
+        if (e.kind == "mesh" || e.kind == "video") Text(
+            if (e.kind == "mesh") "🧊 3D" else "🎬 Video", style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
                 .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp)).padding(horizontal = 5.dp, vertical = 1.dp),
             color = androidx.compose.ui.graphics.Color.White,

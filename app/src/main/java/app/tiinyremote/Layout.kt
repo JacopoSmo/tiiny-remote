@@ -1,5 +1,15 @@
 package app.tiinyremote
 
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
@@ -99,6 +109,29 @@ const val SIGN_TRANSLATE = "\uE102"
 const val SIGN_AUTOMATE = "\uE103"
 const val SIGN_AGENT = "\uE104"
 const val SIGN_PROCESS = "\uE105"
+// The buttons' own drawn pictograms, so the help and hints show exactly what's on screen.
+const val SIGN_HISTORY = "\uE106"
+const val SIGN_SAVE = "\uE107"
+const val SIGN_MIC = "\uE108"
+const val SIGN_OCR = "\uE109"
+const val SIGN_REFRESH = "\uE10A"
+const val SIGN_SHARE = "\uE10B"
+const val SIGN_DELETE = "\uE10C"
+const val SIGN_EDIT = "\uE10D"
+const val SIGN_INFO = "\uE10E"
+const val SIGN_LOCK = "\uE10F"
+const val SIGN_SETTINGS = "\uE110"
+const val SIGN_MENU = "\uE111"
+const val SIGN_ADD = "\uE112"
+const val SIGN_CLOSE = "\uE113"
+const val SIGN_PLAY = "\uE114"
+const val SIGN_MORE = "\uE115"
+const val SIGN_POWER = "\uE116"
+const val SIGN_GALLERY = "\uE117"
+const val SIGN_SEND = "\uE118"
+const val SIGN_SEARCH = "\uE119"
+const val SIGN_CODE = "\uE11A"
+const val SIGN_BACK = "\uE11B"
 
 /** Agent (Automate): a robot head. */
 val AgentIcon by lazy {
@@ -146,15 +179,14 @@ fun SignText(
     overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
     fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
 ) {
-    val signs = mapOf(SIGN_WEB to "web", SIGN_TRANSLATE to "translate", SIGN_AUTOMATE to "automate", SIGN_AGENT to "agent", SIGN_PROCESS to "process")
-    if (signs.keys.none { it in text }) {
+    if (SIGN_ICONS.keys.none { it in text }) {
         Text(text, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight)
         return
     }
     val annotated = androidx.compose.ui.text.buildAnnotatedString {
         for (ch in text) {
-            val key = signs[ch.toString()]
-            if (key != null) appendInlineContent(key, ch.toString()) else append(ch)
+            val key = ch.toString()
+            if (key in SIGN_ICONS) appendInlineContent(key, key) else append(ch)
         }
     }
     val tint = if (color != androidx.compose.ui.graphics.Color.Unspecified) color else androidx.compose.material3.LocalContentColor.current
@@ -163,10 +195,40 @@ fun SignText(
     ) { androidx.compose.material3.Icon(icon, null, tint = c, modifier = Modifier.fillMaxSize()) }
     Text(
         annotated, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight,
-        inlineContent = mapOf(
-            "web" to box(WebSearchIcon, WEB_BLUE), "translate" to box(TranslateIcon, tint), "automate" to box(AutomationIcon, tint),
-            "agent" to box(AgentIcon, tint), "process" to box(ProcessIcon, tint),
-        ),
+        inlineContent = SIGN_ICONS.filterKeys { it in text }.mapValues { (k, icon) -> box(icon, if (k == SIGN_WEB) WEB_BLUE else tint) },
+    )
+}
+
+/** Each stand-in character and the pictogram SignText draws for it. */
+val SIGN_ICONS: Map<String, androidx.compose.ui.graphics.vector.ImageVector> by lazy {
+    val i = androidx.compose.material.icons.Icons.Filled
+    mapOf(
+        SIGN_WEB to WebSearchIcon, SIGN_TRANSLATE to TranslateIcon, SIGN_AUTOMATE to AutomationIcon,
+        SIGN_AGENT to AgentIcon, SIGN_PROCESS to ProcessIcon,
+        SIGN_HISTORY to HistoryIcon, SIGN_SAVE to SaveIcon, SIGN_MIC to MicIcon, SIGN_OCR to OcrIcon,
+        SIGN_GALLERY to GalleryIcon, SIGN_CODE to CodeIcon, SIGN_POWER to PowerIcon,
+        SIGN_REFRESH to i.Refresh,
+        SIGN_SHARE to i.Share, SIGN_DELETE to i.Delete, SIGN_EDIT to i.Edit, SIGN_INFO to i.Info, SIGN_LOCK to i.Lock,
+        SIGN_SETTINGS to i.Settings, SIGN_MENU to i.Menu, SIGN_ADD to i.Add, SIGN_CLOSE to i.Close, SIGN_PLAY to i.PlayArrow,
+        SIGN_MORE to i.MoreVert, SIGN_SEARCH to i.Search,
+        SIGN_SEND to androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send,
+        SIGN_BACK to androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowBack,
+    )
+}
+
+/** OCR: a page with lines of text, read through a viewfinder ("OCR" inside it). */
+val OcrIcon by lazy {
+    pathIcon(
+        "OCR",
+        // The page: top, folded corner, right side, bottom, upper left side; lines of text.
+        "M9,2h7.5v1.4H9zM16.5,2H18l3,3v1.5zM19.6,5.5H21V22h-1.4zM13.2,20.6H21V22h-7.8zM9,2h1.4v7.6H9z" +
+            "M12,6.4h6v1.2h-6zM12,9.2h6v1.2h-6zM14.6,12h3.4v1.2h-3.4zM14.6,14.8h3.4v1.2h-3.4z" +
+            // The viewfinder's four corners.
+            "M2,11h3v1.3H3.3V14H2zM13,11v3h-1.3v-1.7H10V11zM2,22v-3h1.3v1.7H5V22zM13,22h-3v-1.3h1.7V19H13z" +
+            // O, C, R.
+            "M3.3,15.4h2.3v3.4H3.3zM4.1,16.2v1.8h0.7v-1.8z" +
+            "M6.3,15.4h2.1v0.8H7.1v1.8h1.3v0.8H6.3z" +
+            "M9,15.4h0.8v3.4H9zM9.8,15.4h1.4v1.9H9.8v-0.7h0.7v-0.5H9.8zM10.2,17.3h0.8l0.8,1.5H11z",
     )
 }
 
@@ -275,12 +337,14 @@ fun rememberThumbnail(file: java.io.File, maxSide: Int = 1024): android.graphics
 
 /** A picture you can pinch to zoom, drag, and double-tap to reset. */
 @Composable
-fun ZoomImage(file: java.io.File, modifier: Modifier = Modifier) {
+fun ZoomImage(file: java.io.File, modifier: Modifier = Modifier, onSwipe: ((Int) -> Unit)? = null) {
     val bmp = rememberThumbnail(file, 2048)
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember(file.path) { mutableFloatStateOf(1f) }
+    var offset by remember(file.path) { mutableStateOf(Offset.Zero) }
     Box(
         modifier
+            // Not zoomed in: a swipe goes to the next or previous one (zoomed in, a drag moves the picture).
+            .then(if (onSwipe != null) Modifier.swipeBetween(file.path) { if (scale == 1f) onSwipe(it) } else Modifier)
             .pointerInput(file.path) {
                 detectTransformGestures { _, pan, zoom, _ ->
                     scale = (scale * zoom).coerceIn(1f, 6f)
@@ -310,16 +374,60 @@ fun ZoomImage(file: java.io.File, modifier: Modifier = Modifier) {
     }
 }
 
-/** A result on the whole screen: pictures to zoom, a video, or the text to read and copy. */
+/**
+ * Watches a one-finger swipe across [this] without taking it from what's inside (a video's controls, a scrolling
+ * text): left gives +1 (next), right -1 (previous). Mostly-vertical moves and two-finger gestures don't count.
+ */
+fun Modifier.swipeBetween(key: Any, onSwipe: (Int) -> Unit): Modifier = pointerInput(key) {
+    androidx.compose.foundation.gestures.awaitEachGesture {
+        val pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial
+        val down = androidx.compose.foundation.gestures.awaitFirstDown(requireUnconsumed = false, pass = pass)
+        var multi = false
+        var last = down.position
+        while (true) {
+            val ev = awaitPointerEvent(pass)
+            if (ev.changes.count { it.pressed } > 1) multi = true
+            val c = ev.changes.firstOrNull { it.id == down.id } ?: break
+            last = c.position
+            if (!c.pressed) break
+        }
+        val dx = last.x - down.position.x
+        val dy = last.y - down.position.y
+        if (!multi && kotlin.math.abs(dx) > 80.dp.toPx() && kotlin.math.abs(dx) > 2 * kotlin.math.abs(dy)) onSwipe(if (dx < 0) 1 else -1)
+    }
+}
+
+/** Results that open in the full view (sound plays in its card, so it's left out when swiping through). */
+fun browsable(e: ResultEntry) = e.kind !in setOf("speech", "loop", "song") && (e.mainFile != null || e.text.isNotBlank())
+
+/** A result on the whole screen; swipe left or right through [entries] (the Gallery's order), starting at [start]. */
 @Composable
-fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
+fun FullView(entries: List<ResultEntry>, start: Int, st: StudioViewModel, onClose: () -> Unit) {
+    var at by remember { mutableStateOf(start.coerceIn(0, (entries.size - 1).coerceAtLeast(0))) }
+    val e = entries.getOrNull(at) ?: run { onClose(); return }
+    FullView(e, st, onClose, position = if (entries.size > 1) "${at + 1} / ${entries.size}" else null) { d ->
+        at = (at + d).coerceIn(0, entries.size - 1)
+    }
+}
+
+/** A result on the whole screen: pictures to zoom, a video, a 3D model's picture, or the text to read and copy. */
+@Composable
+fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position: String? = null, onSwipe: ((Int) -> Unit)? = null) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize()) {
                 var page by remember(e.id) { mutableStateOf(0) }
+                // A swipe turns the pages of a result with several images first, then goes to the next result.
+                val swipe: ((Int) -> Unit)? = if (onSwipe == null && e.files.size < 2 || e.kind != "image") onSwipe else { d ->
+                    val p = page + d
+                    if (p in e.files.indices) page = p else onSwipe?.invoke(d)
+                }
                 val name = if (e.kind == "image") e.files.getOrNull(page) else null
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f).padding(start = 8.dp))
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        if (position != null) Text("$position · swipe for more", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     var askDelete by remember(e.id) { mutableStateOf(false) }
                     if (askDelete) androidx.compose.material3.AlertDialog(
                         onDismissRequest = { askDelete = false },
@@ -348,7 +456,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                 when (e.kind) {
                     "image" -> {
                         if (name != null) Box(Modifier.weight(1f).fillMaxWidth().then(if (e.files.size > 1) Modifier else Modifier.navigationBarsPadding())) {
-                            ZoomImage(st.store.file(name), Modifier.fillMaxSize())
+                            ZoomImage(st.store.file(name), Modifier.fillMaxSize(), onSwipe = swipe)
                             ZoomHint(Modifier.align(Alignment.BottomEnd).padding(12.dp))
                         }
                         if (e.files.size > 1) Row(
@@ -362,7 +470,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                     }
                     "video" -> e.mainFile?.let { n ->
                         val f = st.store.file(n)
-                        AndroidView(
+                        androidx.compose.runtime.key(e.id) { AndroidView(
                             factory = { ctx ->
                                 VideoView(ctx).apply {
                                     setVideoPath(f.absolutePath)
@@ -372,10 +480,25 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                                     setOnPreparedListener { it.isLooping = true; start() }
                                 }
                             },
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                        )
+                            modifier = Modifier.weight(1f).fillMaxWidth().navigationBarsPadding()
+                                .then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier),
+                        ) }
                     }
-                    else -> SelectionContainer(Modifier.weight(1f)) {
+                    "mesh" -> e.mainFile?.let { n ->
+                        // The 3D model's picture; the viewer turns it (a finger there turns the model, so no swiping inside).
+                        var view3d by remember(e.id) { mutableStateOf(false) }
+                        Column(
+                            Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                        ) {
+                            st.store.pictureOf(e)?.let { p ->
+                                rememberThumbnail(p, 1024)?.let { Image(it.asImageBitmap(), e.title, Modifier.weight(1f, fill = false).fillMaxWidth(), contentScale = ContentScale.Fit) }
+                            }
+                            androidx.compose.material3.Button(onClick = { view3d = true }, modifier = Modifier.padding(12.dp)) { BtnLabel("View in 3D", symbol = "🧊") }
+                        }
+                        if (view3d) MeshViewer(e.title, st.store.file(n), st.store.renderOf(e)) { view3d = false }
+                    }
+                    else -> SelectionContainer(Modifier.weight(1f).then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier)) {
                         Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
                             if (e.kind == "description" || e.kind == "ocr") MarkdownText(e.text) else Text(e.text)
                         }
