@@ -1,6 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.14 (test build, with NAS agent 1.5.6)
+## What's new in 4.1.15 (test build, with NAS agent 1.5.6)
+- **Code:** ▶ Preview sits right in the top row once there's a web page. The ⋮ actions (new project, new file, share, GitHub, clear, delete) open in a small window: in the drop-down menu, taps on them got lost.
 - **Loop → Key** can be chosen again: its button was pushed off the screen and left an empty gap.
 - **Buttons in alphabetical order:** the loop's instruments, character, phrase and effects, the song styles and the voice styles.
 - **Song → Separate tracks** (SongGeneration, over Wi-Fi/WireGuard): the song plus vocals and backing as their own files, each with its own ▶ on the result card.

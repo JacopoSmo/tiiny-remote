@@ -1,5 +1,6 @@
 package app.tiinyremote
 
+import androidx.compose.material3.AssistChip
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
@@ -69,7 +70,7 @@ private val CODE_MODES = listOf(
 private val MODE_HINTS = mapOf(
     "ask" to "Ask: questions about code or your project, snippets to copy. The model may read the project's files; it changes none.",
     "build" to "Build: the model writes and changes the project's files itself (watch the ✎ lines). Try a web page first: " +
-        "\"make a simple to-do list as a web page\", then ⋮ → Preview.",
+        "\"make a simple to-do list as a web page\", then ▶ Preview at the top.",
     "learn" to "Learn: step by step, one idea at a time, with small examples and a question to check. Good to start coding.",
 )
 
@@ -140,27 +141,41 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     label = { Text(sign("Thinking")) },
                 )
                 FilterChip(selected = showFiles, onClick = { showFiles = !showFiles }, label = { Text("Files ${files.size}") })
+                if (cv.previewFile() != null) AssistChip(onClick = { preview = true }, label = { Text("▶ Preview") })
             }
             Box {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Project menu") }
-                ScaledDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("＋ New project") }, onClick = { newProject = true; menu = false })
-                    DropdownMenuItem(text = { Text("▶ Preview (web page)") }, enabled = cv.previewFile() != null, onClick = { preview = true; menu = false })
-                    DropdownMenuItem(text = { Text("📄 New file") }, enabled = current != null, onClick = { editing = ""; menu = false })
-                    DropdownMenuItem(text = { Text("⤴ Share as .zip") }, enabled = files.isNotEmpty(), onClick = {
-                        menu = false
-                        cv.zip()?.let { z ->
-                            val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", z)
-                            ctx.startActivity(Intent.createChooser(
-                                Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, uri)
-                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                                "Share the project",
-                            ))
+                // The project's actions in a small window: in a drop-down menu here, taps on its items got lost.
+                if (menu) ScaledAlertDialog(
+                    onDismissRequest = { menu = false },
+                    title = { Text(current ?: "Project") },
+                    text = {
+                        Column {
+                            @Composable
+                            fun Act(label: String, enabled: Boolean = true, onClick: () -> Unit) =
+                                TextButton(onClick = { menu = false; onClick() }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+                                    Text(label, modifier = Modifier.fillMaxWidth())
+                                }
+                            Act("＋ New project") { newProject = true }
+                            Act("▶ Preview (web page)", cv.previewFile() != null) { preview = true }
+                            Act("📄 New file", current != null) { editing = "" }
+                            Act("⤴ Share as .zip", files.isNotEmpty()) {
+                                cv.zip()?.let { z ->
+                                    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, ctx.packageName + ".files", z)
+                                    ctx.startActivity(Intent.createChooser(
+                                        Intent(Intent.ACTION_SEND).setType("application/zip").putExtra(Intent.EXTRA_STREAM, uri)
+                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                                        "Share the project",
+                                    ))
+                                }
+                            }
+                            Act("🐙 GitHub…") { github = true }
+                            Act("🧹 Clear this conversation", msgs.isNotEmpty() && busy == null) { cv.clearChat() }
+                            Act("🗑 Delete project", current != null && busy == null) { confirmDelete = true }
                         }
-                    })
-                    DropdownMenuItem(text = { Text("🐙 GitHub…") }, onClick = { github = true; menu = false })
-                    DropdownMenuItem(text = { Text("🧹 Clear this conversation") }, enabled = msgs.isNotEmpty() && busy == null, onClick = { cv.clearChat(); menu = false })
-                    DropdownMenuItem(text = { Text("🗑 Delete project") }, enabled = current != null && busy == null, onClick = { confirmDelete = true; menu = false })
+                    },
+                    confirmButton = { TextButton(onClick = { menu = false }) { Text("Close") } },
+                )
                 }
             }
         }
@@ -178,7 +193,7 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             if (msgs.isEmpty()) {
                 Text(
                     (MODE_HINTS[mode] ?: "") + "\n\nYour projects stay on this phone; the model runs on your Tiiny, so nothing leaves home " +
-                        "unless you push it to GitHub. Code can't be run here, but a web page can be previewed (⋮ → Preview).",
+                        "unless you push it to GitHub. Code can't be run here, but a web page can be previewed (▶ Preview at the top).",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 8.dp),

@@ -124,7 +124,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("📁", "Projects", "The 📁 button picks a project or makes a new one; ⋮ has more (new file, preview, share as .zip, GitHub, delete).", "Top"),
         GuideStep("💬", "Ask · Build · Learn", "💬 Ask: questions and code to copy. 🛠 Build: the model writes and changes the files itself (✎ lines). 🎓 Learn: step by step, with a question at the end.", "Top"),
         GuideStep("📄", "Files", "Files shows the project's files; tap one to read or edit it yourself.", "Top"),
-        GuideStep("▶", "Preview", "Code can't run on the phone, but a web page can: ⋮ → Preview shows index.html. A good first try: Build \"a simple to-do list as a web page\".", "⋮ menu"),
+        GuideStep("▶", "Preview", "Code can't run on the phone, but a web page can: ▶ Preview at the top shows index.html. A good first try: Build \"a simple to-do list as a web page\".", "Top row"),
         GuideStep("🐙", "GitHub", "Copy a repository into a new project, push a project in one commit, or make a new private repository. Needs a GitHub token (the dialog links to where you make one).", "⋮ → GitHub"),
     )
     else -> "This page" to emptyList()
