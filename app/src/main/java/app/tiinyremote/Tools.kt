@@ -153,15 +153,22 @@ object Tools {
         s.put("stream_return_steps", JSONArray(shown))
         var image: String? = null
         var failed: String? = null
-        val r = c.sse("/v1/image/generate/stream", s, 3600, { p.cancelled() }) { event, data ->
+        val seen = LinkedHashMap<String, Int>() // what the stream sent, for the log: kind → count
+        val fields = HashMap<String, String>() // kind → the fields of its first event
+        val r = c.sse("/v1/image/generate/stream", s, 3600, { p.cancelled() }) { event0, data ->
             val o = try { JSONObject(data) } catch (e: Exception) { return@sse }
+            // The kind is the SSE event name, or a field in the data when the stream has no event lines.
+            val event = if (event0 != "message") event0 else o.optString("event").ifBlank { o.optString("type").ifBlank { o.optString("status") } }
+            if (event !in seen) fields[event] = o.keys().asSequence().joinToString(",")
+            seen[event] = (seen[event] ?: 0) + 1
             when {
                 event == "preview" -> {
                     val step = o.optInt("step")
-                    o.optString("image").substringAfter("base64,", "").takeIf { it.isNotEmpty() }?.let { livePreview.value = unb64(it) to step }
+                    o.optString("image").ifBlank { o.optString("preview") }.let { it.substringAfter("base64,", it) }.takeIf { it.length > 100 }
+                        ?.let { try { livePreview.value = unb64(it) to step } catch (e: Exception) { } }
                     p.update("Step $step" + (steps?.let { " of $it" } ?: ""), steps?.let { step * 100 / it })
                 }
-                event == "completed" -> image = o.optString("image").substringAfter("base64,", "").takeIf { it.isNotEmpty() }
+                event == "completed" -> image = o.optString("image").let { it.substringAfter("base64,", it) }.takeIf { it.length > 100 }
                 event == "error" || o.optString("status") == "error" -> {
                     ApiLog.add("image/generate/stream error: ${data.take(300)}", "Create")
                     failed = o.optJSONObject("error")?.optString("message")?.takeIf { it.isNotBlank() }
@@ -170,6 +177,7 @@ object Tools {
                 }
             }
         }
+        if (seen.isNotEmpty()) ApiLog.add("image stream sent: " + seen.entries.joinToString(", ") { "${it.key.ifBlank { "?" }} ×${it.value} (${fields[it.key]})" }, "Create")
         if (!r.ok) {
             if (r.code == 404 || r.code == 405) return null // no such route on this TiinyOS: the normal one
             throw MediaException(r.error())
