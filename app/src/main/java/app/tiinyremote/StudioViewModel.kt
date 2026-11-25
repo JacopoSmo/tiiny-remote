@@ -159,6 +159,12 @@ private const val SUGGEST_SYSTEM = "Suggest exactly 3 short follow-up messages t
 /** Files longer than this (about 1,500 tokens) are condensed after their first answer. */
 private const val FILE_SUMMARY_FROM = 6000
 
+/**
+ * Without a helper the chat model condenses: it keeps the Tiiny busy for a minute or two, and whatever comes next
+ * (a translation, the next question) waits for it. Only worth it for a really long file.
+ */
+private const val FILE_SUMMARY_FROM_NO_HELPER = 24_000
+
 private const val FILE_SUMMARY_SYSTEM = "Condense this document for later questions about it, in its own language. Keep " +
     "every fact someone may ask about: names, numbers, dates, amounts, conclusions, the structure (headings, sections) " +
     "and anything unusual. Use short lines and lists. Up to about 1,200 words. Write only the condensed document: no " +
@@ -1262,11 +1268,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     val speed: StateFlow<String?> = _speed.asStateFlow()
 
     /**
-     * Measures how fast the chat model and the helper write alone, then at the same time, and the helper twice at
-     * once (how pages are condensed), [runs] times (1–4), and averages: one run can be off by several percent. Both
-     * must be loaded; nothing is swapped. Tells whether parallel work pays off.
-     */
-    /**
      * A long attached file, condensed once after its first answer: later questions in the chat send this instead of
      * the whole text, so each answer starts sooner. Kept on the message (index [at]); the full text stays too.
      */
@@ -1274,6 +1275,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         ApiLog.add("Condensing ${file.name} for the next questions…", "Chat")
         try {
             val sum = Tools.chatOnce(c, model, FILE_SUMMARY_SYSTEM, file.text, 2000, timeoutSec = 300)
+            // Barely shorter isn't worth sending instead of the real text.
+            if (sum.length > file.text.length * 0.6) {
+                ApiLog.add("${file.name}: the condensed text was hardly shorter (${file.text.length} → ${sum.length}); later questions send it whole", "Chat")
+                return
+            }
             upd(id) { list -> list.mapIndexed { i, m -> if (i == at && m.fileName == file.name) m.copy(fileSummary = sum) else m } }
             saveChat(id)
             ApiLog.add("${file.name} condensed for the next questions: ${file.text.length} → ${sum.length} characters", "Chat")
@@ -1331,6 +1337,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _chatSpeeds.value = emptyList()
     }
 
+    /**
+     * Measures how fast the chat model and the helper write alone, then at the same time, and the helper twice at
+     * once (how pages are condensed), [runs] times (1–4), and averages: one run can be off by several percent. Both
+     * must be loaded; nothing is swapped. Tells whether parallel work pays off.
+     */
     fun speedTest(big: ModelInfo, small: ModelInfo, runs: Int = 1) {
         if (_speed.value?.startsWith("Testing") == true) return
         if (!deviceBusy.compareAndSet(false, true)) {
@@ -1790,7 +1801,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             ApiLog.add("The helper couldn't name the chat (${e.message})", "Chat")
                         }
                     }
-                    if (file != null && file.text.length > FILE_SUMMARY_FROM && !chatStop.get()) viewModelScope.launch(Dispatchers.IO) { summariseFile(id, history.size - 1, c, helper ?: model, file) }
+                    if (file != null && file.text.length > (if (helper != null) FILE_SUMMARY_FROM else FILE_SUMMARY_FROM_NO_HELPER) && !chatStop.get()) viewModelScope.launch(Dispatchers.IO) { summariseFile(id, history.size - 1, c, helper ?: model, file) }
                 }
                 if (!chatStop.get()) {
                     val title = _chatList.value.firstOrNull { it.id == id }?.title ?: "Chat"
