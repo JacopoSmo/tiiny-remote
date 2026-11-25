@@ -1,5 +1,6 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Create
@@ -517,7 +518,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                     "mesh" -> e.mainFile?.let { n ->
                         // The 3D model's picture: tap it (or 🧊 at the top) to turn the model in the viewer.
                         Box(
-                            Modifier.weight(1f).fillMaxWidth().clickable { view3d = true }
+                            Modifier.weight(1f).fillMaxWidth().clickable(onClick = { view3d = true })
                                 .then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier),
                             contentAlignment = Alignment.Center,
                         ) {
