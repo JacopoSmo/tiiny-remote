@@ -81,7 +81,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth, tools (🛠 make images, speak…), web search ($SIGN_WEB), follow-up ideas (💡), and Socratic or Student mode.", "Right of the model"),
         GuideStep("＋", "Attach", "＋ adds an image (from the phone, the Gallery or a new photo, for models that see images) or a file: PDF, Word, Excel, PowerPoint, text.", "Left of the message"),
         GuideStep("🎤", "Dictate", "With the message box empty, 🎤 records you; the Tiiny writes it out into the box. ✎ improves your message before sending.", "Right of the message"),
-        GuideStep("🕘", "Chats", "🕘 earlier chats (rename or delete them there), 💾 green = saved / red = incognito, ＋ new chat, ⟳ try the last answer again. The Tiiny keeps its own copy of every chat, by day: 🕘 → \"Copies kept on the Tiiny\" deletes those.", "Top right"),
+        GuideStep("🕘", "Chats", "🕘 earlier chats (rename or delete them there), 💾 green = saved / red = incognito, ＋ new chat, ⟳ try the last answer again. The Tiiny keeps its own copy of every chat, by day: 🕘 → \"Copies on the Tiiny\" deletes those.", "Top right"),
         GuideStep("⧉", "Answers", "Copy or share an answer from its buttons; when you've scrolled up, ↓ jumps back to the newest message.", "Under each answer"),
     )
     3 -> "Activity" to listOf(

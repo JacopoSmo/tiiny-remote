@@ -1969,59 +1969,64 @@ private fun AboutLink(label: String, onClick: () -> Unit) = Text(
 
 private val historyTime = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.ENGLISH)
 
-/** Chat → History: every saved chat, newest first, with when and which model; rename or delete from here too. */
+/** Chat → History: every saved chat, newest first, with when and which model; rename or delete from here too.
+ *  A window, not a drop-down: the drop-down's small buttons in a row got no taps on the phone. */
 @Composable
 private fun ChatHistoryMenu(
     open: Boolean, chats: List<ChatInfo>, current: String, busy: Set<String>,
     onDismiss: () -> Unit, onOpen: (ChatInfo) -> Unit, onRename: (ChatInfo) -> Unit, onDelete: (ChatInfo) -> Unit,
     onTiinyCopies: () -> Unit = {},
 ) {
+    if (!open) return
     var confirm by remember { mutableStateOf<String?>(null) }
-    ScaledDropdownMenu(expanded = open, onDismissRequest = { confirm = null; onDismiss() }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp).heightIn(max = 480.dp)) {
-        if (chats.isEmpty()) DropdownMenuItem(text = { Text("No saved chats yet.") }, onClick = onDismiss, enabled = false)
-        for (c in chats) {
-            DropdownMenuItem(
-                modifier = if (c.id == current) Modifier.background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) else Modifier,
-                text = {
-                    Column {
-                        Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            historyTime.format(java.time.Instant.ofEpochMilli(c.updated).atZone(java.time.ZoneId.systemDefault())) +
-                                (c.model.takeIf { it.isNotBlank() }?.let { " · " + it.substringAfterLast('/') } ?: ""),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                },
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (c.id in busy) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
-                        IconButton(onClick = { onRename(c) }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Filled.Edit, contentDescription = "Rename", modifier = Modifier.size(18.dp))
+    ScaledAlertDialog(
+        onDismissRequest = { confirm = null; onDismiss() },
+        title = { Text("Chats") },
+        text = {
+            Column {
+                if (chats.isEmpty()) Text("No saved chats yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                    items(chats, key = { it.id }) { c ->
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .background(if (c.id == current) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)
+                                .clickable { onOpen(c) }
+                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(c.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    historyTime.format(java.time.Instant.ofEpochMilli(c.updated).atZone(java.time.ZoneId.systemDefault())) +
+                                        (c.model.takeIf { it.isNotBlank() }?.let { " · " + it.substringAfterLast('/') } ?: ""),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (c.id in busy) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                            IconButton(onClick = { onRename(c) }) {
+                                Icon(Icons.Filled.Edit, contentDescription = "Rename", modifier = Modifier.size(20.dp))
+                            }
+                            // Delete asks once more: a second tap on the red bin.
+                            IconButton(onClick = { if (confirm == c.id) { onDelete(c); confirm = null } else confirm = c.id }) {
+                                Icon(
+                                    Icons.Filled.Delete, contentDescription = if (confirm == c.id) "Tap again to delete" else "Delete",
+                                    tint = if (confirm == c.id) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
                         }
-                        // Delete asks once more: a second tap on the red bin.
-                        IconButton(onClick = { if (confirm == c.id) { onDelete(c); confirm = null } else confirm = c.id }, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                Icons.Filled.Delete, contentDescription = if (confirm == c.id) "Tap again to delete" else "Delete",
-                                tint = if (confirm == c.id) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp),
-                            )
-                        }
                     }
-                },
-                onClick = { onOpen(c) },
-            )
-        }
-        // The Tiiny keeps its own copy of every chat (TiinyOS's vault, from every app): deletable here, by whole days.
-        HorizontalDivider()
-        DropdownMenuItem(
-            text = { Text("Copies kept on the Tiiny…", color = MaterialTheme.colorScheme.error) },
-            leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) },
-            onClick = { onDismiss(); onTiinyCopies() },
-        )
-    }
+                }
+                if (confirm != null) Text("Tap the red bin again to delete.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+            }
+        },
+        // The Tiiny keeps its own copy of every chat (TiinyOS's vault, from every app): deletable there, by whole days.
+        dismissButton = { TextButton(onClick = { onDismiss(); onTiinyCopies() }) { Text("Copies on the Tiiny…", color = MaterialTheme.colorScheme.error) } },
+        confirmButton = { TextButton(onClick = { confirm = null; onDismiss() }) { Text("Close") } },
+    )
 }
 
 /**

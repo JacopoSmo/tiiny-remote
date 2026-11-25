@@ -1,5 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.1.19 (test build, with NAS agent 1.5.6)
+- **Chat → 🕘 Chats** opens as a window: rename (✎) and delete (🗑, tap twice) react again. In the drop-down, taps on them only closed the menu.
+
 ## What's new in 4.1.18 (test build, with NAS agent 1.5.6)
 - **Code:** ▶ Preview (tested: opens, the page works) and ⋮ (the project's actions) sit right after the project; a page sized to the screen is no longer cut off at the top.
 
