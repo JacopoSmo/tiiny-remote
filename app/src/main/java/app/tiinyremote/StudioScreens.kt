@@ -422,9 +422,23 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
 
 /** Record from the microphone (16 kHz WAV) or pick an audio file. */
 @Composable
-internal fun AudioInput(audio: PickedAudio?, mimes: Array<String> = arrayOf("audio/*"), pickLabel: String = "Pick a file", onAudio: (PickedAudio?) -> Unit) {
+internal fun AudioInput(
+    audio: PickedAudio?, mimes: Array<String> = arrayOf("audio/*"), pickLabel: String = "Pick a file",
+    st: StudioViewModel? = null, wavOnly: Boolean = false, onAudio: (PickedAudio?) -> Unit,
+) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    // The app's own audio (voice clips, songs, loops) as well as the phone's files.
+    var fromResults by remember { mutableStateOf(false) }
+    if (fromResults && st != null) AudioResultPicker(st, wavOnly, onClose = { fromResults = false }) { name ->
+        fromResults = false
+        scope.launch {
+            val f = st.store.file(name)
+            val bytes = withContext(Dispatchers.IO) { f.readBytes() }
+            val wav = bytes.size > 44 && String(bytes, 0, 4) == "RIFF"
+            onAudio(PickedAudio(bytes, if (wav) "audio/wav" else "audio/mpeg", f.name, if (wav) wavSeconds(bytes) else null))
+        }
+    }
     val recorder = remember { WavRecorder() }
     var recording by remember { mutableStateOf(false) }
     // Leaving the screen mid-recording switches the microphone off (it would otherwise keep listening).
@@ -477,6 +491,10 @@ internal fun AudioInput(audio: PickedAudio?, mimes: Array<String> = arrayOf("aud
                 }) { Text("Record") }
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { pick.launch(mimes) }) { Text(pickLabel) }
+                if (st != null) {
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = { fromResults = true }) { Text("From your audio") }
+                }
             }
         }
         audio?.let { a ->
@@ -491,6 +509,42 @@ internal fun AudioInput(audio: PickedAudio?, mimes: Array<String> = arrayOf("aud
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
+}
+
+/** A WAV's length from its header (bytes per second at offset 28). */
+private fun wavSeconds(b: ByteArray): Double? {
+    if (b.size < 44) return null
+    val rate = (b[28].toInt() and 0xff) or ((b[29].toInt() and 0xff) shl 8) or ((b[30].toInt() and 0xff) shl 16) or ((b[31].toInt() and 0xff) shl 24)
+    return if (rate > 0) (b.size - 44).toDouble() / rate else null
+}
+
+/** The app's own audio results (newest first), to pick one file. */
+@Composable
+private fun AudioResultPicker(st: StudioViewModel, wavOnly: Boolean, onClose: () -> Unit, onPick: (String) -> Unit) {
+    val results by st.results.collectAsState()
+    val files = results.sortedByDescending { it.created }.flatMap { e ->
+        e.files.filter { n -> n.endsWith(".wav", true) || (!wavOnly && (n.endsWith(".mp3", true) || n.endsWith(".flac", true) || n.endsWith(".ogg", true))) }
+            .map { e to it }
+    }
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Your audio") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (files.isEmpty()) Text(if (wavOnly) "No WAV made yet." else "No audio made yet.")
+                for ((e, name) in files) TextButton(onClick = { onPick(name) }, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(e.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            dateFmt.format(java.util.Date(e.created)) + (if (e.files.size > 1) " · " + name.substringAfterLast('/') else ""),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
 }
 
 internal fun seedOf(text: String): Long = text.trim().toLongOrNull() ?: Random.nextLong(0, 1L shl 31)

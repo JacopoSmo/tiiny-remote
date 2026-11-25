@@ -252,7 +252,7 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("New voice from a clip", style = MaterialTheme.typography.titleSmall)
                 Hint("A clear 3–20 second recording of one person speaking, without music.")
-                AudioInput(clip, arrayOf("audio/*", "video/*"), "Upload…") { clip = it }
+                AudioInput(clip, arrayOf("audio/*", "video/*"), "Upload…", st) { clip = it }
                 clip?.seconds?.let { s ->
                     if (s < 3 || s > 20) Hint("Works best between 3 and 20 seconds; this one is %.0f s.".format(s), warn = true)
                 }
@@ -324,7 +324,7 @@ internal fun TranscribeTool(model: ModelInfo?, notReady: String?, st: StudioView
     var audio by remember { mutableStateOf<PickedAudio?>(null) }
     var language by rememberSaveable { mutableStateOf(st.setting("asr.lang", "")) }
     LabelRow("Audio", "speech, singing, songs")
-    AudioInput(audio, arrayOf("audio/*", "video/*"), "Upload…") { audio = it }
+    AudioInput(audio, arrayOf("audio/*", "video/*"), "Upload…", st) { audio = it }
     Hint("WAV · MP3 · M4A · WebM · video too")
     Dropdown("Language", ASR_LANGS, language) { language = it; st.setSetting("asr.lang", it) }
     val why = notReady ?: if (audio == null) "Add audio to transcribe." else null
@@ -611,7 +611,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     // Style reference: a clip of music whose feel the song borrows (models that take one)
     if (sm.styleRef) {
         LabelRow("Style reference", "optional · a WAV, ${if (sm.ace) "5" else "10"}–30 s of music whose feel the song borrows")
-        AudioInput(styleRef, arrayOf("audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"), "Upload a WAV…") { styleRef = it }
+        AudioInput(styleRef, arrayOf("audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave"), "Upload a WAV…", st, wavOnly = true) { styleRef = it }
     }
 
     // Length
