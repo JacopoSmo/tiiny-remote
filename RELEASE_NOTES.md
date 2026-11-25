@@ -1,6 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.8 (test build, with NAS agent 1.5.5)
+## What's new in 4.1.9 (test build, with NAS agent 1.5.5)
+- **Making room on the NPU:** when a model doesn't fit, the app picks what to unload itself: the smallest loaded model that frees enough, otherwise the fewest models together, named in one question ("Unload A (29%) and B (4%)?"). Before, it followed the Tiiny's suggestion one model at a time, which was often too small, so models were unloaded for nothing (also when a Create job or a chat tool loads its model).
+- **Choosing an image:** Describe and Video have the row "From your images" (one tap), like Edit and 3D; Translate's photo has "From the Gallery".
 - **"From the Gallery"** beside "Choose an image" in Describe image, Edit image, Video's first frame, 3D and Translate's photo: your own made images, not only the phone's photos.
 - **Descriptions and read text (OCR)** show formatted (bold, lists, code) instead of raw ** and ` signs, in the card and the full view.
 - **Attached files:** without a helper model, the chat model only condenses really long files (over 24,000 characters) for follow-up questions. Before, it spent up to two minutes on an ordinary PDF and everything after it (a translation, say) waited. A condensed text that's barely shorter is not used.

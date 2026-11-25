@@ -250,7 +250,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
 
     if (edit) {
         LabelRow("Source image", if (refs > 1) "source + up to ${refs - 1} references" else "pick a photo or one of yours")
-        ImagePickerRow(images, refs, if (refs > 1) "Choose image(s)" else "Choose an image", st) { images = it }
+        ImagePickerRow(images, refs, if (refs > 1) "Choose image(s)" else "Choose an image") { images = it }
         RecentImages(st) { img -> images = (if (refs > 1) images + img else listOf(img)).take(refs) }
         if (refs > 1 && images.size > 1) Hint("Call them “image 1”, “image 2” … in the instruction.")
     }

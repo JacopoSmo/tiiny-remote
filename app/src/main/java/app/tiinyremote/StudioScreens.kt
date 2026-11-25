@@ -559,7 +559,8 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val tool = if (ocr) "ocr" else "describe"
     var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     var question by rememberSaveable { mutableStateOf("") }
-    ImagePickerRow(images, 1, "Choose an image", st) { images = it }
+    ImagePickerRow(images, 1, "Choose an image") { images = it }
+    RecentImages(st) { images = listOf(it) }
     if (!ocr) {
         Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
         Text(
@@ -635,7 +636,8 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
         Text("Start from an image", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Text("optional", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    ImagePickerRow(images, 1, "First frame", st) { images = it }
+    ImagePickerRow(images, 1, "First frame") { images = it }
+    RecentImages(st) { images = listOf(it) }
 
     Text("Size", style = MaterialTheme.typography.labelLarge)
     Chips(canvases.map { it to sizeLabel(it) }, sz) { size = it; st.setSetting("video.size", it) }
@@ -786,7 +788,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val plan = listOfNotNull(if (cuts) "cutout" else null, "shape", if (nFaces > 0) "simplify" else null) + (if (tex) listOf("texture", "export") else emptyList())
 
     LabelRow("Source image")
-    ImagePickerRow(images, 1, "Choose an image", st) { images = it }
+    ImagePickerRow(images, 1, "Choose an image") { images = it }
     Text("One object, plain background works best.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val recent = results.filter { it.kind == "image" && it.mainFile != null }.take(12)
     if (recent.isNotEmpty()) {

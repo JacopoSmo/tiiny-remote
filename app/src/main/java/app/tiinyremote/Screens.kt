@@ -461,15 +461,15 @@ fun AppRoot(vm: MainViewModel) {
     }
 
     s.swap?.let { sw ->
-        val victim = sw.plan.candidateName ?: "another model"
-        val victimNpu = sw.plan.candidateNpu?.let { " (${pct(it)})" } ?: ""
+        val victimText = if (sw.victims.isNotEmpty()) sw.victims.joinToString(" and ") { "${it.name} (${pct(it.npuUsage)})" }
+        else (sw.plan.candidateName ?: "another model") + (sw.plan.candidateNpu?.let { " (${pct(it)})" } ?: "")
         ScaledAlertDialog(
             onDismissRequest = { vm.cancelSwap() },
             title = { Text("Not enough NPU room") },
             text = {
                 Text(
                     "${sw.targetName} needs ${pct(sw.plan.npuRequired)} of the NPU, but only " +
-                        "${pct(sw.plan.npuAvailable)} is free. Unload $victim$victimNpu to make room?"
+                        "${pct(sw.plan.npuAvailable)} is free. Unload $victimText to make room?"
                 )
             },
             confirmButton = { TextButton(onClick = { vm.confirmSwap() }) { Text("Unload & load") } },

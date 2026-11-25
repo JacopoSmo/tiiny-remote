@@ -57,7 +57,25 @@ object Tools {
         throw MediaException("${short(model)} didn't finish loading.")
     }
 
-    /** Loads `target`, unloading whatever the Tiiny says must go to make room. Returns what it unloaded. */
+    /**
+     * What to unload to free [need] percent of the NPU, from the loaded models' shares (id → %): the smallest single
+     * model that frees enough, else the fewest together (largest first); empty when even all of them aren't enough.
+     * The Tiiny's own suggestion is one model at a time, often too small: models were unloaded for nothing.
+     */
+    fun pickRoom(loaded: Map<String, Double>, need: Double): List<String> {
+        if (need <= 0) return emptyList()
+        loaded.filter { it.value >= need }.minByOrNull { it.value }?.let { return listOf(it.key) }
+        val out = ArrayList<String>()
+        var freed = 0.0
+        for ((id, npu) in loaded.entries.sortedByDescending { it.value }) {
+            if (freed >= need) break
+            out.add(id)
+            freed += npu
+        }
+        return if (freed >= need) out else emptyList()
+    }
+
+    /** Loads `target`, unloading what must go to make room (as little as possible). Returns what it unloaded. */
     fun makeRoom(c: DeviceClient, target: String, p: Progress): List<String> {
         if (target in runningIds(c)) return emptyList()
         val unloaded = ArrayList<String>()
@@ -66,8 +84,20 @@ object Tools {
             if (!plan.ok) throw MediaException(plan.error())
             val o = plan.json()
             if (!o.optBoolean("unload_required", false)) break
-            val victims = o.optJSONArray("model_id")?.let { a -> (0 until a.length()).map { a.optString(it) } }
-                ?: listOfNotNull(o.optJSONObject("candidate")?.optString("model_id"))
+            val need = o.optDouble("npu_required") - o.optDouble("npu_available")
+            val loaded = try {
+                val list = c.request("GET", "/api/v1/models/running", null, 15, log = false).json()
+                    .optJSONObject("instances")?.optJSONArray("running") ?: JSONArray()
+                (0 until list.length()).mapNotNull { list.optJSONObject(it) }
+                    .filter { it.optString("model_id").isNotBlank() && it.optString("model_id") != target && !it.optDouble("npu_usage").isNaN() }
+                    .associate { it.optString("model_id") to it.optDouble("npu_usage") }
+            } catch (e: Exception) {
+                emptyMap()
+            }
+            val victims = (if (!need.isNaN()) pickRoom(loaded, need) else emptyList()).ifEmpty {
+                o.optJSONArray("model_id")?.let { a -> (0 until a.length()).map { a.optString(it) } }
+                    ?: listOfNotNull(o.optJSONObject("candidate")?.optString("model_id"))
+            }
             for (v in victims.filter { it.isNotBlank() }) {
                 p.update("Unloading ${short(v)} to make room", null)
                 val r = c.request("POST", "/api/v1/models/${c.quote(v)}/stop", null, 120)

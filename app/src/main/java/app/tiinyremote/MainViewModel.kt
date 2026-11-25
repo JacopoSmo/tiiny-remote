@@ -14,7 +14,8 @@ import kotlinx.coroutines.withContext
 
 enum class DeviceState { NOT_CONFIGURED, CHECKING, ONLINE, LOCKED, UNAUTHORIZED, UNREACHABLE, ERROR }
 
-data class PendingSwap(val targetId: String, val targetName: String, val plan: Plan)
+/** A load that needs room: [victims] are the models to unload (chosen by the app; empty: the Tiiny's own suggestion). */
+data class PendingSwap(val targetId: String, val targetName: String, val plan: Plan, val victims: List<ModelInfo> = emptyList())
 
 data class UiState(
     val settings: AppSettings,
@@ -263,7 +264,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val plan = withContext(Dispatchers.IO) { api().plan(model.id) }
                 if (plan.unloadRequired && plan.candidateId != null) {
-                    _state.update { it.copy(swap = PendingSwap(model.id, model.name, plan)) }
+                    _state.update { it.copy(swap = PendingSwap(model.id, model.name, plan, roomFor(model.id, plan))) }
                     return@launch
                 }
                 if (NpuGate.busy) toast("${model.name} loads once the answer being written is finished")
@@ -284,15 +285,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Unloads the model the Tiiny suggested, then tries the load again (one unload may not be enough). */
+    /**
+     * What to unload so [targetId] fits, from the loaded models' known shares: the smallest single model that frees
+     * enough, else the fewest models together (largest first). The Tiiny's own suggestion is just one model, often too
+     * small, so it took several questions and unloaded models for nothing. Empty when the shares aren't known.
+     */
+    private fun roomFor(targetId: String, plan: Plan): List<ModelInfo> {
+        val need = (plan.npuRequired ?: return emptyList()) - (plan.npuAvailable ?: return emptyList())
+        val loaded = _state.value.models.filter { it.status == "running" && it.id != targetId && it.npuUsage != null }
+        val ids = Tools.pickRoom(loaded.associate { it.id to it.npuUsage!! }, need)
+        return ids.mapNotNull { id -> loaded.firstOrNull { it.id == id } }
+    }
+
+    /** Unloads the models chosen (or the one the Tiiny suggested), then tries the load again (re-asks if still short). */
     fun confirmSwap() {
         val swap = _state.value.swap ?: return
         _state.update { it.copy(swap = null) }
-        val victim = swap.plan.candidateId ?: return
+        val victims = swap.victims.map { it.id }.ifEmpty { listOfNotNull(swap.plan.candidateId) }
+        if (victims.isEmpty()) return
         viewModelScope.launch {
             setWorking(swap.targetId, true)
             try {
-                withContext(Dispatchers.IO) { api().stop(victim) }
+                withContext(Dispatchers.IO) { for (v in victims) api().stop(v) }
             } catch (e: TiinyException) {
                 toast(e.message ?: "Unloading failed")
                 setWorking(swap.targetId, false)
