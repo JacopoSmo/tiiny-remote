@@ -205,7 +205,9 @@ object Notifier {
                 .createNotificationChannel(NotificationChannel("automations", "Automate", NotificationManager.IMPORTANCE_DEFAULT))
         }
         val title = if (run.ok) run.name else "${run.name} didn't work"
-        val text = run.text.replace(Regex("[#*_`>]"), "").trim().take(1500)
+        // Plain text: links as their words, list stars as bullets, no Markdown signs.
+        val text = run.text.replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1").replace(Regex("(?m)^\\s*[*-]\\s+"), "• ")
+            .replace(Regex("[#*_`>]"), "").trim().take(1500)
         val open = PendingIntent.getActivity(
             app,
             3,

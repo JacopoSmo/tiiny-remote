@@ -405,7 +405,7 @@ private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewMo
                         TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(r.text)) }) { BtnLabel("Copy", symbol = "⧉") }
                         if (r.where == "phone") TextButton(onClick = { av.deleteRun(r) }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
                     }
-                } else Text(r.text.replace(Regex("[#*_`>]"), "").take(140), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                } else Text(r.text.replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1").replace(Regex("[#*_`>]"), "").replace(Regex("\\s+"), " ").trim().take(140), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

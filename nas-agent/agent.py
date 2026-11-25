@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.5.5"
+VERSION = "1.5.6"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -583,6 +583,15 @@ def agent(a, model, steps, started):
     return out
 
 
+def plain(text):
+    """A notification shows plain text: Markdown signs off, links as their words, list stars as bullets."""
+    t = re.sub(r"\[([^\]]+)\]\(([^)]*)\)", r"\1", text)
+    t = re.sub(r"(?m)^\s*[*-]\s+", "• ", t)
+    t = re.sub(r"(?m)^#+\s*", "", t)
+    t = re.sub(r"\*\*|__|`", "", t)
+    return t.strip()
+
+
 def notify(title, text, strict=False):
     """Posts to the ntfy topic, if one is set. strict: raise instead of logging (the app's Test)."""
     url = config().get("ntfy_url", "").strip()
@@ -594,7 +603,7 @@ def notify(title, text, strict=False):
         if not urllib.parse.urlsplit(url).path.strip("/"):
             raise RuntimeError(f"{url} has no topic: add it at the end, e.g. {url.rstrip('/')}/tiiny")
         sep = "&" if "?" in url else "?"
-        http(url + sep + "title=" + urllib.parse.quote(title[:120]), text[:3800].encode("utf-8"), timeout=15, method="POST")
+        http(url + sep + "title=" + urllib.parse.quote(title[:120]), plain(text)[:3800].encode("utf-8"), timeout=15, method="POST")
         log(f"ntfy: sent \"{title[:60]}\"")
     except Exception as e:
         log(f"ntfy failed: {e}")
