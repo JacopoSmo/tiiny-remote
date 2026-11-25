@@ -1,5 +1,7 @@
 package app.tiinyremote
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
@@ -379,9 +381,9 @@ fun ZoomImage(file: java.io.File, modifier: Modifier = Modifier, onSwipe: ((Int)
  * text): left gives +1 (next), right -1 (previous). Mostly-vertical moves and two-finger gestures don't count.
  */
 fun Modifier.swipeBetween(key: Any, onSwipe: (Int) -> Unit): Modifier = pointerInput(key) {
-    androidx.compose.foundation.gestures.awaitEachGesture {
+    awaitEachGesture {
         val pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial
-        val down = androidx.compose.foundation.gestures.awaitFirstDown(requireUnconsumed = false, pass = pass)
+        val down = awaitFirstDown(requireUnconsumed = false, pass = pass)
         var multi = false
         var last = down.position
         while (true) {

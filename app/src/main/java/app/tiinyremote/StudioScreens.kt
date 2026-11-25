@@ -1066,7 +1066,7 @@ fun ResultCard(
     var confirmDelete by remember(e.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var full by remember(e.id) { mutableStateOf(false) }
-    if (full) FullView(e, st) { full = false }
+    if (full) FullView(e, st, onClose = { full = false })
     val canFull = e.kind == "image" || e.kind == "video" || (e.kind in TEXT_KINDS && e.text.isNotBlank())
     Card(
         modifier = Modifier.fillMaxWidth()
