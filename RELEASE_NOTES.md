@@ -1,5 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.2.2 (test build, with NAS agent 1.6.0)
+- **Full view of a 3D model** (tested on 4.2.1: swiped to from another result, its button was cut off): 🧊 View in 3D sits at the top beside Share, and tapping the picture opens the viewer too.
+
 ## What's new in 4.2.1 (test build, with NAS agent 1.6.0)
 - **Full screens no longer run off the bottom** (tested on 4.2.0: the 3D page's "View in 3D" was cut off): the full view, the 3D viewer and Code's preview now fit between the status bar and the phone's bottom edge.
 

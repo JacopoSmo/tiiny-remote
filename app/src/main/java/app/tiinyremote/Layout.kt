@@ -451,6 +451,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                     if (p in e.files.indices) page = p else onSwipe?.invoke(d)
                 }
                 val name = if (e.kind == "image") e.files.getOrNull(page) else null
+                var view3d by remember(e.id) { mutableStateOf(false) }
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).padding(start = 8.dp)) {
                         Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
@@ -478,6 +479,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                     if (name != null) TextButton(onClick = { onClose(); st.editThis(name) }) {
                         BtnLabel("Edit", androidx.compose.material.icons.Icons.Filled.Edit)
                     }
+                    if (e.kind == "mesh") TextButton(onClick = { view3d = true }) { BtnLabel("View in 3D", symbol = "🧊") }
                     TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
                     TextButton(onClick = onClose) { Text("Close") }
                 }
@@ -513,16 +515,15 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                         ) }
                     }
                     "mesh" -> e.mainFile?.let { n ->
-                        // The 3D model's picture; the viewer turns it (a finger there turns the model, so no swiping inside).
-                        var view3d by remember(e.id) { mutableStateOf(false) }
-                        Column(
-                            Modifier.weight(1f).fillMaxWidth().navigationBarsPadding().then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                        // The 3D model's picture: tap it (or 🧊 at the top) to turn the model in the viewer.
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth().clickable { view3d = true }
+                                .then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier),
+                            contentAlignment = Alignment.Center,
                         ) {
                             st.store.pictureOf(e)?.let { p ->
-                                rememberThumbnail(p, 1024)?.let { Image(it.asImageBitmap(), e.title, Modifier.weight(1f, fill = false).fillMaxWidth(), contentScale = ContentScale.Fit) }
+                                rememberThumbnail(p, 1024)?.let { Image(it.asImageBitmap(), e.title, Modifier.fillMaxSize().padding(8.dp), contentScale = ContentScale.Fit) }
                             }
-                            androidx.compose.material3.Button(onClick = { view3d = true }, modifier = Modifier.padding(12.dp)) { BtnLabel("View in 3D", symbol = "🧊") }
                         }
                         if (view3d) MeshViewer(e.title, st.store.file(n), st.store.renderOf(e)) { view3d = false }
                     }
