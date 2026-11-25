@@ -357,10 +357,23 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
 }
 
 @Composable
-internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, onPicked: (List<PickedImage>) -> Unit) {
+internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, st: StudioViewModel? = null, onPicked: (List<PickedImage>) -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
+    // The app's own images (the Gallery) too, not only the phone's photos.
+    var fromGallery by remember { mutableStateOf(false) }
+    if (fromGallery && st != null) GalleryImagePicker(st, onClose = { fromGallery = false }) { name ->
+        fromGallery = false
+        scope.launch {
+            val img = withContext(Dispatchers.IO) { Inputs.fromFile(st.store.file(name)) }
+            if (img == null) error = "Couldn't read that image."
+            else {
+                error = null
+                onPicked(if (max > 1 && images.size < max) images + img else listOf(img))
+            }
+        }
+    }
     val single = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) scope.launch {
             try {
@@ -387,6 +400,10 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
                 val req = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 if (multi != null) multi.launch(req) else single.launch(req)
             }) { Text(if (images.isEmpty()) label else "Choose again") }
+            if (st != null) {
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { fromGallery = true }) { Text("From the Gallery") }
+            }
             if (images.isNotEmpty()) {
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { onPicked(emptyList()) }) { BtnLabel("Remove", androidx.compose.material.icons.Icons.Filled.Close) }
@@ -542,7 +559,7 @@ private fun ReadTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val tool = if (ocr) "ocr" else "describe"
     var images by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
     var question by rememberSaveable { mutableStateOf("") }
-    ImagePickerRow(images, 1, "Choose an image") { images = it }
+    ImagePickerRow(images, 1, "Choose an image", st) { images = it }
     if (!ocr) {
         Field(question, { question = it }, "Question (empty = describe it)", lines = 2)
         Text(
@@ -618,7 +635,7 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
         Text("Start from an image", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Text("optional", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    ImagePickerRow(images, 1, "First frame") { images = it }
+    ImagePickerRow(images, 1, "First frame", st) { images = it }
 
     Text("Size", style = MaterialTheme.typography.labelLarge)
     Chips(canvases.map { it to sizeLabel(it) }, sz) { size = it; st.setSetting("video.size", it) }
@@ -769,7 +786,7 @@ private fun MeshTool(model: ModelInfo?, notReady: String?, st: StudioViewModel, 
     val plan = listOfNotNull(if (cuts) "cutout" else null, "shape", if (nFaces > 0) "simplify" else null) + (if (tex) listOf("texture", "export") else emptyList())
 
     LabelRow("Source image")
-    ImagePickerRow(images, 1, "Choose an image") { images = it }
+    ImagePickerRow(images, 1, "Choose an image", st) { images = it }
     Text("One object, plain background works best.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     val recent = results.filter { it.kind == "image" && it.mainFile != null }.take(12)
     if (recent.isNotEmpty()) {
@@ -1060,7 +1077,8 @@ fun ResultCard(
             }
             if (e.kind in TEXT_KINDS && e.text.isNotBlank()) {
                 SelectionContainer {
-                    Text(e.text, fontSize = 14.sp)
+                    // A model's description or read text comes in Markdown (bold, lists, code): shown formatted.
+                    if (e.kind == "description" || e.kind == "ocr") MarkdownText(e.text) else Text(e.text, fontSize = 14.sp)
                 }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {

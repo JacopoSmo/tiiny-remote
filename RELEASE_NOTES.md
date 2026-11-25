@@ -1,6 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.1.7 (test build, with NAS agent 1.5.5)
+## What's new in 4.1.8 (test build, with NAS agent 1.5.5)
+- **"From the Gallery"** beside "Choose an image" in Describe image, Edit image, Video's first frame, 3D and Translate's photo: your own made images, not only the phone's photos.
+- **Descriptions and read text (OCR)** show formatted (bold, lists, code) instead of raw ** and ` signs, in the card and the full view.
 - **Attached files:** without a helper model, the chat model only condenses really long files (over 24,000 characters) for follow-up questions. Before, it spent up to two minutes on an ordinary PDF and everything after it (a translation, say) waited. A condensed text that's barely shorter is not used.
 - **Live preview** (tested: previews show while the image forms) says "Step 12 of 40" with a progress bar, and from the second image on shows previews up to the last step.
 - **Set up ntfy:** step 3 says the test is typed in the NAS terminal (SSH app).

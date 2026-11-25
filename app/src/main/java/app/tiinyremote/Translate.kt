@@ -132,7 +132,7 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
                         Text(choiceLabel("📷", "Take photo"))
                     }
                     Box(Modifier.padding(start = 8.dp)) {
-                        ImagePickerRow(emptyList(), 1, "Choose photo") { photo = it.firstOrNull() }
+                        ImagePickerRow(emptyList(), 1, "Choose photo", st) { photo = it.firstOrNull() }
                     }
                 }
                 photo?.let { p ->

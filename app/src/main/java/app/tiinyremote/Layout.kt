@@ -376,13 +376,9 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit) {
                         )
                     }
                     else -> SelectionContainer(Modifier.weight(1f)) {
-                        Text(
-                            e.text,
-                            Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(16.dp),
-                        )
+                        Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                            if (e.kind == "description" || e.kind == "ocr") MarkdownText(e.text) else Text(e.text)
+                        }
                     }
                 }
             }
