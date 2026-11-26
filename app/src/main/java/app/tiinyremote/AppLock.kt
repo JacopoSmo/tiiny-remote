@@ -19,6 +19,9 @@ object AppLock {
     val locked = MutableStateFlow(false)
     private var awaySince = 0L
     private var opened = false
+    /** While the unlock prompt is up (its PIN screen leaves the app for a moment) and just after: no new lock. */
+    @Volatile private var prompting = false
+    @Volatile private var unlockedAt = 0L
 
     /** Why the lock can't be turned on (no screen lock set on the phone), or null when it can. */
     fun cannot(ctx: Context): String? = when (BiometricManager.from(ctx).canAuthenticate(BIOMETRIC_WEAK or DEVICE_CREDENTIAL)) {
@@ -32,14 +35,22 @@ object AppLock {
     /** On coming back: locks when it's on and the app was away long enough (or is just opening). */
     fun onStart(s: AppSettings) {
         if (!s.appLock) { locked.value = false; opened = true; return }
+        if (prompting || System.currentTimeMillis() - unlockedAt < 3_000) return
         val away = System.currentTimeMillis() - awaySince
         if (!opened || away >= s.lockAfter * 1000L) locked.value = true
         opened = true
     }
 
     fun ask(activity: FragmentActivity) {
+        if (prompting) return
+        prompting = true
         val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(activity), object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { locked.value = false }
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                unlockedAt = System.currentTimeMillis()
+                prompting = false
+                locked.value = false
+            }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) { prompting = false }
         })
         prompt.authenticate(
             BiometricPrompt.PromptInfo.Builder()
