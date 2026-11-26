@@ -954,7 +954,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (_helper.value != null) return
         val ok = models.filter(fits)
         // Writing helpers use the fast helper model when it's loaded.
-        val fast = if (tool == "chat") settingsStore.load().helperModel.ifBlank { null } else null
+        val cfgNow = settingsStore.load()
+        val fast = if (tool == "chat") cfgNow.activeHelper.ifBlank { null } else null
+        // Switched off in the chat menu: the helper isn't used even if it's loaded (unless it's the only model there is).
+        val off = cfgNow.helperModel.takeIf { !cfgNow.helperOn && it.isNotBlank() }
+        val ok = if (off != null && ok.any { it.id != off }) ok.filter { it.id != off } else ok
         val model = ok.firstOrNull { it.running && it.id == fast } ?: ok.firstOrNull { it.running && it.id == pick(tool) } ?: ok.firstOrNull { it.running }
             ?: ok.firstOrNull { it.id == pick(tool) } ?: ok.firstOrNull()
         if (model == null) {
@@ -1701,7 +1705,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The fast helper model chosen in Settings, when it's loaded and isn't the chat model itself (never swapped in for this). */
     private fun fastHelper(cfg: AppSettings, models: List<ModelInfo>, chatModel: String): String? =
-        cfg.helperModel.takeIf { it.isNotBlank() && it != chatModel }
+        cfg.activeHelper.takeIf { it.isNotBlank() && it != chatModel }
             ?.let { h -> models.firstOrNull { it.id == h && it.running && it.isChat }?.id }
 
     /** A message as the chat model receives it (with its picture, if any). */

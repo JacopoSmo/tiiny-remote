@@ -56,6 +56,8 @@ data class AppSettings(
     val speedRuns: Int = 3,
     /** Auto thinking asks the helper how deep to think (answers start a moment later) instead of the app's own rule. */
     val autoAsksHelper: Boolean = false,
+    /** The chat menu's Helper switch: off, the helper isn't used even when it's loaded. */
+    val helperOn: Boolean = true,
     /** Stay connected in the background (a silent notification): status, auto-unlock and the Tiiny checked every minute. */
     val stayConnected: Boolean = false,
     /** Always ready: speech-to-text and OCR models kept loaded whenever there's room, so dictation, Translate and OCR start at once. */
@@ -88,6 +90,9 @@ data class AppSettings(
     val appLock: Boolean = false,
     val lockAfter: Int = 60,
 ) {
+    /** The helper the chat may use: the one chosen in Settings, unless switched off in the chat menu. */
+    val activeHelper: String get() = if (helperOn) helperModel else ""
+
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
     val directConfigured get() = tiinyUrl.isNotBlank() && tiinyPassword.isNotBlank()
@@ -136,6 +141,7 @@ class Store(context: Context) {
         dailyUpdateCheck = prefs.getBoolean("daily_update_check", false),
         speedRuns = prefs.getInt("speed_runs", 3).coerceIn(1, 5),
         autoAsksHelper = prefs.getBoolean("auto_asks_helper", false),
+        helperOn = prefs.getBoolean("helper_on", true),
         stayConnected = prefs.getBoolean("stay_connected", false),
         keepAsr = prefs.getBoolean("keep_asr", false),
         keepOcr = prefs.getBoolean("keep_ocr", false),
@@ -184,6 +190,7 @@ class Store(context: Context) {
             .putBoolean("daily_update_check", s.dailyUpdateCheck)
             .putInt("speed_runs", s.speedRuns.coerceIn(1, 5))
             .putBoolean("auto_asks_helper", s.autoAsksHelper)
+            .putBoolean("helper_on", s.helperOn)
             .putBoolean("stay_connected", s.stayConnected)
             .putBoolean("keep_asr", s.keepAsr)
             .putBoolean("keep_ocr", s.keepOcr)

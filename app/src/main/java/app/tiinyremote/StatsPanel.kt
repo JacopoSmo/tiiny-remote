@@ -66,7 +66,7 @@ fun loadColor(v: Double?): Color = when {
  */
 internal fun chatRoles(s: UiState, studio: StudioViewModel): Pair<ModelInfo?, ModelInfo?> {
     val chats = s.models.filter { it.running && it.isChat }
-    val helper = chats.firstOrNull { it.id == s.settings.helperModel }
+    val helper = chats.firstOrNull { it.id == s.settings.activeHelper }
     val main = chats.firstOrNull { it.id == studio.pick("chat") && it != helper } ?: chats.firstOrNull { it != helper }
     return if (main == null) helper to null else main to helper
 }

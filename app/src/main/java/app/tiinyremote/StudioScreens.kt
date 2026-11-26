@@ -1301,6 +1301,14 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     Column(Modifier.fillMaxSize().padding(horizontal = if (ui.compact) 8.dp else 12.dp)) {
         Spacer(Modifier.height(if (ui.compact) 4.dp else 8.dp))
         var options by remember { mutableStateOf(false) }
+        // The fast helper (Settings): on, it's used and loaded if it isn't; off, it isn't used even when loaded.
+        val helperM = s.models.firstOrNull { it.id == s.settings.helperModel && it.isChat }
+        val helperShown = helperM != null && s.settings.helperOn
+        fun toggleHelper() {
+            val on = !s.settings.helperOn
+            vm.setDisplay(s.settings.copy(helperOn = on))
+            if (on && helperM != null && helperM.status != "running" && helperM.status != "loading" && helperM.id !in s.working) vm.load(helperM)
+        }
         var sub by remember { mutableStateOf<String?>(null) } // "depth" or "mode": the menu shows that choice
         var model: ModelInfo? = null
         val modeLabel = CHAT_MODES.firstOrNull { it.first == chatMode }?.second ?: "Normal"
@@ -1317,6 +1325,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                             if (canMake) sign("Can make things") else null,
                             if (web && hasSearx) sign("Web search") else null,
                             if (suggest) sign("Suggestions") else null,
+                            if (helperShown) sign("Helper") else null,
                             if (chatMode != "normal") sign(modeLabel) else null,
                         ).joinToString("").ifEmpty { "⋯" } + " ▾")
                     }
@@ -1343,6 +1352,11 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                                     onClick = { web = !web; st.setSetting("chat.web", if (web) "1" else "0") },
                                 )
                                 DropdownMenuItem(text = { Text((if (suggest) "☑ " else "☐ ") + "Suggestions") }, onClick = { toggleSuggest() })
+                                DropdownMenuItem(
+                                    text = { SignText(if (helperM == null) "☐ Helper: choose one in Settings" else (if (s.settings.helperOn) "☑ " else "☐ ") + "Helper " + sign("Helper")) },
+                                    enabled = helperM != null,
+                                    onClick = { toggleHelper() },
+                                )
                                 DropdownMenuItem(text = { Text("Mode: $modeLabel  ▸") }, onClick = { sub = "mode" })
                                 DropdownMenuItem(
                                     text = { Text("Summarise this chat") },
@@ -1380,6 +1394,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             Spacer(Modifier.width(8.dp))
             FilterChip(selected = suggest, onClick = { toggleSuggest() }, label = { Text("Suggestions") })
             Spacer(Modifier.width(8.dp))
+            if (helperM != null) {
+                FilterChip(selected = s.settings.helperOn, onClick = { toggleHelper() }, label = { SignText(tag("Helper")) })
+                Spacer(Modifier.width(8.dp))
+            }
             Box {
                 FilterChip(selected = chatMode != "normal", onClick = { sub = "mode" }, label = { Text("Mode: $modeLabel ▾") })
                 ScaledDropdownMenu(expanded = sub == "mode", onDismissRequest = { sub = null }) {
@@ -1403,7 +1421,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             else -> null
         }
         // The fast helper (Settings) at work beside the chat model, when it's loaded.
-        val helperName = s.models.firstOrNull { it.id == s.settings.helperModel && it.running && it.id != model?.id }?.name
+        val helperName = s.models.firstOrNull { it.id == s.settings.activeHelper && it.running && it.id != model?.id }?.name
         val helperNote = helperName?.let { "Helper $it names the chat, suggests follow-ups, condenses long chats, and condenses pages when it's clearly faster." }
         val modeNote = when (chatMode) {
             "socratic" -> "Socratic: the model guides you with questions instead of giving the answer."
