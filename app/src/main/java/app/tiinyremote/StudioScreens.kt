@@ -1218,13 +1218,13 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var web by rememberSaveable { mutableStateOf(st.setting("chat.web", "0") == "1") }
     val hasSearx = s.settings.searchMode != "searx" || s.settings.searxUrl.isNotBlank() // web search is available
     var image by remember { mutableStateOf<List<PickedImage>>(emptyList()) }
-    var file by remember { mutableStateOf<PickedFile?>(null) } // a document attached to the next message
+    var files by remember { mutableStateOf<List<PickedFile>>(emptyList()) } // documents attached to the next message (up to 5)
     // A result sent here from Create or the Gallery: attached to the next message.
     val handed by st.toChat.collectAsState()
     LaunchedEffect(handed) {
         handed?.let { h ->
             h.image?.let { image = listOf(it) }
-            h.file?.let { file = it }
+            h.file?.let { files = listOf(it) }
             // A question to finish (from Models → Store): in the box, with "Can make things" on so it can look up models.
             h.draft?.let { input = it; canMake = true }
             st.toChatTaken()
@@ -1371,11 +1371,11 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             val m = model ?: return
             if (busy) return
             val pic = if (typed) image.firstOrNull()?.dataUri else null
-            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models, if (typed) file else null)
+            st.send(m.id, text, pic, if (thinks) depth else "off", chatMode, canMake, web && hasSearx, suggest, s.models, if (typed) Docs.combine(files) else null)
             if (typed) {
                 input = ""
                 image = emptyList()
-                file = null
+                files = emptyList()
                 undoDraft = null
             }
         }
@@ -1452,7 +1452,16 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
         }
         // What's attached to the next message, only when something is: a small line, not a permanent row.
-        if (image.isNotEmpty() || file != null || attachError != null) {
+        if (image.isNotEmpty() || files.isNotEmpty() || attachError != null) {
+            // One line per file: a long name is cut with … so its ✕ always stays on screen.
+            for (f in files) Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "📄 ${f.name}" + if (f.cut) " (first ${Docs.MAX_CHARS / 1000}k characters)" else "",
+                    style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { files = files - f }) { Text("✕") }
+            }
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
                 image.firstOrNull()?.let { p ->
                     androidx.compose.foundation.Image(
@@ -1465,17 +1474,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                file?.let { f ->
-                    Text(
-                        "📄 ${f.name}" + if (f.cut) " (first ${Docs.MAX_CHARS / 1000}k characters)" else "",
-                        style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                    TextButton(onClick = { file = null }) { Text("✕") }
-                }
                 attachError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         }
-        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty() || file != null) && !busy &&
+        val canSend = model?.running == true && (input.isNotBlank() || image.isNotEmpty() || files.isNotEmpty()) && !busy &&
             (image.isEmpty() || model?.seesImages == true)
         fun doSend() = sendText(input, typed = true)
         helperBusy?.let { what ->
@@ -1492,7 +1494,10 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 st = st,
                 seesImages = model?.seesImages == true,
                 onImage = { image = listOf(it); attachError = null },
-                onFile = { file = it; attachError = null },
+                onFile = { f ->
+                    attachError = if (files.size >= Docs.MAX_FILES) "Up to ${Docs.MAX_FILES} files per message." else null
+                    if (files.size < Docs.MAX_FILES && files.none { it.name == f.name }) files = files + f
+                },
                 onError = { attachError = it },
             )
             OutlinedTextField(
@@ -1543,7 +1548,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             when {
                 busy -> OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
                 // Nothing typed or attached yet: the microphone, to dictate the message instead.
-                input.isBlank() && image.isEmpty() && file == null ->
+                input.isBlank() && image.isEmpty() && files.isEmpty() ->
                     DictateButton(enabled = helperBusy == null, models = s.models, st = st) { said -> input = (input + " " + said).trim() }
                 else -> Button(onClick = { doSend() }, enabled = canSend) { BtnLabel("Send", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
             }
@@ -1767,8 +1772,15 @@ private fun AttachButton(seesImages: Boolean, st: StudioViewModel, onImage: (Pic
             }
         }
     }
-    val pickFile = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) load { onFile(withContext(kotlinx.coroutines.Dispatchers.IO) { Docs.read(ctx, uri) }) }
+    // Several files at once (up to five per message); each read on its own, so one that can't be read doesn't stop the rest.
+    val pickFile = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) load {
+            for (u in uris.take(Docs.MAX_FILES)) try {
+                onFile(withContext(kotlinx.coroutines.Dispatchers.IO) { Docs.read(ctx, u) })
+            } catch (e: Exception) {
+                onError(e.message ?: "Couldn't read one of the files.")
+            }
+        }
     }
     Box {
         IconButton(onClick = { open = true }) { Icon(androidx.compose.material.icons.Icons.Filled.Add, contentDescription = "Attach an image or a file") }

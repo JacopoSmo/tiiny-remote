@@ -1,6 +1,7 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.4.2
+## What's new in 4.4.2 – 4.4.3
+- **Chat: several files at once** (up to five per message), one line each; a long file name is cut with … so its ✕ stays on screen.
 - **Choosing images and files works again** (Create, Chat, Translate, the camera): since the app lock (4.3.x), every picker failed ("No file picker found", or the app closed).
 - If the app ever crashes, the reason goes into the log at the next start, so a shared log says what happened.
 

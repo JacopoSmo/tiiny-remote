@@ -15,6 +15,21 @@ data class PickedFile(val name: String, val text: String, val cut: Boolean)
  */
 object Docs {
     const val MAX_CHARS = 60_000
+    const val MAX_FILES = 5
+
+    /**
+     * Several files for one message, as one: each under its own heading, at most twice [MAX_CHARS] together (cut at
+     * the end, marked). One file goes as it is; none gives null.
+     */
+    fun combine(files: List<PickedFile>): PickedFile? = when (files.size) {
+        0 -> null
+        1 -> files[0]
+        else -> {
+            val all = files.joinToString("\n\n") { "=== ${it.name} ===\n${it.text}" }
+            val names = files.joinToString(", ") { it.name }
+            PickedFile("${files.size} files: " + names.take(160) + if (names.length > 160) "…" else "", all.take(2 * MAX_CHARS), files.any { it.cut } || all.length > 2 * MAX_CHARS)
+        }
+    }
     val MIMES = arrayOf(
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
