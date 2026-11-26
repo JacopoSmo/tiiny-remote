@@ -68,6 +68,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
         setContent {
             val set = vm.state.collectAsState().value.settings
+            // With the app lock on, the recent-apps view shows no picture of the app (Android 13+).
+            androidx.compose.runtime.SideEffect { if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!set.appLock) }
             AppTheme(set.theme, set.style, if (!set.designedFonts) "system" else if (set.oneFace) "one" else "pair", set.lineIcons, set.lineColour) {
                 val locked by AppLock.locked.collectAsState()
                 if (locked) LockScreen { AppLock.ask(this) } else AppRoot(vm)

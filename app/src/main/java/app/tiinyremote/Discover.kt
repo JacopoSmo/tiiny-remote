@@ -24,6 +24,10 @@ object Discover {
     @Volatile private var endedAt = 0L
     fun busySince(ms: Long) = searching || System.currentTimeMillis() - endedAt < ms
 
+    /** After [find] found no Tiiny: devices that answered like one that wants the API key (it's not sent to them). */
+    @Volatile var maybe: List<String> = emptyList()
+        private set
+
     /** The phone's own address on the current Wi-Fi and the network's size, or null off Wi-Fi. */
     private fun myNet(ctx: Context): Pair<IntArray, Int>? {
         val cm = ctx.getSystemService(ConnectivityManager::class.java) ?: return null
@@ -60,6 +64,7 @@ object Discover {
         if (prefix < 22) throw MediaException("This network is too large to search; type the Tiiny's address instead.")
         val base = "${b[0]}.${b[1]}.${b[2]}."
         searching = true
+        maybe = emptyList()
         try { findIn(ctx, base, b[3], step) } finally { searching = false; endedAt = System.currentTimeMillis() }
     }
 
@@ -92,15 +97,15 @@ object Discover {
             }.awaitAll().filterNotNull()
         }
         val hits = answers.filter { looksTiiny(it.second.second) }.map { it.first }.toMutableList()
-        // A Tiiny may want the API key before it answers. Only addresses that refused with a JSON answer to exactly
-        // this question are asked again with it (at most three), never everything on the network.
-        val key = Store(ctx).load().apiKey.trim().takeIf { it.isNotEmpty() }
+        // A Tiiny may want the API key before it answers. The key is never sent to an unknown device (any device on
+        // the Wi-Fi could pretend, to collect it): addresses that refused this exact question with a JSON answer are
+        // offered as "may be the Tiiny" (at most three); you pick one, and only that address gets the key.
         val wantKey = answers.filter { (_, a) -> a.first in setOf(401, 403) && a.second.trimStart().startsWith("{") }.map { it.first }
-        if (hits.isEmpty() && key != null) for (ip in wantKey.take(3)) ask(ip, key)?.let { if (looksTiiny(it.second)) hits.add(ip) }
+        maybe = if (hits.isEmpty()) wantKey.take(3).map { "http://$it" } else emptyList()
         ApiLog.add(
             "Find on my Wi-Fi: searched ${base}1–254; ${answers.size} answered on port 80" +
                 (if (answers.isNotEmpty()) " (" + answers.take(12).joinToString(", ") { (ip, a) -> "${ip.substringAfterLast('.')}: HTTP ${a.first}" } + ")" else "") +
-                (if (hits.isEmpty()) "; no Tiiny among them" else "; Tiiny at " + hits.joinToString()),
+                (if (hits.isNotEmpty()) "; Tiiny at " + hits.joinToString() else if (maybe.isNotEmpty()) "; may be the Tiiny (want the key): " + maybe.joinToString() else "; no Tiiny among them"),
             "Device", isProblem = hits.isEmpty(),
         )
         hits.map { "http://$it" }

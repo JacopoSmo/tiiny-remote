@@ -76,7 +76,8 @@ object Backup {
         private var buf = ByteArray(0)
         private var pos = 0
         private var index = 0
-        private var ended = false
+        var ended = false
+            private set
         private fun next(): Boolean {
             if (ended) return false
             val last = inp.readByte().toInt() == 1
@@ -167,7 +168,8 @@ object Backup {
         val head = MAGIC + java.nio.ByteBuffer.allocate(4).putInt(rounds).array() + salt + base
         val stage = File(data(ctx), "restore_stage").apply { deleteRecursively(); mkdirs() }
         try {
-            ZipInputStream(OpenIn(inp, key(password, salt, rounds), head, base)).use { zip ->
+            val open = OpenIn(inp, key(password, salt, rounds), head, base)
+            ZipInputStream(open).use { zip ->
                 while (true) {
                     val e = zip.nextEntry ?: break
                     val name = e.name
@@ -181,6 +183,10 @@ object Backup {
                     f.parentFile?.mkdirs()
                     f.outputStream().use { zip.copyTo(it, 1 shl 16) }
                 }
+                // Read to the sealed end: a backup cut short (pieces missing at the end) is refused, not half restored.
+                val rest = ByteArray(1 shl 16)
+                while (open.read(rest, 0, rest.size) >= 0) Unit
+                if (!open.ended) throw MediaException("This backup is incomplete.")
             }
         } catch (e: Exception) {
             stage.deleteRecursively()

@@ -321,9 +321,17 @@ def read_email(hours=24, unread_only=False, limit=25):
         ids = data[0].split()[-120:]
         found = []
         for i in reversed(ids):
+            # One odd message (no body in the answer, a date that doesn't parse) is skipped or dated "unknown",
+            # never the end of the whole summary.
             _, parts = m.fetch(i, "(BODY.PEEK[])")
-            msg = email.message_from_bytes(parts[0][1])
-            when = email.utils.parsedate_to_datetime(msg.get("Date")) if msg.get("Date") else None
+            raw = parts[0][1] if parts and isinstance(parts[0], tuple) and len(parts[0]) > 1 else None
+            if not isinstance(raw, (bytes, bytearray)):
+                continue
+            msg = email.message_from_bytes(raw)
+            try:
+                when = email.utils.parsedate_to_datetime(msg.get("Date")) if msg.get("Date") else None
+            except (TypeError, ValueError, IndexError):
+                when = None
             if when and when.tzinfo and when < since:
                 continue
             found.append((when, msg))
@@ -429,10 +437,17 @@ def parse_ics(raw, start, end, ZONE):
         elif ev is not None and ":" in line:
             key, value = line.split(":", 1)
             name, _, params = key.partition(";")
+            # A time that doesn't parse loses that event (no start) or its end, not the whole calendar.
             if name == "DTSTART":
-                ev["start"] = ics_time(value, params, ZONE)
+                try:
+                    ev["start"] = ics_time(value, params, ZONE)
+                except ValueError:
+                    pass
             elif name == "DTEND":
-                ev["end"] = ics_time(value, params, ZONE)
+                try:
+                    ev["end"] = ics_time(value, params, ZONE)
+                except ValueError:
+                    pass
             elif name == "SUMMARY":
                 ev["summary"] = value.replace("\\,", ",").replace("\\n", " ")
             elif name == "LOCATION":
@@ -724,6 +739,11 @@ def tls_context():
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(cert, key)
+    # The fingerprint as the app's Test shows it: the same here means the app pinned this agent, not an impostor.
+    import hashlib
+    with open(cert, encoding="ascii") as f:
+        fp = hashlib.sha256(ssl.PEM_cert_to_DER_cert(f.read())).hexdigest()
+    log("Certificate fingerprint (compare with the app's Test): " + ":".join(fp[i:i + 2] for i in range(0, 16, 2)).upper())
     return ctx
 
 
@@ -757,7 +777,13 @@ def backups():
     d = backup_dir()
     out = []
     for n in os.listdir(d):
-        if n.endswith(".trb"):
+        if n.endswith(".part"):  # an upload cut off (the agent restarted mid-way): gone after an hour
+            try:
+                if time.time() - os.stat(os.path.join(d, n)).st_mtime > 3600:
+                    os.remove(os.path.join(d, n))
+            except OSError:
+                pass
+        elif n.endswith(".trb"):
             st = os.stat(os.path.join(d, n))
             out.append({"name": n[:-4], "size": st.st_size, "time": int(st.st_mtime)})
     return sorted(out, key=lambda b: b["time"], reverse=True)
@@ -915,7 +941,7 @@ class Handler(BaseHTTPRequestHandler):
                 os.remove(os.path.join(d, old["name"] + ".trb"))
             except OSError:
                 pass
-        log(f"Backup received from the {CTX.app} app: {name} ({n // (1024 * 1024)} MB, encrypted on the phone).")
+        log(f"Backup received from the {CTX.app} app: {name} ({n / 1048576:.1f} MB, encrypted on the phone).")
         self.reply(200, {"ok": True})
 
     def do_DELETE(self):

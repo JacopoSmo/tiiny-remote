@@ -817,8 +817,18 @@ object NasAgent {
         val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
         val agentLine = "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
             if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
-        val link = if (o.optBoolean("encrypted")) "\nEncrypted link: on (certificate ${pinOf(c) ?: "pinned"})."
-        else "\nNot encrypted: update the agent to 1.7 for an encrypted link."
+        val v = o.optString("version").split('.').mapNotNull { it.toIntOrNull() }
+        val offersTls = v.size >= 2 && (v[0] > 1 || v[0] == 1 && v[1] >= 7)
+        val link = when {
+            o.optBoolean("encrypted") -> "\nEncrypted link: on (certificate ${pinOf(c) ?: "pinned"}; the agent's log shows the same)."
+            // An agent that offers encryption answered without it: the encrypted try failed on the way (or was made to
+            // fail). Tried encrypted again next time, never settled for plain.
+            offersTls -> {
+                runCatching { plainOnly.remove(hostKey(c.nasUrl.trim())) }
+                "\nNot encrypted this time, although the agent offers it: tap Test again. If it stays, check the NAS's certificate (Docker → tiiny-agent → log)."
+            }
+            else -> "\nNot encrypted: update the agent to 1.7 for an encrypted link."
+        }
         val agent = agentLine + link
         // With ntfy set: a test push, sent by the NAS itself, the way results go out.
         if (c.ntfyUrl.isBlank()) return agent

@@ -44,6 +44,17 @@ Lost the token? The NAS still has it: `grep AGENT_TOKEN ~/tiiny-agent/docker-com
 The image is built from this folder by GitHub Actions (`ghcr.io/jacoposmo/tiiny-remote-agent`). If you'd rather build it
 yourself, replace the `image:` line with `build: https://github.com/JacopoSmo/tiiny-remote.git#main:nas-agent`.
 
+## Encrypted link and backups (agent 1.7)
+
+- **Encrypted link:** the agent makes its own certificate on first start (kept in the data volume, `/data/tls`). The app
+  trusts the one it meets first and from then on only that one, so the token, your Tiiny key and the email password
+  travel encrypted on the home network. Check it once: the agent's log shows "Certificate fingerprint …"; the app's
+  **Test** shows the same characters. After the app has used the encrypted link, the agent refuses unencrypted requests
+  (only `/health` stays open). Set the agent up from scratch? Tap **Forget certificate** in the app. To allow unencrypted
+  requests again (an old app), delete `/data/tls/https-only`.
+- **Backups:** Settings → Privacy and backup in the app. The phone encrypts everything with your backup password before it
+  leaves; the agent only stores the files (`/data/backups`, the newest five, at most 20 GB each) and can't read them.
+
 ## What it does and doesn't
 
 - **Processes:** news or web search (your SearXNG if set in the app, else DuckDuckGo), calendar (iCal link; daily and

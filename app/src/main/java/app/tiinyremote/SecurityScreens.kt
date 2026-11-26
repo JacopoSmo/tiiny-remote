@@ -66,7 +66,7 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
     var ask by remember { mutableStateOf<Backup.Entry?>(null) } // restore: password for this one
     var makeAsk by remember { mutableStateOf(false) }
     var delAsk by remember { mutableStateOf<Backup.Entry?>(null) }
-    var restored by remember { mutableStateOf(false) }
+    var restored by remember { mutableStateOf<java.io.File?>(null) } // the unpacked backup, waiting to be put in place
     val store = remember { Store(ctx) }
 
     fun refresh() = scope.launch {
@@ -77,17 +77,17 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
 
     fun make(pw: String) = scope.launch {
         busy = "Packing"; progress = 0f; note = null
+        val file = java.io.File(ctx.cacheDir, "backup.trb")
         try {
-            val file = withContext(Dispatchers.IO) { Backup.create(ctx, pw.toCharArray()) { what -> busy = "Packing: $what" } }
+            withContext(Dispatchers.IO) { Backup.create(ctx, pw.toCharArray()) { what -> busy = "Packing: $what" } }
             busy = "Sending to the NAS"
             withContext(Dispatchers.IO) { NasAgent.uploadBackup(c, Backup.newName(), file) { progress = it } }
-            val size = file.length()
-            file.delete()
-            note = "Backed up (${Backup.mb(size)}, encrypted)."
+            note = "Backed up (${Backup.mb(file.length())}, encrypted)."
             refresh()
         } catch (e: Exception) {
             note = e.message ?: e.javaClass.simpleName
         } finally {
+            file.delete() // also when sending failed: no copy left lying in the cache
             busy = null
         }
     }
@@ -98,9 +98,9 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
         try {
             withContext(Dispatchers.IO) { NasAgent.downloadBackup(c, e.name, file) { progress = it } }
             busy = "Unpacking"
-            val stage = withContext(Dispatchers.IO) { Backup.unpack(ctx, file, pw.toCharArray()) { what -> busy = "Unpacking: $what" } }
-            withContext(Dispatchers.IO) { Backup.swap(ctx, stage) }
-            restored = true
+            // Checked and unpacked now; put in place only when the app closes (below), so nothing the app still writes
+            // meanwhile (a setting kept in memory, say) lands on top of the restored files.
+            restored = withContext(Dispatchers.IO) { Backup.unpack(ctx, file, pw.toCharArray()) { what -> busy = "Unpacking: $what" } }
         } catch (ex: Exception) {
             note = ex.message ?: ex.javaClass.simpleName
         } finally {
@@ -176,17 +176,23 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
             dismissButton = { TextButton(onClick = { delAsk = null }) { Text("Cancel") } },
         )
     }
-    if (restored) AlertDialog(
-        onDismissRequest = {},
-        title = { Text("Restored") },
-        text = { Text("Tiiny Remote closes now. Open it again: everything is as it was in the backup.") },
-        confirmButton = {
-            TextButton(onClick = {
-                (ctx as? Activity)?.finishAffinity()
-                kotlin.system.exitProcess(0)
-            }) { Text("Close the app") }
-        },
-    )
+    restored?.let { stage ->
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Ready to restore") },
+            text = { Text("The backup is checked. Tiiny Remote puts it in place and closes; open it again: everything is as it was in the backup.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Backup.swap(ctx, stage)
+                    (ctx as? Activity)?.finishAffinity()
+                    kotlin.system.exitProcess(0)
+                }) { Text("Restore and close") }
+            },
+            dismissButton = {
+                TextButton(onClick = { stage.deleteRecursively(); restored = null; note = "Not restored." }) { Text("Cancel") }
+            },
+        )
+    }
 }
 
 @Composable

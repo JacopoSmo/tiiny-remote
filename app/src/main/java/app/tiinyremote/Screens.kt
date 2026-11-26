@@ -1567,9 +1567,14 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 findScope.launch {
                     try {
                         val hits = Discover.find(findCtx) { finding = it }
-                        found = hits
+                        val maybe = Discover.maybe
+                        found = hits.ifEmpty { maybe }
                         when (hits.size) {
-                            0 -> findNote = "No Tiiny answered on this Wi-Fi. Is it on, and on the same network?"
+                            0 -> findNote = when (maybe.size) {
+                                0 -> "No Tiiny answered on this Wi-Fi. Is it on, and on the same network?"
+                                1 -> { url = maybe[0]; "Maybe the Tiiny: ${maybe[0]} (it wants the API key; filled in, Save to try it)." }
+                                else -> "These may be the Tiiny (they want the API key): pick one, then Save to try it."
+                            }
                             1 -> { url = hits[0]; findNote = "Found: ${hits[0]} (filled in; Save to keep it)." }
                             else -> findNote = "Several found: pick one."
                         }
