@@ -1,19 +1,32 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.4.2 – 4.4.11
-- **Quick edits** (Image → Edit): Extend the picture, Remove an object, Remove the background, Zoom into a part, one tap each with the FLUX.2-klein model made for it (paint in red what to remove or zoom into).
-- **Improve prompt** uses Qwen-Image's own prompt enhancer (PE-T2I, PE-I2I) when it's on the Tiiny, loaded for it if needed.
-- **Voice:** dialogues with up to 4 voices (VibeVoice-1.5B), and changing a recording's voice (CosyVoice).
+## What's new in 4.5.0 (with NAS agent 1.7.0)
+Everything from the 4.4.1–4.4.12 test builds, plus another review (programmer, white-hat, attacker) of all of it, fonts and pictograms included.
+
+**Recommended models**
+- **👍 in every model menu:** the recommended model for that task, with a few words why; one that isn't on the Tiiny is offered first, to download right there (asked once, with the size and the free space).
+- **Models → 👍:** the whole set as a table, one row per task, ✓ on your Tiiny or ⤓ to download; Download all missing.
+- **✦ Update with the Tiiny's AI:** the most capable chat model on your Tiiny reads the Store's list and decides anew, in the background, nothing from outside; Back to the built-in set undoes it.
+- Settings → Display → Recommended models: shown or hidden.
+
+**Chat**
+- **Projects** (🕘 → ＋ New project): a name, files (up to 50) and chats; each question gets the matching pieces of the files, by meaning with the Tiiny's embedding model and reranker, else by words. The files stay on the phone; deleting removes only the project's copies.
+- **Several files per message** (up to five), each with its own ✕.
+
+**Create**
+- **Quick edits** (Image → Edit): Extend the picture, Remove an object, Remove the background, Zoom into a part, each with the FLUX.2-klein model made for it; a missing one downloads on the spot.
+- **Improve prompt** uses Qwen-Image's own prompt enhancer (PE-T2I, PE-I2I) when it's there; with Qwen-Image chosen and none yet, ✦ offers to download it.
+- **Voice:** dialogues with up to 4 voices (VibeVoice-1.5B); changing a recording's voice (CosyVoice; how the Tiiny wants it is still unconfirmed, the log shows its answer).
 - **Transcribe:** who said what, with times (MOSS-Transcribe-Diarize).
-- **Always ready:** also a voice for reading aloud.
-- **Store search** finds by name, maker, type or ability, no longer by words buried in descriptions.
-- **The Store in the log:** when Models → Store loads, the log lists every model it offers (type, size, NPU share, context, abilities), once, and again only when the Store changes.
-- Deleting a project, or ✕ on one of its files, says plainly that only the project's copy goes, never your original file.
-- **Always ready** (Settings) also keeps the embedding model and the reranker loaded, so projects' search starts at once. The four in alphabetical order.
-- **Projects in Chat** (🕘 Chats → ＋ New project): a name, its files (up to 50) and its chats. Every question gets the pieces of the files that match it: by meaning with the Tiiny's embedding model (the smallest installed, loaded if it fits; a reranker sorts them if one fits), otherwise by words. The files stay on the phone and go into the backup; the answer says which file it used.
-- **Chat: several files at once** (up to five per message), one line each; a long file name is cut with … so its ✕ stays on screen.
-- **Choosing images and files works again** (Create, Chat, Translate, the camera): since the app lock (4.3.x), every picker failed ("No file picker found", or the app closed).
-- If the app ever crashes, the reason goes into the log at the next start, so a shared log says what happened.
+
+**Models**
+- **Store search** by name, maker, type or ability ("tts", "ocr", "0.6B"), no longer by words buried in descriptions.
+- The Store's list goes into the log once per start (and when it changes).
+- **Always ready** also keeps the embedding model, the reranker and a voice for reading aloud loaded.
+
+**Fixes**
+- **Choosing images and files works again** everywhere (since the app lock, every picker failed or closed the app).
+- If the app ever crashes, the reason is in the log at the next start.
 
 ## What's new in 4.4.0 (with NAS agent 1.7.0)
 Everything from the 4.3.1–4.3.13 test builds, tested on the phone, plus a full review (programmer, white-hat, attacker) of the app, the NAS agent and the link between them, with every font and pictogram checked.
