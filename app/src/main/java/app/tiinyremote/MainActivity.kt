@@ -53,6 +53,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         super.onCreate(savedInstanceState)
         CrashNote.install(this)
         CrashNote.report(this)
+        Recs.load(this)
         Backup.applySecrets(this) // after a restore: the backup's passwords, sealed again with this phone's key
         NasAgent.init(this) // which app this is for the NAS agent (normal or exp)
         // The daily update check (Settings) is kept scheduled, or cancelled, to match the setting.

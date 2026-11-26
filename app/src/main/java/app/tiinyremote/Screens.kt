@@ -324,6 +324,10 @@ fun AppRoot(vm: MainViewModel) {
         LocalDensity provides appDensity,
         LocalAppDensity provides appDensity,
         LocalUi provides UiPrefs(compact = compact, enterSends = s.settings.enterSends, labels = s.settings.labels),
+        LocalModelShop provides ModelShop(
+            store = s.store, installed = s.models.map { it.id }.toSet(), downloading = s.downloads.map { it.id }.toSet(),
+            showRecs = s.settings.showRecs, download = { id, name -> vm.download(id, name) }, loadStore = { vm.loadStore() },
+        ),
     ) {
         ModalNavigationDrawer(
             drawerState = drawer,
@@ -422,6 +426,14 @@ fun AppRoot(vm: MainViewModel) {
                                     Text("🗃", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Copies kept on the Tiiny" })
                                 }
                                 if (copies) TiinyCopiesDialog(st) { copies = false }
+                            }
+                            // Models: 👍 the recommended set (a table, downloads, a review by the Tiiny's own AI).
+                            if (tab == 0) {
+                                var recsOpen by remember { mutableStateOf(false) }
+                                IconButton(onClick = { recsOpen = true }) {
+                                    Text("👍", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Recommended models" })
+                                }
+                                if (recsOpen) RecsDialog(st, s.models) { recsOpen = false }
                             }
                             // Models: "Help me choose" asks the chat model which model fits what you want to do.
                             if (tab == 0) IconButton(onClick = { st.askInChat(HELP_CHOOSE_DRAFT) }) {
@@ -1307,6 +1319,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         MicIcon to "Dictate a message (needs a speech-to-text model)",
         SaveIcon to "Chat: green, chats are saved; red, incognito",
         "🧭" to "Models: help me choose a model (asks the chat)",
+        "👍" to "Recommended model (Models → 👍: the whole set, and why)",
         "🧊" to "A 3D model: opens in the app's 3D viewer",
         "🎬" to "A video",
         "↓" to "Jump to the newest message",
@@ -1471,7 +1484,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, keepEmbed = false, keepRerank = false, keepTts = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, appLock = false, lockAfter = 0)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, keepEmbed = false, keepRerank = false, keepTts = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, showRecs = true, appLock = false, lockAfter = 0)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1534,6 +1547,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             listOf("emoji" to "Colourful (the phone's emoji)", "lines_colour" to "Line icons (colourful)", "lines_style" to "Line icons (the style's colour)"),
             if (!cur.lineIcons) "emoji" else if (cur.lineColour) "lines_colour" else "lines_style",
         ) { vm.setDisplay(cur.copy(lineIcons = it != "emoji", lineColour = it == "lines_colour")) }
+        SettingDropdown("Recommended models", listOf("shown" to "Shown (👍 in the model menus)", "hidden" to "Hidden"), if (cur.showRecs) "shown" else "hidden") {
+            vm.setDisplay(cur.copy(showRecs = it == "shown"))
+        }
         SettingDropdown("Status bar", listOf("standard" to "Standard (coloured)", "quiet" to "Quiet (one thin line)"), if (cur.quietStatus) "quiet" else "standard") {
             vm.setDisplay(cur.copy(quietStatus = it == "quiet"))
         }

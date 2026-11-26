@@ -82,6 +82,8 @@ data class AppSettings(
     val oneFace: Boolean = false,
     /** Display → Status bar: the quiet single line instead of the coloured block. */
     val quietStatus: Boolean = false,
+    /** 👍 on recommended models in the model menus, and the missing ones offered there. */
+    val showRecs: Boolean = true,
     /** Privacy: a fingerprint, face or the screen lock to open the app, after [lockAfter] seconds away (0: at once). */
     val appLock: Boolean = false,
     val lockAfter: Int = 60,
@@ -121,6 +123,7 @@ class Store(context: Context) {
         designedFonts = prefs.getBoolean("designedFonts", false),
         oneFace = prefs.getBoolean("oneFace", false),
         quietStatus = prefs.getBoolean("quietStatus", false),
+        showRecs = prefs.getBoolean("showRecs", true),
         appLock = prefs.getBoolean("appLock", false),
         lockAfter = prefs.getInt("lockAfter", 60),
         uiScale = prefs.getString("ui_scale", "1.0") ?: "1.0",
@@ -168,6 +171,7 @@ class Store(context: Context) {
             .putBoolean("designedFonts", s.designedFonts)
             .putBoolean("oneFace", s.oneFace)
             .putBoolean("quietStatus", s.quietStatus)
+            .putBoolean("showRecs", s.showRecs)
             .putBoolean("appLock", s.appLock)
             .putInt("lockAfter", s.lockAfter)
             .putString("ui_scale", s.uiScale)

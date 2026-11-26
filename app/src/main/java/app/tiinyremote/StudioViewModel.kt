@@ -394,6 +394,51 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun lastModelOf(id: String): String? = lastModels[id]
 
+    // ---------- recommendations, reviewed by the Tiiny's own AI ----------
+    private val _recBusy = MutableStateFlow<String?>(null)
+    /** What the review is doing right now, or null. */
+    val recBusy: StateFlow<String?> = _recBusy.asStateFlow()
+    private val _recResult = MutableStateFlow<String?>(null)
+    /** How the last review ended (what changed, or why it failed). */
+    val recResult: StateFlow<String?> = _recResult.asStateFlow()
+
+    /**
+     * The Store reviewed by the most capable chat model on the Tiiny (loaded for it, others put back afterwards), in
+     * the background: it goes on when you leave the page, and a notice says when it's done.
+     */
+    fun reviewRecommendations(store: List<StoreModel>, models: List<ModelInfo>) {
+        if (_recBusy.value != null) return
+        val m = Recs.reviewer(models) ?: run { _recResult.value = "No chat model on the Tiiny to do the review."; return }
+        if (store.isEmpty()) { _recResult.value = "Open the Store first, so the list can be read."; return }
+        if (!deviceBusy.compareAndSet(false, true)) { _recResult.value = "Something else is using the Tiiny's models. Try again when it's done."; return }
+        _recBusy.value = "Starting…"
+        _recResult.value = null
+        viewModelScope.launch {
+            try {
+                val summary = withContext(Dispatchers.IO) {
+                    val c = client()
+                    val p = Progress(update = { msg, _ -> _recBusy.value = msg }, cancelled = { false })
+                    val unloaded = Tools.makeRoom(c, m.id, p)
+                    try {
+                        Recs.update(getApplication(), c, m, store, p)
+                    } finally {
+                        Tools.putBack(c, m.id, unloaded, p)
+                    }
+                }
+                _recResult.value = summary
+                Notifier.done(getApplication(), "Recommendations updated", summary)
+            } catch (e: Exception) {
+                val msg = e.message ?: e.toString()
+                ApiLog.add("Recommendation review failed: $msg", "Models", isProblem = true)
+                _recResult.value = msg
+                Notifier.done(getApplication(), "Recommendations not updated", msg)
+            } finally {
+                _recBusy.value = null
+                deviceBusy.set(false)
+            }
+        }
+    }
+
     /** Runs a tool in the background; its result lands in the library. */
     fun run(tool: String, block: (DeviceClient, ResultStore, Progress, RemoteJob) -> ResultEntry) {
         // A job writes its result on the Tiiny first: under 2 GB free it can fail half-way (as Tiiny Studio checks).

@@ -117,13 +117,10 @@ internal fun QuickEdits(st: StudioViewModel, models: List<ModelInfo>, source: Pi
             label = { Text(q.label + if (modelFor(q) == null) " ⤓" else "") },
         )
     }
+    // Not on the Tiiny yet: download it from here (asked once, with the size); once it's there, the same tap edits.
     missing?.let { q ->
-        AlertDialog(
-            onDismissRequest = { missing = null },
-            title = { Text(q.label) },
-            text = { Text("This needs fal/FLUX.2-klein-4B-${q.idPart} on the Tiiny (about 7 GB, 19% of the NPU). Download it in Models → Store, then it's one tap.") },
-            confirmButton = { TextButton(onClick = { missing = null }) { Text("OK") } },
-        )
+        val id = Recs.first("q_${q.key}")?.id ?: "fal/FLUX.2-klein-4B-${q.idPart}"
+        DownloadAsk(listOf(id), "${q.label} needs this model, trained for exactly that. Once it's on the Tiiny, the same tap does it.") { missing = null }
     }
     val src = source?.preview
     marking?.let { q ->

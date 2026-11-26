@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -265,14 +266,42 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         minLines = 3,
         modifier = Modifier.fillMaxWidth(),
     )
+    // Qwen-Image has its own prompt enhancer (PE-T2I for creating, PE-I2I for editing): recommended with it, used
+    // when it's on the Tiiny, and offered for download when it isn't.
+    val peTask = if (edit) "pe_i2i" else "pe_t2i"
+    val peKind = if (edit) "-PE-I2I" else "-PE-T2I"
+    val qwenImage = mid.contains("Qwen-Image", true) && !mid.contains("-PE-", true)
+    val pe = models.firstOrNull { it.id.contains(peKind, true) }
+    var peOffer by remember { mutableStateOf(false) }
+    val showRecs = LocalModelShop.current?.showRecs == true
+    var peAsk by remember { mutableStateOf(false) }
+    fun improve() {
+        val old = prompt.text
+        st.improvePrompt(old, edit, models) { prompt = TextFieldValue(it, TextRange(it.length)); before = old }
+    }
+    if (peOffer) {
+        val shop = LocalModelShop.current
+        val rec = Recs.first(peTask)
+        AlertDialog(
+            onDismissRequest = { peOffer = false },
+            title = { Text("✦ Improve prompt") },
+            text = {
+                Text(
+                    "Qwen-Image has its own prompt enhancer, ${shop?.nameOf(rec?.id ?: "") ?: "PE"}" +
+                        (rec?.id?.let { shop?.sizeOf(it) }?.let { " ($it)" } ?: "") +
+                        ": it writes ${if (edit) "edit instructions" else "prompts"} the way Qwen-Image understands them best.",
+                )
+            },
+            confirmButton = { TextButton(enabled = rec != null, onClick = { peOffer = false; peAsk = true }) { Text("⤓ Download it") } },
+            dismissButton = { TextButton(onClick = { peOffer = false; improve() }) { Text("Use the chat model now") } },
+        )
+    }
+    if (peAsk) Recs.first(peTask)?.let { r -> DownloadAsk(listOf(r.id), "👍 " + r.why) { peAsk = false } }
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (models.any { it.isChat }) {
             OutlinedButton(
                 enabled = prompt.text.isNotBlank() && helper == null,
-                onClick = {
-                    val old = prompt.text
-                    st.improvePrompt(old, edit, models) { prompt = TextFieldValue(it, TextRange(it.length)); before = old }
-                },
+                onClick = { if (qwenImage && pe == null && showRecs) peOffer = true else improve() },
             ) { Text(if (helper?.startsWith("Improving") == true) helper!! else "✦ Improve prompt") }
         }
         before?.let { old ->
@@ -280,6 +309,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
             TextButton(onClick = { prompt = TextFieldValue(old, TextRange(old.length)); before = null }) { Text("Undo") }
         }
     }
+    if (qwenImage && pe != null) Hint("✦ uses ${pe.name}, made for Qwen-Image's ${if (edit) "edits" else "prompts"}.")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (edit) {
             for (c in EDIT_CHIPS) AssistChip(

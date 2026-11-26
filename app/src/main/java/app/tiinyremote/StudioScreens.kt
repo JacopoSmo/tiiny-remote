@@ -157,12 +157,31 @@ internal fun toolTitle(id: String) = TOOLS.firstOrNull { it.id == id }?.title ?:
  * ● for loaded models, the chosen one highlighted; it scrolls and stays on screen.
  */
 @Composable
-private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String, onDismiss: () -> Unit, onPick: (ModelInfo) -> Unit) {
+private fun ModelMenu(
+    open: Boolean, choices: List<ModelInfo>, selected: String, onDismiss: () -> Unit,
+    recs: List<Rec> = emptyList(), onWhy: () -> Unit = {}, onDownload: (Rec) -> Unit = {}, onPick: (ModelInfo) -> Unit,
+) {
+    val shop = LocalModelShop.current
     ScaledDropdownMenu(
         expanded = open,
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(min = 220.dp, max = 330.dp).heightIn(max = 460.dp),
     ) {
+        // Recommended but not on the Tiiny: offered first, one tap to download (asked once, with the size).
+        val have = choices.map { it.id }.toSet()
+        for (r in recs.filter { it.id !in have && shop?.storeModel(it.id) != null }.distinctBy { it.id }) {
+            val loading = shop?.downloading?.contains(r.id) == true
+            DropdownMenuItem(
+                text = {
+                    Column(Modifier.padding(vertical = 4.dp)) {
+                        Text("👍 " + (shop?.nameOf(r.id) ?: r.id) + if (loading) "  …" else "  ⤓", style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(r.why + (shop?.sizeOf(r.id)?.let { " · $it" } ?: ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                },
+                enabled = !loading,
+                onClick = { onDownload(r) },
+            )
+        }
         for (m in choices) {
             val chosen = m.id == selected
             DropdownMenuItem(
@@ -178,6 +197,9 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
+                        }
+                        recs.firstOrNull { it.id == m.id }?.let { r ->
+                            Text("👍 " + r.why, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         }
                         // "Translates" is on every chat model: no news in a chat's model list.
                         val labels = m.abilities.filter { it != "Translates" } + if (m.isMoE) listOf("MoE") else emptyList()
@@ -195,6 +217,10 @@ private fun ModelMenu(open: Boolean, choices: List<ModelInfo>, selected: String,
                 onClick = { onPick(m) },
             )
         }
+        if (recs.isNotEmpty() || shop?.showRecs == true) DropdownMenuItem(
+            text = { Text("ⓘ Why these? Recommended models", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) },
+            onClick = onWhy,
+        )
     }
 }
 
@@ -208,6 +234,19 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
             else "The Tiiny isn't online: see the Models tab.",
             color = MaterialTheme.colorScheme.error,
         )
+        // The recommended one, to download from right here.
+        val shop0 = LocalModelShop.current
+        val rec0 = if (shop0?.showRecs == true) Recs.forTasks(Recs.tasksFor(tool)).firstOrNull() else null
+        var ask0 by remember { mutableStateOf(false) }
+        if (rec0 != null && s.device == DeviceState.ONLINE) {
+            LaunchedEffect(Unit) { if (shop0.store == null) shop0.loadStore() }
+            val loading = rec0.id in shop0.downloading
+            OutlinedButton(enabled = !loading, onClick = { ask0 = true }) {
+                Text("👍 " + shop0.nameOf(rec0.id) + (if (loading) " · downloading…" else "  ⤓"), maxLines = 1)
+            }
+            Hint(rec0.why + (shop0.sizeOf(rec0.id)?.let { " · $it" } ?: ""))
+            if (ask0) DownloadAsk(listOf(rec0.id), "👍 " + rec0.why) { ask0 = false }
+        }
         return null
     }
     // Keyed by pickVersion too: a choice made elsewhere ("use this chat's model") shows here at once.
@@ -215,6 +254,15 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
     var picked by remember(tool, pickVersion) { mutableStateOf(st.pick(tool)) }
     val model = choices.firstOrNull { it.id == picked } ?: choices.firstOrNull { it.running } ?: choices.first()
     var open by remember { mutableStateOf(false) }
+    // 👍 Recommended models for this tool (Settings → Display → Recommended models), the missing ones offered.
+    val shop = LocalModelShop.current
+    val recSet by Recs.set.collectAsState()
+    val recs = remember(tool, recSet, shop?.showRecs) { if (shop?.showRecs == true) Recs.forTasks(Recs.tasksFor(tool)) else emptyList() }
+    var why by remember { mutableStateOf(false) }
+    var ask by remember { mutableStateOf<Rec?>(null) }
+    LaunchedEffect(open) { if (open && recs.isNotEmpty() && shop?.store == null) shop?.loadStore() }
+    if (why) RecsDialog(st, s.models, Recs.tasksFor(tool)) { why = false }
+    ask?.let { r -> DownloadAsk(listOf(r.id), "👍 " + r.why) { ask = null } }
     if (LocalUi.current.compact) {
         // One line: the model (tap to switch; ● = loaded) and Load.
         val working = model.id in s.working || model.status == "loading"
@@ -232,7 +280,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                         color = if (model.running) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                ModelMenu(open, choices, model.id, { open = false }) { m ->
+                ModelMenu(open, choices, model.id, { open = false }, recs, { open = false; why = true }, { open = false; ask = it }) { m ->
                     picked = m.id
                     st.setPick(tool, m.id)
                     open = false
@@ -256,7 +304,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
                 OutlinedButton(onClick = { open = true }, modifier = Modifier.fillMaxWidth()) {
                     Text(model.name, maxLines = 1)
                 }
-                ModelMenu(open, choices, model.id, { open = false }) { m ->
+                ModelMenu(open, choices, model.id, { open = false }, recs, { open = false; why = true }, { open = false; ask = it }) { m ->
                     picked = m.id
                     st.setPick(tool, m.id)
                     open = false
