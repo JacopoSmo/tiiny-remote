@@ -492,7 +492,9 @@ internal fun LoopTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
     TagChips(BPMS.map { "$it" }, { it == "$bpm" }) { bpm = it.toInt(); custom = null }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column {
-            LabelRow("Bars")
+            // A plain label: LabelRow's full-width row here took the whole line, squeezed Key into a sliver (its text
+            // broken letter by letter, invisible) and stretched the row into a big empty gap.
+            Text("Bars", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (b in listOf(4, 8)) FilterChip(selected = bars == b, onClick = { bars = b; custom = null }, label = { Text("$b") })
             }
