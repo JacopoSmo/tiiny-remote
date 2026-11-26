@@ -50,7 +50,7 @@ import kotlin.random.Random
 private class QuickEdit(val key: String, val label: String, val idPart: String, val prompt: String, val needs: String)
 
 private val QUICK_EDITS = listOf( // alphabetical, as shown
-    QuickEdit("extend", "Extend the picture", "Outpaint", "Fill the green spaces according to the image", "pad"),
+    QuickEdit("extend", "Extend the image", "Outpaint", "Fill the green spaces according to the image", "pad"),
     QuickEdit("remove", "Remove an object", "Object-Remove", "Remove the highlighted object from the scene", "mark"),
     QuickEdit("background", "Remove the background", "Background-Remove", "Remove the background from the image", ""),
     QuickEdit("zoom", "Zoom into a part", "Zoom", "Zoom into the red highlighted area", "mark"),
@@ -144,7 +144,7 @@ private fun MarkDialog(src: Bitmap, title: String, onClose: () -> Unit, onDone: 
     FullScreenDialog(onClose) {
         Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge)
-            Text("Cover it generously; the red goes to the model with the picture.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Cover it generously; the red goes to the model with the image.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val scale = minOf(constraints.maxWidth.toFloat() / src.width, constraints.maxHeight.toFloat() / src.height)
                 val wDp = with(androidx.compose.ui.platform.LocalDensity.current) { (src.width * scale).toDp() }
@@ -197,7 +197,7 @@ private fun ExtendDialog(onClose: () -> Unit, onDone: (String, Float) -> Unit) {
     var extra by remember { mutableStateOf(0.25f) }
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Extend the picture") },
+        title = { Text("Extend the image") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -208,7 +208,7 @@ private fun ExtendDialog(onClose: () -> Unit, onDone: (String, Float) -> Unit) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (e in listOf(0.25f, 0.5f, 1f)) FilterChip(selected = extra == e, onClick = { extra = e }, label = { Text("+${(e * 100).toInt()}%") })
                 }
-                Text("The new parts are painted to match the picture.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("The new parts are painted to match the image.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = { TextButton(onClick = { onDone(sides, extra) }) { Text("Extend") } },

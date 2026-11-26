@@ -30,7 +30,7 @@ object Recs {
         RecTask("edit", "Edit images", "changing a photo with words"),
         RecTask("pe_t2i", "Prompts for Qwen-Image", "rewriting image prompts for Qwen-Image (prompt enhancer)"),
         RecTask("pe_i2i", "Edit prompts for Qwen-Image", "rewriting edit instructions for Qwen-Image (prompt enhancer)"),
-        RecTask("q_extend", "Extend a picture", "outpainting over green borders"),
+        RecTask("q_extend", "Extend the image", "outpainting over green borders"),
         RecTask("q_remove", "Remove an object", "removing a red-marked object"),
         RecTask("q_background", "Remove the background", "cutting out the subject"),
         RecTask("q_zoom", "Zoom into a part", "a close-up of a red-marked area"),

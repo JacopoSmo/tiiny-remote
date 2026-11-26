@@ -1418,7 +1418,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     Tools.image(c, store, model, args.optString("prompt"), "", size, null, null, emptyList(), p)
                 }
-                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImage(id) ?: throw MediaException("There's no picture in this chat to edit yet.")), p)
+                "edit_image" -> Tools.image(c, store, model, args.optString("instruction"), "", "", null, null, listOf(lastImage(id) ?: throw MediaException("There's no image in this chat to edit yet.")), p)
                 "speak" -> {
                     val caps = Tools.voiceCaps(c, model)
                     val savedSpeaker = prefs.getString("voice_speaker", null)

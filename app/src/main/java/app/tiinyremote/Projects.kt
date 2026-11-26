@@ -195,14 +195,16 @@ class Projects(filesDir: File) {
         val toks = all.map { t -> word.findAll(t.second.lowercase()).map { it.value }.toList() }
         val df = q.associateWith { w -> toks.count { w in it }.coerceAtLeast(1) }
         val avg = toks.map { it.size }.average().coerceAtLeast(1.0)
-        return all.indices.sortedByDescending { i ->
+        val idf = df.mapValues { (_, n) -> Math.log(1 + (all.size - n + 0.5) / (n + 0.5)) }
+        // Each piece scored once (a sort would score it at every comparison).
+        val score = DoubleArray(all.size) { i ->
             val tf = toks[i].groupingBy { it }.eachCount()
             q.sumOf { w ->
                 val f = (tf[w] ?: 0).toDouble()
-                val idf = Math.log(1 + (all.size - df[w]!! + 0.5) / (df[w]!! + 0.5))
-                idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * toks[i].size / avg))
+                idf[w]!! * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * toks[i].size / avg))
             }
         }
+        return all.indices.sortedByDescending { score[it] }
     }
 
     /** The pieces of [pid]'s files that best match [query]; null when the project has no files. */
@@ -225,7 +227,8 @@ class Projects(filesDir: File) {
             val vecs = docs.flatMapIndexed { di, d -> vectors(c, pid, d.id, emb.id, perDoc[di], p, d.name) }
             // Qwen3's embedding models find answers better with the task said before the question.
             val qv = embed(c, emb.id, listOf("Instruct: Given a question, find the passages that answer it\nQuery: $query")).first()
-            order = all.indices.sortedByDescending { cos(qv, vecs[it]) }
+            val score = DoubleArray(all.size) { cos(qv, vecs[it]) }
+            order = all.indices.sortedByDescending { score[it] }
             how = "by meaning (${emb.name})"
         } catch (e: Exception) {
             ApiLog.add("Project search by meaning failed (${e.message}); searching by words", "Chat")

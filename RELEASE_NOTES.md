@@ -1,5 +1,22 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.6.0 (NAS agent 1.7.0, unchanged)
+Everything from the 4.5.1–4.5.13 test builds, plus another review (programmer, white-hat, attacker), fonts, pictograms and wording included, and a pass for leaner code.
+
+**Fast helper**
+- **▶ beside the helper menu** (Settings) loads it, ■ unloads it.
+- **⚡ Helper in the chat's options:** on, the helper is used (and loaded if it isn't); off, it isn't used even when loaded. ⚡ shows among the signs beside the model when it's on.
+- **Speed tests of several pairs:** Test models picks up to 3 helpers and up to 6 main models; Speed tests loads and tests every pair in turn (Test runs times each), in the background, and loads your models back at the end. ■ stops it. Each pair goes to 📊 Statistics. Always ready loads nothing during a test, so the numbers stay clean.
+
+**Recommended models**
+- **"👍 Recommended · ⓘ why these"** is now the first line of every model menu.
+- **✦ Update with the Tiiny's AI** no longer breaks off after minutes of thinking: the answer is streamed, asked once more if the connection drops, and keeps going in the background. The log notes when it starts.
+- Helpers ranked by: fits beside the main model, then speed (no thinking first); Qwen3-4B-Instruct first.
+- The table shows each model's NPU share once, and its Close bar is slimmer.
+
+**Faster**
+- A project's search scores each piece once instead of at every comparison: noticeably quicker with many files.
+
 ## What's new in 4.5.0 (with NAS agent 1.7.0)
 Everything from the 4.4.1–4.4.12 test builds, plus another review (programmer, white-hat, attacker) of all of it, fonts and pictograms included.
 
