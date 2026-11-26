@@ -174,7 +174,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun keepReady(models: List<ModelInfo>) {
         val st = settings
-        if (!st.keepAsr && !st.keepOcr && !st.keepEmbed && !st.keepRerank) return
+        if (!st.keepAsr && !st.keepOcr && !st.keepEmbed && !st.keepRerank && !st.keepTts) return
         val now = System.currentTimeMillis()
         if (now - readyTried < 60_000 || NpuGate.busy || models.any { it.status == "loading" }) return
         val free = 100 - models.filter { it.status == "running" }.sumOf { it.npuUsage ?: 0.0 }
@@ -183,6 +183,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (st.keepOcr) "OCR" to { m: ModelInfo -> m.isOcr } else null,
             if (st.keepEmbed) "projects' search" to { m: ModelInfo -> m.isEmbedder } else null,
             if (st.keepRerank) "projects' search order" to { m: ModelInfo -> m.isReranker } else null,
+            if (st.keepTts) "reading aloud" to { m: ModelInfo -> m.isSpeech } else null,
         )
         for ((what, kind) in wanted) {
             if (models.any { it.status == "running" && kind(it) }) continue
@@ -329,15 +330,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun unload(model: ModelInfo) {
         // Unloading an "Always ready" model yourself means you don't want it kept: that setting goes off.
         val s0 = settings
-        if (s0.keepAsr && model.isAsr || s0.keepOcr && model.isOcr || s0.keepEmbed && model.isEmbedder || s0.keepRerank && model.isReranker) {
+        if (s0.keepAsr && model.isAsr || s0.keepOcr && model.isOcr || s0.keepEmbed && model.isEmbedder || s0.keepRerank && model.isReranker || s0.keepTts && model.isSpeech) {
             setDisplay(s0.copy(
                 keepAsr = s0.keepAsr && !model.isAsr, keepOcr = s0.keepOcr && !model.isOcr,
                 keepEmbed = s0.keepEmbed && !model.isEmbedder, keepRerank = s0.keepRerank && !model.isReranker,
+                keepTts = s0.keepTts && !model.isSpeech,
             ))
             val what = when {
                 model.isAsr -> "speech-to-text"
                 model.isOcr -> "OCR"
                 model.isEmbedder -> "the embedding model"
+                model.isSpeech -> "reading aloud"
                 else -> "the reranker"
             }
             toast("Always ready: $what switched off")

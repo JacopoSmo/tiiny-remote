@@ -539,10 +539,45 @@ object Tools {
         return ResultEntry(id, "speech", "Voice: ${text.take(60)}", listOf(file), text, model, System.currentTimeMillis())
     }
 
+    /** A model that writes who said what ([S01], [S02] …), like MOSS-Transcribe-Diarize. */
+    fun diarizes(model: String) = model.contains("Diarize", true)
+
+    /**
+     * A diarized transcript as lines: "Speaker 1 (0:12): …", a new line at each change of speaker. From the answer's
+     * segments when it has them (verbose_json), else from the model's own "[0.11] [S01] text [1.03]" marks.
+     */
+    fun speakerLines(o: JSONObject, text: String): String {
+        fun clock(s: Double) = "%d:%02d".format(java.util.Locale.ROOT, (s / 60).toInt(), (s % 60).toInt())
+        val turns = ArrayList<Triple<String, Double, StringBuilder>>()
+        fun add(spk: String, at: Double, t: String) {
+            if (t.isBlank()) return
+            val last = turns.lastOrNull()
+            if (last != null && last.first == spk) last.third.append(' ').append(t.trim()) else turns.add(Triple(spk, at, StringBuilder(t.trim())))
+        }
+        val segs = o.optJSONArray("segments")
+        if (segs != null && (0 until segs.length()).any { segs.optJSONObject(it)?.has("speaker") == true }) {
+            for (i in 0 until segs.length()) {
+                val g = segs.optJSONObject(i) ?: continue
+                add(g.optString("speaker").ifBlank { "?" }, g.optDouble("start", 0.0), g.optString("text"))
+            }
+        } else {
+            val mark = Regex("""(?:\[(\d+(?:\.\d+)?)\]\s*)?\[S(\d+)\]\s*([^\[]*)""")
+            for (m in mark.findAll(text)) add(m.groupValues[2], m.groupValues[1].toDoubleOrNull() ?: 0.0, m.groupValues[3])
+        }
+        if (turns.isEmpty()) return text.trim()
+        // S01 → Speaker 1, in the order they first speak.
+        val names = LinkedHashMap<String, Int>()
+        return turns.joinToString("\n\n") { (spk, at, t) ->
+            val n = names.getOrPut(spk) { names.size + 1 }
+            "Speaker $n (${clock(at)}): $t"
+        }
+    }
+
     fun transcribe(
         c: DeviceClient, store: ResultStore, model: String, audio: ByteArray, mime: String,
         filename: String, language: String, p: Progress,
     ): ResultEntry {
+        if (diarizes(model)) return transcribeSpeakers(c, store, model, audio, mime, filename, language, p)
         val fields = mutableListOf("model" to model, "response_format" to "json")
         if (language.isNotBlank()) fields.add("language" to language)
         // The Tiiny's speech-to-text fails on long audio (past ~90 s): a long 16 kHz WAV goes in ~60 s parts cut at
@@ -559,6 +594,86 @@ object Tools {
         }
         val id = store.newId()
         return ResultEntry(id, "transcript", "Transcript: ${filename}", emptyList(), texts.filter { it.isNotBlank() }.joinToString(" "), model, System.currentTimeMillis())
+    }
+
+    /**
+     * Who said what: the whole recording in one piece (cut into parts, the speakers would be numbered anew in each),
+     * with segments asked for (verbose_json) and turned into "Speaker 1 (0:12): …" lines.
+     */
+    private fun transcribeSpeakers(
+        c: DeviceClient, store: ResultStore, model: String, audio: ByteArray, mime: String,
+        filename: String, language: String, p: Progress,
+    ): ResultEntry {
+        check(p)
+        p.update("Transcribing, with who said what", null)
+        val fields = mutableListOf("model" to model, "response_format" to "verbose_json")
+        if (language.isNotBlank()) fields.add("language" to language)
+        val body = if (mime.contains("wav")) Wav.forAsr(audio) else audio
+        val r = c.multipart("/v1/audio/transcriptions", fields, listOf(DeviceClient.Part("file", filename, mime, body)), 3600)
+        val o = r.json()
+        val text = o.opt("text")?.toString()?.trim()
+        if (!r.ok || text == null) throw MediaException(r.error())
+        val out = speakerLines(o, text)
+        ApiLog.add("Transcript with speakers: ${out.lines().count { it.startsWith("Speaker ") }} turns", "Create")
+        val id = store.newId()
+        return ResultEntry(id, "transcript", "Who said what: $filename", emptyList(), out, model, System.currentTimeMillis())
+    }
+
+    /**
+     * A dialogue read by several voices (VibeVoice): "Name: text" lines become "Speaker 1: …" in the order the names
+     * first appear (up to 4), sent whole lines at a time so a turn is never split.
+     */
+    fun dialogue(c: DeviceClient, store: ResultStore, model: String, script: String, language: String, p: Progress): ResultEntry {
+        val names = LinkedHashMap<String, Int>()
+        val lines = script.lines().map { it.trim() }.filter { it.isNotEmpty() }.map { line ->
+            val m = Regex("^([^:]{1,40}):\\s*(.+)$").find(line)
+            val who = m?.groupValues?.get(1)?.trim() ?: names.keys.lastOrNull() ?: "A"
+            val n = names.getOrPut(who.lowercase()) { names.size + 1 }
+            if (n > 4) throw MediaException("Up to 4 people can speak in one dialogue ($who is the fifth).")
+            "Speaker $n: ${m?.groupValues?.get(2)?.trim() ?: line}"
+        }
+        if (lines.isEmpty()) throw MediaException("Write the dialogue: one line per turn, like “Anna: Hello!”.")
+        val parts = ArrayList<String>()
+        val cur = StringBuilder()
+        for (l in lines) {
+            if (cur.isNotEmpty() && cur.length + l.length > 2000) { parts.add(cur.toString()); cur.clear() }
+            if (cur.isNotEmpty()) cur.append('\n')
+            cur.append(l)
+        }
+        if (cur.isNotEmpty()) parts.add(cur.toString())
+        val wavs = ArrayList<ByteArray>()
+        for ((i, part) in parts.withIndex()) {
+            check(p)
+            p.update(if (parts.size == 1) "Speaking the dialogue" else "Speaking part ${i + 1} of ${parts.size}", if (parts.size > 1) i * 100 / parts.size else null)
+            val body = JSONObject().put("model", model).put("response_format", "wav").put("input", part)
+            if (language.isNotBlank()) body.put("language", language)
+            val r = c.request("POST", "/v1/audio/speech", body, 3600)
+            if (!r.ok || r.bytes.size < 12 || String(r.bytes, 0, 4) != "RIFF") throw MediaException(r.error())
+            wavs.add(r.bytes)
+        }
+        ApiLog.add("Dialogue: ${names.size} voices, ${lines.size} turns", "Create")
+        val id = store.newId()
+        val file = store.saveFile(id, "dialogue.wav", Wav.join(wavs))
+        return ResultEntry(id, "speech", "Dialogue: ${names.keys.joinToString(", ")}", listOf(file), script, model, System.currentTimeMillis())
+    }
+
+    /**
+     * A recording said again in another voice (CosyVoice's voice conversion): the words and timing stay, the voice is
+     * the saved one's. The Tiiny's way to ask for it isn't documented: the answer is logged whole when it refuses.
+     */
+    fun convertVoice(c: DeviceClient, store: ResultStore, model: String, source: ByteArray, target: ByteArray, p: Progress): ResultEntry {
+        check(p)
+        p.update("Changing the voice", null)
+        val body = JSONObject().put("model", model).put("response_format", "wav").put("task", "voice_conversion")
+            .put("input", "").put("source_audio", b64(source)).put("ref_audio", b64(target))
+        val r = c.request("POST", "/v1/audio/speech", body, 3600)
+        if (!r.ok || r.bytes.size < 12 || String(r.bytes, 0, 4) != "RIFF") {
+            ApiLog.add("Voice change: the Tiiny answered ${r.error()}", "Create", isProblem = true)
+            throw MediaException("The Tiiny didn't change the voice: ${r.error()}")
+        }
+        val id = store.newId()
+        val file = store.saveFile(id, "voice-changed.wav", r.bytes)
+        return ResultEntry(id, "speech", "Voice changed", listOf(file), "", model, System.currentTimeMillis())
     }
 
     // ---------------- music ----------------

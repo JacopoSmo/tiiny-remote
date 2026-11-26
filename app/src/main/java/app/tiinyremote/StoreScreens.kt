@@ -114,6 +114,36 @@ private fun storeAbilities(m: StoreModel): String = buildList {
     addAll(m.supported.filter { it != "Tool Use" && it != "Reasoning" })
 }.distinct().joinToString(" · ")
 
+/** Everyday words for the Store's types, so "tts", "voice" or "ocr" find them. */
+private val TYPE_WORDS = mapOf(
+    "Text-to-Speech" to "tts speech voice read aloud",
+    "ASR" to "asr speech-to-text transcribe dictate stt",
+    "Image-to-Text" to "ocr read text",
+    "Text-to-Image" to "image picture photo",
+    "Image-Text-to-Text" to "chat vision sees images llm",
+    "Text Generation" to "chat text llm",
+    "Text-to-Video" to "video",
+    "Image-to-3D" to "3d mesh",
+    "Music Generation" to "music song",
+    "Text Embedding" to "embedding search",
+    "Text Reranking" to "rerank reranker search",
+    "Text Classification" to "classify classification",
+)
+
+/**
+ * Store search by what a model is, not by what its long description happens to mention (which showed unrelated
+ * models): every word typed must be in its name, id, type (or an everyday word for it), size or abilities. Name
+ * matches come first.
+ */
+private fun storeSearch(query: String, all: List<StoreModel>): List<StoreModel> {
+    val words = query.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+    if (words.isEmpty()) return all
+    fun hay(m: StoreModel) = listOf(m.name, m.id, m.type, TYPE_WORDS[m.type].orEmpty(), m.params, m.supported.joinToString(" "))
+        .joinToString(" ").lowercase()
+    return all.filter { m -> hay(m).let { h -> words.all { it in h } } }
+        .sortedBy { m -> if (words.all { it in (m.name + " " + m.id).lowercase() }) 0 else 1 }
+}
+
 /** The Model Store: search, every model with its size, NPU share and an ⓘ, and Download. */
 /** Models' 🧭 (top right): Chat opens with this, you add what you want to do. */
 const val HELP_CHOOSE_DRAFT = "Which model, on my Tiiny or in the Store, fits best for this: "
@@ -156,9 +186,7 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Se
         val list = (s.store ?: emptyList()).filter { m ->
             types.isEmpty() || m.type in types ||
                 CODING in types && (m.type == "Text Generation" || m.type == "Image-Text-to-Text") && codesByName(m.id)
-        }.filter { m ->
-            query.isBlank() || listOf(m.name, m.id, m.type, m.desc).any { it.contains(query.trim(), true) }
-        }
+        }.let { all -> storeSearch(query, all) }
         if (s.store != null) {
             Text(
                 "${list.size} of ${s.store.size} models · ${s.store.count { it.id in installed }} on your Tiiny",

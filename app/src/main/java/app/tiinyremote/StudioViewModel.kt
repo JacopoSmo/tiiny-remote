@@ -968,11 +968,12 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }, onDone)
 
     /**
-     * The prompt (or edit instruction) rewritten. A loaded Qwen-Image prompt enhancer is used first (-PE-T2I for
-     * prompts, -PE-I2I for edits; made for exactly this), else the helper or a chat model.
+     * The prompt (or edit instruction) rewritten. A Qwen-Image prompt enhancer on the Tiiny is used first (-PE-T2I for
+     * prompts, -PE-I2I for edits; made for exactly this), loaded for it if needed; else the helper or a chat model.
      */
     fun improvePrompt(text: String, edit: Boolean, models: List<ModelInfo>, onDone: (String) -> Unit) {
-        val pe = models.firstOrNull { it.running && it.id.contains(if (edit) "-PE-I2I" else "-PE-T2I", true) }
+        val kind = if (edit) "-PE-I2I" else "-PE-T2I"
+        val pe = models.firstOrNull { it.running && it.id.contains(kind, true) } ?: models.firstOrNull { it.id.contains(kind, true) }
         helperRun(if (edit) "Improving the instruction…" else "Improving the prompt…", "chat", models, { if (pe != null) it.id == pe.id else it.isChat }, { c, m ->
             unwrapEnhancer(Tools.chatOnce(c, m, if (edit) Tools.EDIT_SYSTEM else Tools.PROMPT_SYSTEM, text.trim(), if (edit) 160 else 200))
         }, onDone)

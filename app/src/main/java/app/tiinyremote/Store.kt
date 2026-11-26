@@ -64,6 +64,8 @@ data class AppSettings(
     /** Always ready: the embedding model and reranker that search projects' files. */
     val keepEmbed: Boolean = false,
     val keepRerank: Boolean = false,
+    /** Always ready: a voice model for reading aloud (the smallest: Kokoro or Supertonic take almost nothing). */
+    val keepTts: Boolean = false,
     /** The screen the app opens on: "last" (where you left it) or a section's number. */
     val startScreen: String = "last",
     /** The sidebar's top part, in your order (section numbers, comma-separated); Activity, Models and Settings stay below. */
@@ -136,6 +138,7 @@ class Store(context: Context) {
         keepOcr = prefs.getBoolean("keep_ocr", false),
         keepEmbed = prefs.getBoolean("keep_embed", false),
         keepRerank = prefs.getBoolean("keep_rerank", false),
+        keepTts = prefs.getBoolean("keep_tts", false),
         startScreen = prefs.getString("start_screen", "last") ?: "last",
         navOrder = prefs.getString("nav_order", "") ?: "",
     )
@@ -182,6 +185,7 @@ class Store(context: Context) {
             .putBoolean("keep_ocr", s.keepOcr)
             .putBoolean("keep_embed", s.keepEmbed)
             .putBoolean("keep_rerank", s.keepRerank)
+            .putBoolean("keep_tts", s.keepTts)
             .putString("start_screen", s.startScreen)
             .putString("nav_order", s.navOrder)
             .apply()

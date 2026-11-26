@@ -217,6 +217,55 @@ internal fun SpeechTool(model: ModelInfo?, notReady: String?, st: StudioViewMode
     var clipName by rememberSaveable { mutableStateOf("") }
     var confirmDelete by remember(cur) { mutableStateOf(false) }
 
+    // Models that speak dialogues (VibeVoice) or change a recording's voice (CosyVoice) get those as modes too.
+    val multi = model?.supported?.any { it.contains("Multi-Speaker", true) } == true
+    val converts = model?.supported?.any { it.contains("Voice Conversion", true) } == true
+    var mode by rememberSaveable(model?.id) { mutableStateOf("say") }
+    if (multi || converts) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (converts) FilterChip(selected = mode == "convert", onClick = { mode = "convert" }, label = { Text("Change a voice") })
+        if (multi) FilterChip(selected = mode == "dialogue", onClick = { mode = "dialogue" }, label = { Text("Dialogue") })
+        FilterChip(selected = mode == "say", onClick = { mode = "say" }, label = { Text("Read a text") })
+    }
+    if (mode == "dialogue" && multi) {
+        var script by rememberSaveable { mutableStateOf("") }
+        var lang by rememberSaveable { mutableStateOf("") }
+        LabelRow("Dialogue", "up to 4 people")
+        Field(script, { script = it }, "One line per turn", lines = 8, placeholder = "Anna: Did you see the lake this morning?\nBen: Flat as glass. Perfect for the board.\nAnna: Then let's go before the wind comes.")
+        Hint("Each person gets their own voice, kept through the whole dialogue.")
+        Dropdown("Language", VOICE_LANGS, lang) { lang = it }
+        val why = notReady ?: if (script.isBlank()) "Write the dialogue." else null
+        RunPanel("speech", "Speak the dialogue", why == null, why, st) {
+            val id = model!!.id
+            val t = script
+            val l = lang
+            st.run("speech") { cl, store, p, _ -> Tools.dialogue(cl, store, id, t, l, p) }
+        }
+        return
+    }
+    if (mode == "convert" && converts) {
+        var source by remember { mutableStateOf<PickedAudio?>(null) }
+        var target by rememberSaveable { mutableStateOf("") }
+        LabelRow("Recording", "what's said stays; the voice changes")
+        AudioInput(source, arrayOf("audio/*", "video/*"), "Upload…", st) { source = it }
+        LabelRow("New voice", "one of your saved voices")
+        if (voices.isEmpty()) Hint("Save a voice first (Read a text → + New voice).", warn = true)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (v in voices) FilterChip(selected = target == v.id, onClick = { target = v.id }, label = { Text("🎙 ${v.name}") })
+        }
+        val why = notReady ?: when {
+            source == null -> "Add the recording."
+            voices.none { it.id == target } -> "Pick the new voice."
+            else -> null
+        }
+        RunPanel("speech", "Change the voice", why == null, why, st) {
+            val id = model!!.id
+            val src = source!!.bytes
+            val ref = st.voiceFile(target).readBytes()
+            st.run("speech") { cl, store, p, _ -> Tools.convertVoice(cl, store, id, src, ref, p) }
+        }
+        return
+    }
+
     LabelRow(
         "Voice",
         when {
@@ -326,6 +375,7 @@ internal fun TranscribeTool(model: ModelInfo?, notReady: String?, st: StudioView
     LabelRow("Audio", "speech, singing, songs")
     AudioInput(audio, arrayOf("audio/*", "video/*"), "Upload…", st) { audio = it }
     Hint("WAV · MP3 · M4A · WebM · video too")
+    if (model != null && Tools.diarizes(model.id)) Hint("This model writes who said what: Speaker 1, Speaker 2 … with the time each turn starts.")
     Dropdown("Language", ASR_LANGS, language) { language = it; st.setSetting("asr.lang", it) }
     val why = notReady ?: if (audio == null) "Add audio to transcribe." else null
     val est = 2 + (audio?.seconds ?: 30.0) / 10

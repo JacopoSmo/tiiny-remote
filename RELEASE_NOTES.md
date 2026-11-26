@@ -1,6 +1,12 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.4.2 – 4.4.10
+## What's new in 4.4.2 – 4.4.11
+- **Quick edits** (Image → Edit): Extend the picture, Remove an object, Remove the background, Zoom into a part, one tap each with the FLUX.2-klein model made for it (paint in red what to remove or zoom into).
+- **Improve prompt** uses Qwen-Image's own prompt enhancer (PE-T2I, PE-I2I) when it's on the Tiiny, loaded for it if needed.
+- **Voice:** dialogues with up to 4 voices (VibeVoice-1.5B), and changing a recording's voice (CosyVoice).
+- **Transcribe:** who said what, with times (MOSS-Transcribe-Diarize).
+- **Always ready:** also a voice for reading aloud.
+- **Store search** finds by name, maker, type or ability, no longer by words buried in descriptions.
 - **The Store in the log:** when Models → Store loads, the log lists every model it offers (type, size, NPU share, context, abilities), once, and again only when the Store changes.
 - Deleting a project, or ✕ on one of its files, says plainly that only the project's copy goes, never your original file.
 - **Always ready** (Settings) also keeps the embedding model and the reranker loaded, so projects' search starts at once. The four in alphabetical order.

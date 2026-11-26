@@ -252,6 +252,7 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         ImagePickerRow(images, refs, if (refs > 1) "Choose image(s)" else "Choose an image") { images = it }
         RecentImages(st) { img -> images = (if (refs > 1) images + img else listOf(img)).take(refs) }
         if (refs > 1 && images.size > 1) Hint("Call them “image 1”, “image 2” … in the instruction.")
+        QuickEdits(st, models, images.firstOrNull())
     }
 
     LabelRow(if (edit) "Describe the change" else "Describe the image", "${prompt.text.length}")

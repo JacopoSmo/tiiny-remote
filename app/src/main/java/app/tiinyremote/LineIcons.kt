@@ -55,7 +55,7 @@ val LINE_COLOURS: Map<String, Color> by lazy {
         "✍" to brown, "🙂" to amber, "🎯" to red, "📶" to green, "📬" to blue, "📍" to red, "🎙" to slate, "🖌" to orange,
         "🎞" to slate, "🌐" to blue, "🌡" to red, "🎲" to red, "📰" to slate, "🎧" to purple, "📝" to brown, "➰" to teal,
         "🗑" to red, "🧹" to brown, "📜" to brown, "🎤" to slate, "🕘" to blue, "💾" to blue, "🌙" to amber, "🔍" to blue,
-        "👤" to slate, "🔊" to blue, "🎨" to pink, "✨" to amber, "🙋" to amber, "📦" to brown, "🗃" to brown, "📲" to green, "✋" to teal,
+        "👤" to slate, "🔊" to blue, "🎨" to pink, "✨" to amber, "🙋" to amber, "📦" to brown, "🗃" to brown, "📲" to green, "✋" to teal, "✂" to red,
     )
 }
 
@@ -171,6 +171,7 @@ val LINE_ICONS: Map<String, ImageVector> by lazy {
         "↔" to "M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4",
         "⤴" to "M5 19v-6a4 4 0 0 1 4-4h10M15 5l4 4-4 4",
         "▤" to "M3 5h18v14H3zM3 9h18M7 13h10M7 16h6",
+        "✂" to "M6 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM6 15.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8.2 7.2L20 18M8.2 16.8L20 6",
         "■" to "M6.5 6.5h11v11h-11z",
         "ⓘ" to "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.1",
     ).mapValues { (k, d) -> line(k, d) }
