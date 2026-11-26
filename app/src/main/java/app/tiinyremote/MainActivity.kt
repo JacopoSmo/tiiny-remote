@@ -68,7 +68,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         }
         setContent {
             val set = vm.state.collectAsState().value.settings
-            AppTheme(set.theme, set.style, set.designedFonts, set.lineIcons, set.lineColour) {
+            AppTheme(set.theme, set.style, if (!set.designedFonts) "system" else if (set.oneFace) "one" else "pair", set.lineIcons, set.lineColour) {
                 val locked by AppLock.locked.collectAsState()
                 if (locked) LockScreen { AppLock.ask(this) } else AppRoot(vm)
             }
@@ -77,7 +77,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 }
 
 @Composable
-fun AppTheme(theme: String = "auto", style: String = "wallpaper", designedFonts: Boolean = false, lineIcons: Boolean = false, lineColour: Boolean = false, content: @Composable () -> Unit) {
+fun AppTheme(theme: String = "auto", style: String = "wallpaper", faces: String = "system", lineIcons: Boolean = false, lineColour: Boolean = false, content: @Composable () -> Unit) {
     // Settings → Display → Mode: as the phone is set, or always dark / light.
     val dark = when (theme) {
         "dark" -> true
@@ -102,7 +102,7 @@ fun AppTheme(theme: String = "auto", style: String = "wallpaper", designedFonts:
             }
         }
     }
-    MaterialTheme(colorScheme = scheme, typography = Look.typography(style, designedFonts)) {
+    MaterialTheme(colorScheme = scheme, typography = Look.typography(style, faces)) {
         androidx.compose.runtime.CompositionLocalProvider(LocalLineIcons provides lineIcons, LocalLineColour provides lineColour, content = content)
     }
 }

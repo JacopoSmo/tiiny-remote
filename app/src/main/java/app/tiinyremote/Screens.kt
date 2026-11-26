@@ -371,12 +371,12 @@ fun AppRoot(vm: MainViewModel) {
                                 tab == 1 && toolId != null -> toolTitle(toolId!!)
                                 else -> sections.first { it.third == tab }.first
                             }
-                            // Compact: a little larger than titleMedium (16 → 19 sp) with its line height kept, so the slim 48 dp bar stays as it is.
+                            // The page title (the scale's first level); compact: the same size, a tighter line for the slim 48 dp bar.
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     t, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false),
-                                    style = if (compact) MaterialTheme.typography.titleMedium.copy(fontSize = 19.sp, lineHeight = 24.sp)
+                                    style = if (compact) MaterialTheme.typography.titleLarge.copy(lineHeight = 24.sp)
                                     else MaterialTheme.typography.titleLarge,
                                 )
                                 // ?: a walk through this page's basic functions.
@@ -1214,22 +1214,22 @@ private fun LogRow(e: LogEntry, chosen: Boolean, choosing: Boolean, onChoose: ()
         Box(Modifier.width(4.dp).fillMaxHeight().background(c))
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(e.time, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(e.time, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(6.dp))
                 Text(e.type, style = MaterialTheme.typography.labelSmall, color = c)
                 if (chosen) {
                     Spacer(Modifier.width(6.dp))
-                    Text("✓", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("✓", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
                 if (e.error) {
                     Spacer(Modifier.width(6.dp))
-                    Text("⚠", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                    Text("⚠", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                 }
             }
             Text(
                 e.text,
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 maxLines = if (open) Int.MAX_VALUE else 3,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1466,7 +1466,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, quietStatus = false, appLock = false, lockAfter = 0)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, appLock = false, lockAfter = 0)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1532,8 +1532,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         SettingDropdown("Status bar", listOf("standard" to "Standard (coloured)", "quiet" to "Quiet (one thin line)"), if (cur.quietStatus) "quiet" else "standard") {
             vm.setDisplay(cur.copy(quietStatus = it == "quiet"))
         }
-        SettingDropdown("Typefaces", listOf("system" to "The phone's font", "designed" to "Designed pair (Inter and the style's titles)"), if (cur.designedFonts) "designed" else "system") {
-            vm.setDisplay(cur.copy(designedFonts = it == "designed"))
+        SettingDropdown("Typefaces", Look.TYPEFACES, if (!cur.designedFonts) "system" else if (cur.oneFace) "one" else "pair") {
+            vm.setDisplay(cur.copy(designedFonts = it != "system", oneFace = it == "one"))
         }
         SettingDropdown("Size of everything", UI_SCALES, cur.uiScale) { vm.setDisplay(cur.copy(uiScale = it)) }
         SettingDropdown("Text size", TEXT_SCALES, cur.textScale) { vm.setDisplay(cur.copy(textScale = it)) }

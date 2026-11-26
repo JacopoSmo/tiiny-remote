@@ -11,6 +11,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /**
  * Settings → Display → Style: the app's colours from the phone's wallpaper (Android's own, the standard), or one of
@@ -79,27 +80,42 @@ object Look {
     private val manrope by lazy { family(R.font.manrope) }
     private val newsreader by lazy { family(R.font.newsreader) }
 
+    val TYPEFACES = listOf(
+        "system" to "Phone's font",
+        "pair" to "Designed pair",
+        "one" to "Inter everywhere",
+    )
+
     /**
-     * Settings → Display → Typefaces "Designed pair": Inter for reading everywhere, and titles in the style's own face
-     * (Newsreader for A, Inter Tight for B and the wallpaper colours, Manrope for C). "System" keeps the phone's font.
+     * One type scale everywhere, five levels: every text style maps onto one of them, whatever the typeface.
+     *  1 page titles 22 · 2 section headings 18 semibold · 3 card titles 16 semibold · 4 body (and buttons) 15 ·
+     *  5 notes, captions and small labels 12.
+     * Typefaces: the phone's font; the designed pair (Inter for text, titles and section headings in the style's own
+     * face: Newsreader for A, Inter Tight for B and the wallpaper colours, Manrope for C); or Inter everywhere.
      */
-    fun typography(style: String, designed: Boolean): Typography {
+    fun typography(style: String, faces: String): Typography {
         val base = Typography()
-        if (!designed) return base
-        val head = when (style) {
-            "a" -> newsreader
-            "c" -> manrope
-            else -> interTight
+        val text: FontFamily? = if (faces == "system") null else inter
+        val head: FontFamily? = when (faces) {
+            "pair" -> when (style) { "a" -> newsreader; "c" -> manrope; else -> interTight }
+            "one" -> inter
+            else -> null
         }
-        fun TextStyle.h() = copy(fontFamily = head)
-        fun TextStyle.b() = copy(fontFamily = inter)
+        fun lvl(t: TextStyle, size: Int, line: Int, weight: FontWeight?, family: FontFamily?) =
+            t.copy(fontSize = size.sp, lineHeight = line.sp, fontWeight = weight ?: t.fontWeight, fontFamily = family ?: t.fontFamily, letterSpacing = 0.sp)
+        val page = { t: TextStyle -> lvl(t, 22, 28, FontWeight.Medium, head) }
+        val section = { t: TextStyle -> lvl(t, 18, 24, FontWeight.SemiBold, head) }
+        val card = { t: TextStyle -> lvl(t, 16, 22, FontWeight.SemiBold, text) }
+        val body = { t: TextStyle -> lvl(t, 15, 21, null, text) }
+        val note = { t: TextStyle -> lvl(t, 12, 16, null, text) }
         return base.copy(
-            displayLarge = base.displayLarge.h(), displayMedium = base.displayMedium.h(), displaySmall = base.displaySmall.h(),
-            headlineLarge = base.headlineLarge.h(), headlineMedium = base.headlineMedium.h(), headlineSmall = base.headlineSmall.h(),
-            titleLarge = base.titleLarge.h(), titleMedium = base.titleMedium.h().copy(fontWeight = FontWeight.SemiBold),
-            titleSmall = base.titleSmall.b().copy(fontWeight = FontWeight.SemiBold),
-            bodyLarge = base.bodyLarge.b(), bodyMedium = base.bodyMedium.b(), bodySmall = base.bodySmall.b(),
-            labelLarge = base.labelLarge.b(), labelMedium = base.labelMedium.b(), labelSmall = base.labelSmall.b(),
+            displayLarge = page(base.displayLarge), displayMedium = page(base.displayMedium), displaySmall = page(base.displaySmall),
+            headlineLarge = page(base.headlineLarge), headlineMedium = page(base.headlineMedium), headlineSmall = page(base.headlineSmall),
+            titleLarge = page(base.titleLarge),
+            titleMedium = section(base.titleMedium),
+            titleSmall = card(base.titleSmall),
+            bodyLarge = body(base.bodyLarge), bodyMedium = body(base.bodyMedium), labelLarge = body(base.labelLarge).copy(fontWeight = FontWeight.Medium),
+            bodySmall = note(base.bodySmall), labelMedium = note(base.labelMedium), labelSmall = note(base.labelSmall),
         )
     }
 }

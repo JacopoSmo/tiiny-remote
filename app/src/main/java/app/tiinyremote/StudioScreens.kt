@@ -1172,7 +1172,7 @@ fun ResultCard(
             if (e.kind in TEXT_KINDS && e.text.isNotBlank()) {
                 SelectionContainer {
                     // A model's description or read text comes in Markdown (bold, lists, code): shown formatted.
-                    if (e.kind == "description" || e.kind == "ocr") MarkdownText(e.text) else Text(e.text, fontSize = 14.sp)
+                    if (e.kind == "description" || e.kind == "ocr") MarkdownText(e.text) else Text(e.text)
                 }
             }
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {

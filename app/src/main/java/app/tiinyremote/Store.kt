@@ -73,6 +73,8 @@ data class AppSettings(
     val lineColour: Boolean = false,
     /** Display → Typefaces: the designed pair (Inter and the style's title face) instead of the phone's font. */
     val designedFonts: Boolean = false,
+    /** With designed typefaces: Inter everywhere ("Designed, one face") instead of the pair. */
+    val oneFace: Boolean = false,
     /** Display → Status bar: the quiet single line instead of the coloured block. */
     val quietStatus: Boolean = false,
     /** Privacy: a fingerprint, face or the screen lock to open the app, after [lockAfter] seconds away (0: at once). */
@@ -112,6 +114,7 @@ class Store(context: Context) {
         lineIcons = prefs.getBoolean("lineIcons", false),
         lineColour = prefs.getBoolean("lineColour", false),
         designedFonts = prefs.getBoolean("designedFonts", false),
+        oneFace = prefs.getBoolean("oneFace", false),
         quietStatus = prefs.getBoolean("quietStatus", false),
         appLock = prefs.getBoolean("appLock", false),
         lockAfter = prefs.getInt("lockAfter", 60),
@@ -155,6 +158,7 @@ class Store(context: Context) {
             .putBoolean("lineIcons", s.lineIcons)
             .putBoolean("lineColour", s.lineColour)
             .putBoolean("designedFonts", s.designedFonts)
+            .putBoolean("oneFace", s.oneFace)
             .putBoolean("quietStatus", s.quietStatus)
             .putBoolean("appLock", s.appLock)
             .putInt("lockAfter", s.lockAfter)

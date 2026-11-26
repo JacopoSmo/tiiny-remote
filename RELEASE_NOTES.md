@@ -1,6 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.3.10 (test build, with NAS agent 1.7.0)
+## What's new in 4.3.10 – 4.3.11 (test builds, with NAS agent 1.7.0)
+- **One size scale everywhere**, five levels: page titles, section headings (Settings, Create), card titles, body text, notes and captions; headings a little larger than before.
+- **Typefaces:** Phone's font, Designed pair, or Inter everywhere.
 - **Model updates actually start:** the download route answers "already downloaded" for an installed model (tested on 4.3.9: nothing happened), so the likely update routes are tried in turn and the log names the one that worked. While it runs, the card says "Updating X%" with a bar, and ⟳ Update models shows the same.
 - **🗃 Copies on the Tiiny** in the same place in Chat, Create and the Gallery: just left of ⟳ (in Chat after ＋); the chat list no longer has its own link.
 - **Settings → Tiiny:** 🔎 sits left of the address, on the same line.
