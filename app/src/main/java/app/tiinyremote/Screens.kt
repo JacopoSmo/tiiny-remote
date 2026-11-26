@@ -1921,18 +1921,30 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Fast helper model", style = MaterialTheme.typography.titleMedium)
         val chatModels = s.models.filter { it.isChat }
+        // 👍 the recommended helpers (Settings → Display → Recommended models), a missing one offered below.
+        val helperRecs = if (s.settings.showRecs) Recs.forTasks(listOf("helper")) else emptyList()
         SettingDropdown(
             "Helper",
             // ● = loaded now, as in the chat's model menu; mixture-of-experts models carry their tag.
             listOf("" to "None (the chat model does everything)") + chatModels.map { m ->
                 // No-break spaces: the ● stays in front of its name, even when a long name wraps.
-                m.id to (if (m.running) "●\u00A0" else "") + m.name + if (m.isMoE) "\u00A0\u00A0" + tag("MoE") else ""
+                m.id to (if (m.running) "●\u00A0" else "") + m.name + (if (m.isMoE) "\u00A0\u00A0" + tag("MoE") else "") +
+                    (helperRecs.firstOrNull { it.id == m.id }?.let { "\u00A0\u00A0👍" } ?: "")
             },
             helper,
         ) {
             // Saved at once (no Save needed), like the display settings.
             helper = it
             vm.setDisplay(cur.copy(helperModel = it))
+        }
+        helperRecs.firstOrNull { r -> chatModels.none { it.id == r.id } && helperRecs.none { h -> chatModels.any { it.id == h.id } } }?.let { r ->
+            var ask by remember { mutableStateOf(false) }
+            val shop = LocalModelShop.current
+            LaunchedEffect(Unit) { if (shop?.store == null) shop?.loadStore() }
+            TextButton(onClick = { ask = true }, enabled = shop?.downloading?.contains(r.id) != true) {
+                Text("👍 " + (shop?.nameOf(r.id) ?: r.id) + " · " + r.why + (shop?.sizeOf(r.id)?.let { " · $it" } ?: "") + "  ⤓")
+            }
+            if (ask) DownloadAsk(listOf(r.id), "👍 " + r.why) { ask = false }
         }
         SignText(
             "A small chat model loaded beside your main one. It names chats, suggests follow-ups, condenses long chats and files, and runs Improve prompt, lyrics and tags. " +

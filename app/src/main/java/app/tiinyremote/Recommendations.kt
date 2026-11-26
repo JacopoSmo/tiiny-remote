@@ -25,6 +25,7 @@ object Recs {
     val TASKS = listOf(
         RecTask("chat", "Chat, careful", "general chat and reasoning where quality matters most; may be slower"),
         RecTask("chatfast", "Chat, fast · code", "quick everyday chat and writing code; speed matters"),
+        RecTask("helper", "Fast helper (Settings)", "a small, quick chat model loaded beside the main one: names chats, condenses pages and long chats, writes prompts; small"),
         RecTask("image", "Create images", "text-to-image quality, text in images"),
         RecTask("edit", "Edit images", "changing a photo with words"),
         RecTask("pe_t2i", "Prompts for Qwen-Image", "rewriting image prompts for Qwen-Image (prompt enhancer)"),
@@ -69,6 +70,8 @@ object Recs {
         listOf(
             Rec("chat", "Qwen/Qwen3.8-27B", "most capable (intelligence 52)"),
             Rec("chatfast", "Qwen/Qwen3.6-35B-A3B-Turbo", "about 3× faster, strong at code"),
+            Rec("helper", "Qwen/Qwen3.5-9B-Turbo", "newest small one, 24% NPU"),
+            Rec("helper", "Qwen/Qwen3-4B-Instruct-2507", "no thinking: quickest replies"),
             Rec("image", "Qwen/Qwen-Image-2.1", "best open image model here"),
             Rec("edit", "HiDream-ai/HiDream-O1-Image-Dev", "top open editor, 16% NPU"),
             Rec("edit", "Qwen/Qwen-Image-2.1", "edits too, text in images"),
