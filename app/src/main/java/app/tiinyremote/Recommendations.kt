@@ -159,6 +159,7 @@ object Recs {
         val user = "Tasks:\n$tasks\n\nCurrent recommendations (keep a pick if nothing in the store is clearly better):\n$current\n\n" +
             "Store (${store.size} models):\n${storeLines(store)}"
         p.update("${model.name} is reviewing ${store.size} models", null)
+        ApiLog.add("Recommendation review started: ${model.name} reviews ${store.size} Store models for ${TASKS.size} tasks", "Models")
         val mode = Tools.thinkingMode(c, model.id)
         val body = JSONObject().put("model", model.id).put("max_tokens", 12000).put("stream", true)
             .put("messages", JSONArray()
