@@ -47,11 +47,14 @@ object Guides {
 /** The welcome tour, shown once at the first start (Settings → About ⓘ shows it again). */
 val WELCOME_TOUR = listOf(
     GuideStep("👋", "Welcome to Tiiny Remote", "Use your Tiiny AI at home from this phone: chat, create images, sound and video, translate, code and automate. Everything runs on your own Tiiny; nothing goes to a cloud."),
-    GuideStep(SIGN_SETTINGS, "First: connect your Tiiny", "In Settings, enter your Tiiny's address and its API key (from Tiiny Studio). For use away from home, add your WireGuard tunnel: the app switches it on and off by itself.", "Sidebar → Settings"),
-    GuideStep(SIGN_MENU, "The sidebar", "The $SIGN_MENU top left opens it. At the top are the things you do: Chat, Code, Create, Gallery, Automate, Translate. At the bottom are the ones that look after the Tiiny: Activity, Models, Settings. Its $SIGN_SETTINGS sets the start screen and the order; the red $SIGN_POWER at the bottom shuts the app down completely.", "Top left"),
+    GuideStep(SIGN_SETTINGS, "First: connect your Tiiny", "In Settings → Tiiny, 🔎 \"Find on my Wi-Fi\" fills in your Tiiny's address; add its API key (TiinyOS → Settings → API Key). For use away from home, add your WireGuard tunnel: the app switches it on and off by itself.", "Sidebar → Settings"),
+    GuideStep(SIGN_MENU, "The sidebar", "The $SIGN_MENU top left opens it. At the top are the things you do: Start (tasks to pick from), Chat, Code, Create, Gallery, Automate, Translate. At the bottom are the ones that look after the Tiiny: Activity, Models, Settings. Its $SIGN_SETTINGS sets the start screen and the order; the red $SIGN_POWER at the bottom shuts the app down completely.", "Top left"),
     GuideStep("▤", "The status bar", "Under the title: online (green), checking (amber) or not reachable (red), how many models are loaded, how busy the NPU and CPU are. Tap it for the details. It pulses red when the NPU reports a new fault.", "Below the title"),
     GuideStep(SIGN_MODELS, "Models first", "A model must be loaded on the Tiiny before it can work. In Models (or straight from the model button in Chat, Create…), tap $SIGN_PLAY to load and ■ to unload. Two can be loaded side by side if they fit together.", "Sidebar → Models"),
     GuideStep(SIGN_CHAT, "Then chat", "Pick a model, type or dictate ($SIGN_MIC), add an image or a file with $SIGN_ADD. Earlier chats are under $SIGN_HISTORY; $SIGN_SAVE green means chats are saved, red means incognito.", "Sidebar → Chat"),
+    GuideStep("🎨", "Your look", "Settings → Display: colours from your wallpaper or a designed style (A, B, C), colourful emoji or line icons, typefaces, and a quiet status bar.", "Settings → Display"),
+    GuideStep(SIGN_LOCK, "Private and safe", "Settings → Privacy and backup: an app lock (fingerprint, face or screen lock) and encrypted backups to your NAS.", "Settings"),
+    GuideStep("📲", "Quick ways in", "Long-press the app's icon, add the widget, or the Quick Settings tiles \"Ask Tiiny\" and \"Translate copied\".", "Home screen"),
     GuideStep("❓", "Help on every page", "The ? next to each page's title walks you through that page. Settings → Labels → $SIGN_INFO explains every pictogram.", "Next to the title"),
 )
 
@@ -62,6 +65,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep(SIGN_PLAY, "Load and unload", "$SIGN_PLAY loads a model (the card says roughly how long it takes), ■ unloads it. If it doesn't fit beside the loaded ones, the app offers to swap.", "Right on each card"),
         GuideStep("★", "Favourites, names, info", "★ keeps a model at the top, $SIGN_EDIT gives it a shorter name in this app, $SIGN_INFO tells what it can do, $SIGN_DELETE deletes it from the Tiiny.", "On each card"),
         GuideStep("🔎", "Find the right one", "Installed / Store switches between your models and the Model Store. Types filters by kind (👂 ASR, $SIGN_OCR OCR, 🧊 3D, 🎬 video… and 💻 Coding). The chips (💬 chat, 🛠 tools, 👁 images, 💭 thinking…) filter by ability; the orange $SIGN_PLAY puts loaded models first; Sort orders them.", "Top of the list"),
+        GuideStep("⟳", "Update models", "With updates waiting, ⟳ (with their number) appears beside the orange $SIGN_PLAY: all of them in one list, each with its state (available, updating with %, paused, updated ✓); update one, all, pause or resume. Each card's \"Update available\" does the same for one.", "Top of the list"),
         GuideStep("⤓", "The Store", "Download new models; free space on the Tiiny is shown. Downloads continue in the background.", "Store"),
         GuideStep("🧭", "Help me choose", "Not sure which model? 🧭 opens Chat with a question; add what you want to do (\"make short videos from my photos\"). The chat model looks through your Tiiny and the Store and suggests one or two: why, whether it's installed, how much of the NPU it takes. Needs 🛠 on and a model that uses tools.", "Top right"),
         GuideStep("🔐", "VPN card", "Shows whether WireGuard is on and whether you're at home. The app switches it by itself; Turn on / Turn off does it by hand.", "Top"),
@@ -72,9 +76,10 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🧠", "The model", "The model button shows which one is used; ● means loaded. $SIGN_PLAY Load loads it, swapping others out if needed.", "Under the choices"),
         GuideStep("✍", "Describe and start", "Fill in what it asks for (a description, a photo, a text) and start. Long jobs keep running in the background; you get a notice when they're done.", "Middle"),
         GuideStep("🙂", "Characters (Image)", "Describe someone once; tick them and they look the same in every image.", "Image → Characters"),
-        GuideStep("👁", "Live preview (Image)", "Watch the image form. Makes images slower; off by default.", "Image → Advanced"),
+        GuideStep("👁", "Live preview (Image)", "Watch the image form. Switch it on or off beforehand (Image → Advanced) or while the image is being made: the Preview switch beside ✕ on the progress card. ✕ stops.", "Image → Advanced, progress card"),
         GuideStep("🎵", "Songs", "A song is exactly as long as chosen; with Separate tracks, vocals and backing come as extra files. If the song model's own port can't be reached, a shorter song is the opening of a full-length one.", "Audio → Song"),
-        GuideStep("🖼", "Results", "Everything made lands in the Gallery. Under a result: Send to chat, Edit (images), $SIGN_SHARE Share. 🧊 3D models open in the app's own viewer (turn with a finger, pinch to zoom); \"Other app\" hands the file on."),
+        GuideStep("🖼", "Results", "Everything made lands in the Gallery. Under a result: Send to chat, Edit (images), $SIGN_SHARE Share, $SIGN_DELETE Delete (Undo at the bottom brings it back). 🧊 3D models open in the app's own viewer (turn with a finger, pinch to zoom); \"Other app\" hands the file on."),
+        GuideStep("🗃", "Copies on the Tiiny", "The Tiiny keeps the texts sent from here (Describe, OCR, Improve prompt, lyrics) like chats, by day. 🗃 at the top shows and deletes them (whole days).", "Top right"),
     )
     2 -> "Chat" to listOf(
         GuideStep("🧠", "The model", "The button on top picks the chat model (● = loaded); $SIGN_PLAY loads it. A3B models answer fast, 27B ones more carefully.", "Top"),
@@ -92,9 +97,9 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep(SIGN_SHARE, "Share", "$SIGN_SHARE sends what's shown, without keys, passwords or email addresses. Long-press entries to choose just some. Clear empties the log.", "Above the list"),
     )
     4 -> "Settings" to listOf(
-        GuideStep("🔌", "Connection", "Your Tiiny's address and API key (🔎 \"Find on my Wi-Fi\" fills the address in), and the WireGuard tunnel for using it away from home."),
-        GuideStep("🖥", "Display", "Style: colours from your wallpaper or a designed look (A · Ink & Paper, B · Graphite & Brass, C · Alpine Slate), light or dark. Pictograms: colourful emoji or one family of line icons. Typefaces, the quiet one-line status bar, sizes, and labels with words, pictograms or both ($SIGN_INFO beside Labels explains every pictogram)."),
-        GuideStep(SIGN_LOCK, "Privacy and backup", "App lock: fingerprint, face or the screen lock to open the app. Backup: everything of the app's, encrypted on the phone with your backup password, kept by the NAS agent (the newest five); Restore brings one back, also onto a new phone.", "Privacy and backup"),
+        GuideStep("🔌", "Tiiny", "Everything about reaching your Tiiny, together: its address (🔎 \"Find on my Wi-Fi\" fills it in) and API key, Restart and Power off, unlocking after a restart (with the NAS as a fallback), and the WireGuard tunnel for away from home."),
+        GuideStep("🖥", "Display", "Style: colours from your wallpaper or a designed look (A · Ink & Paper, B · Graphite & Brass, C · Alpine Slate), light or dark. Pictograms: colourful emoji, line icons in colour, or line icons in the style's colour. Typefaces, the quiet one-line status bar, sizes, and labels with words, pictograms or both ($SIGN_INFO beside Labels explains every pictogram)."),
+        GuideStep(SIGN_LOCK, "Privacy and backup", "App lock: fingerprint, face or the screen lock to open the app. Backup: everything of the app's, encrypted on the phone with your backup password (Show lets you see it while typing), kept by the NAS agent (the newest five); Restore brings one back, also onto a new phone.", "Privacy and backup"),
         GuideStep("⚡", "Fast helper model", "A small second model for quick side jobs (naming chats, follow-up ideas, condensing). The speed test checks whether two models together are worth it; 📊 Statistics shows the results and the speed of your chats.", "Fast helper model"),
         GuideStep("🎯", "Always ready", "Keeps speech-to-text (👂) and/or OCR ($SIGN_OCR) loaded whenever there's room, so they start at once.", "Always ready"),
         GuideStep("📶", "Stay connected", "Keeps the app connected in the background (a silent notification), for results and automations on time.", "Further down"),
@@ -112,7 +117,8 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🗂", "Filter and search", "The chips filter by kind and task; search finds words in descriptions.", "Top"),
         GuideStep("📅", "Order", "Newest or oldest first, grouped by day, month, year or not at all.", "Top"),
         GuideStep("↔", "Open and browse", "Tap an item to open it big; swipe left or right for the next or previous one. There: $SIGN_DELETE delete, send to chat, $SIGN_EDIT edit (images), $SIGN_SHARE share.", "Each item"),
-        GuideStep("☑", "Several at once", "Long-press to mark items, tap more, then share or delete them together.", "Each item"),
+        GuideStep("☑", "Several at once", "Long-press to mark items, tap more, then share or delete them together (Undo brings them back).", "Each item"),
+        GuideStep("🗃", "Copies on the Tiiny", "Texts sent to the Tiiny (descriptions, OCR, prompts) stay there by day, like chats: 🗃 at the top deletes them. Images, sound and videos it doesn't keep.", "Top right"),
     )
     7 -> "Translate" to listOf(
         GuideStep(SIGN_TRANSLATE, "Translate", "Text, a photo (a sign, a menu, a letter) or speech, with the models on your Tiiny."),
@@ -129,7 +135,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("🐙", "GitHub", "Copy a repository into a new project, push a project in one commit, or make a new private repository. Needs a GitHub token (the dialog links to where you make one).", "$SIGN_MORE → GitHub"),
     )
     9 -> "Start" to listOf(
-        GuideStep("✨", "What would you like to do?", "Tasks instead of models: tap one and the right page opens with the right tool; the model is picked there."),
+        GuideStep("✨", "What would you like to do?", "Tasks instead of models: tap one and the right page opens with the right tool; the model is picked there. Back returns here."),
         GuideStep("📲", "From outside the app", "Long-press the app's icon (Dictate, Chat, Translate copied text, Gallery), add the widget to the home screen, or the Quick Settings tiles \"Ask Tiiny\" and \"Translate copied\" (pull down twice, then edit the tiles)."),
         GuideStep(SIGN_MENU, "Open on it", "The sidebar's $SIGN_SETTINGS → Start with: Start.", "Sidebar"),
     )

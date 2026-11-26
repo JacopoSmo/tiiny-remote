@@ -1,5 +1,17 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.3.7 – 4.3.9 (test builds, with NAS agent 1.7.0)
+- **Models → ⟳ Update models** (beside the orange ▶, with the number waiting): every model with an update in one list, each with its state (available, updating with %, paused, updated ✓); update one or all, pause, resume.
+- **Pictograms:** three kinds: colourful emoji, line icons in colour, line icons in the style's colour (web search's sign too, which was always blue).
+- **Undo after deleting** now shows (it vanished at once: tested on 4.3.6).
+- **Backup password:** Show / Hide while typing.
+- **Copies on the Tiiny (🗃) in Create and the Gallery:** the Tiiny keeps the texts sent from there (Describe, OCR, Improve prompt, lyrics) like chats, by day; images, sound and videos it doesn't keep.
+- **Back from Start** (or the Gallery) into a Create tool returns there in one step (it went to Create Image first).
+- **Find on my Wi-Fi:** tries the saved address first, asks a few addresses at a time (it choked the Wi-Fi, so the app thought you'd left home and switched the VPN on: tested on 4.3.6), asks with the API key where a Tiiny wants it, and logs what answered.
+- **Settings grouped:** everything about the Tiiny together: address and key, Restart and Power off, unlocking after a restart with the NAS fallback right under it, then WireGuard.
+- **While an image is being made:** ✕ (stop) at the top right of the progress card, with a Preview switch beside it: the preview can be shown or hidden any time.
+- Help (?) and the welcome tour cover all of it.
+
 ## What's new in 4.3.1 – 4.3.6 (test builds, with NAS agent 1.7.0)
 
 **Look (Settings → Display)**
