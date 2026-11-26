@@ -1,6 +1,8 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.4.2 – 4.4.7
+## What's new in 4.4.2 – 4.4.10
+- **The Store in the log:** when Models → Store loads, the log lists every model it offers (type, size, NPU share, context, abilities), once, and again only when the Store changes.
+- Deleting a project, or ✕ on one of its files, says plainly that only the project's copy goes, never your original file.
 - **Always ready** (Settings) also keeps the embedding model and the reranker loaded, so projects' search starts at once. The four in alphabetical order.
 - **Projects in Chat** (🕘 Chats → ＋ New project): a name, its files (up to 50) and its chats. Every question gets the pieces of the files that match it: by meaning with the Tiiny's embedding model (the smallest installed, loaded if it fits; a reranker sorts them if one fits), otherwise by words. The files stay on the phone and go into the backup; the answer says which file it used.
 - **Chat: several files at once** (up to five per message), one line each; a long file name is cut with … so its ✕ stays on screen.

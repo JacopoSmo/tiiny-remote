@@ -224,6 +224,8 @@ class TiinyApi(url: String, private val key: String) {
         /** The full model list is written to the log once per app start, to help debugging. */
         @Volatile
         private var catalogLogged = false
+        /** The Store list last written to the log: written again only when it changes. */
+        @Volatile private var storeLogged = 0
 
         /**
          * The last failure of the checks made every few seconds. The same failure again isn't logged: while the Tiiny
@@ -491,6 +493,25 @@ class TiinyApi(url: String, private val key: String) {
                 versionLabel = str("version_label"),
                 contextWindow = m.optInt("context_window", 0).takeIf { it > 0 },
             )
+        }.also { list ->
+            // The Store as the Tiiny offers it, one line per model (no descriptions: they'd fill the shared log);
+            // logged when it's loaded, again only when it has changed.
+            val lines = list.map { m ->
+                listOfNotNull(
+                    m.id, m.type.ifBlank { null }, m.params.ifBlank { null },
+                    m.npuUsage?.let { "${Math.round(it)}% NPU" },
+                    if (m.sizeBytes > 0) "%.1f GB".format(java.util.Locale.ROOT, m.sizeBytes / 1e9) else null,
+                    m.contextWindow?.let { "${it / 1024}k context" },
+                    if (m.thinks) "thinks" else null,
+                    m.supported.takeIf { it.isNotEmpty() }?.joinToString(", "),
+                    m.versionLabel.ifBlank { null },
+                ).joinToString(" · ")
+            }
+            val key = lines.hashCode()
+            if (key != storeLogged) {
+                storeLogged = key
+                ApiLog.add("Store as the Tiiny offers it (${lines.size}):\n" + lines.joinToString("\n"), "Models")
+            }
         }
     }
 
