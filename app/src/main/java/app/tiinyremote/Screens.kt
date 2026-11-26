@@ -2170,9 +2170,10 @@ private fun ChatHistoryMenu(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("📁 ${p.name}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                    Text("${chats.count { it.project == p.id }} chats", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(chats.count { it.project == p.id }.let { n -> if (n == 1) "1 chat" else "$n chats" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                TextButton(onClick = onNewProject) { BtnLabel("New project", symbol = "＋") }
+                // Always with its word: a lone ＋ here could mean a new chat as well.
+                TextButton(onClick = onNewProject) { Text("＋ New project") }
                 HorizontalDivider(Modifier.padding(vertical = 4.dp))
                 if (loose.isEmpty()) Text("No saved chats yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.heightIn(max = 380.dp)) {

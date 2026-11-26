@@ -60,7 +60,7 @@ internal fun ProjectDialog(st: StudioViewModel, project: Project, onOpenChat: (S
     val tick by st.projectTick.collectAsState()
     val chats by st.chatList.collectAsState()
     val list by st.projectList.collectAsState()
-    val p = list.find { it.id == project.id } ?: run { onClose(); return }
+    val p = list.find { it.id == project.id } ?: project
     val docs = remember(tick, p.id) { st.projects.docs(p.id) }
     var busy by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -105,7 +105,7 @@ internal fun ProjectDialog(st: StudioViewModel, project: Project, onOpenChat: (S
                     c.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth().clickable { onOpenChat(c.id) }.padding(vertical = 6.dp),
                 )
-                OutlinedButton(onClick = { st.newChatIn(p.id); onClose() }, modifier = Modifier.padding(top = 4.dp)) { BtnLabel("New chat in this project", symbol = "＋") }
+                OutlinedButton(onClick = { st.newChatIn(p.id); onClose() }, modifier = Modifier.padding(top = 4.dp)) { Text("＋ New chat in this project") } // with words always: two ＋ here
                 HorizontalDivider(Modifier.padding(vertical = 10.dp))
                 Text("Files", style = MaterialTheme.typography.titleMedium)
                 Text(
@@ -128,7 +128,7 @@ internal fun ProjectDialog(st: StudioViewModel, project: Project, onOpenChat: (S
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     OutlinedButton(onClick = {
                         runCatching { pick.launch(Docs.MIMES) }.onFailure { note = "The phone's file picker didn't open: ${it.message}" }
-                    }, enabled = busy == null) { BtnLabel("Add files", symbol = "＋") }
+                    }, enabled = busy == null) { Text("＋ Add files") }
                     busy?.let {
                         Spacer(Modifier.width(8.dp))
                         CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
