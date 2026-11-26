@@ -410,7 +410,14 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = {
                 val req = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                if (multi != null) multi.launch(req) else single.launch(req)
+                // A picker that refuses (too many images asked for, none on the phone) is logged and falls back to
+                // one image, instead of taking the app down.
+                try {
+                    if (multi != null) multi.launch(req) else single.launch(req)
+                } catch (e: Exception) {
+                    ApiLog.add("Choose image: the phone's picker refused (${e.javaClass.simpleName}: ${e.message}); trying one image", "Create")
+                    runCatching { single.launch(req) }.onFailure { error = "The phone's image picker didn't open: ${it.message ?: it.javaClass.simpleName}" }
+                }
             }) { Text(if (images.isEmpty()) label else "Choose again") }
             if (st != null) {
                 Spacer(Modifier.width(8.dp))
