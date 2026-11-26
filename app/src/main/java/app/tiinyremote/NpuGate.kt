@@ -14,6 +14,10 @@ object NpuGate {
     /** Is a model writing for this app right now? */
     val busy get() = working.get() > 0
 
+    /** A speed test has the NPU: Always ready loads nothing meanwhile (it would skew the measurements). */
+    @Volatile
+    var testing = false
+
     /** How many requests are writing right now (2 or more: models working side by side). */
     val count get() = working.get()
 

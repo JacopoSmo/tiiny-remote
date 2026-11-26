@@ -1963,7 +1963,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         SignText(
             "A small chat model loaded beside your main one. It names chats, suggests follow-ups, condenses long chats and files, and runs Improve prompt, lyrics and tags. " +
-                "It condenses web pages only if the speed test found it at least 25% faster ($SIGN_INFO). Load it with ▶ beside the menu (■ unloads it); the app never loads it by itself. Not loaded, the chat model does all this.",
+                "It condenses web pages only if the speed test found it at least 25% faster ($SIGN_INFO). ▶ beside the menu loads it, ■ unloads it; the chat's options switch it on or off (⚡). Off or not loaded, the chat model does all this.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

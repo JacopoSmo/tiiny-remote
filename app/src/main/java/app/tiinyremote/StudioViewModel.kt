@@ -1558,6 +1558,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
         val n = runs.coerceIn(1, 5)
         speedStop = false
+        NpuGate.testing = true
         _speed.value = "Testing…"
         viewModelScope.launch {
             try {
@@ -1569,6 +1570,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 _speed.value = "Speed test failed: ${e.message}"
                 ApiLog.add("Speed test failed: ${e.message}", "Chat")
             } finally {
+                NpuGate.testing = false
                 deviceBusy.set(false)
             }
         }
@@ -1596,6 +1598,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
         val n = runs.coerceIn(1, 5)
         speedStop = false
+        NpuGate.testing = true
         _speed.value = "Testing…"
         val app = getApplication<Application>()
         Background.set(app, "speed", "Speed test of ${pairs.size} pairs")
@@ -1669,6 +1672,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 ApiLog.add("Speed test of several pairs failed: ${e.message}", "Chat", isProblem = true)
             } finally {
                 speedStop = false
+                NpuGate.testing = false
                 deviceBusy.set(false)
                 Background.set(app, "speed", null)
             }

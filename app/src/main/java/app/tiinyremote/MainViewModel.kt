@@ -176,7 +176,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val st = settings
         if (!st.keepAsr && !st.keepOcr && !st.keepEmbed && !st.keepRerank && !st.keepTts) return
         val now = System.currentTimeMillis()
-        if (now - readyTried < 60_000 || NpuGate.busy || models.any { it.status == "loading" }) return
+        if (now - readyTried < 60_000 || NpuGate.busy || NpuGate.testing || models.any { it.status == "loading" }) return
         val free = 100 - models.filter { it.status == "running" }.sumOf { it.npuUsage ?: 0.0 }
         val wanted = listOfNotNull(
             if (st.keepAsr) "speech-to-text" to { m: ModelInfo -> m.isAsr } else null,
