@@ -35,6 +35,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -100,13 +102,18 @@ fun StartScreen(st: StudioViewModel, goTab: (Int) -> Unit, openTool: (String) ->
     var viewport by remember { mutableStateOf(Rect.Zero) }
     val scroll = rememberScrollState()
 
-    /** Moves the dragged card to the place under the finger, if that's another card's place. */
+    // The grid's places by position (not by card), and where the grid is: the place under the finger is found from
+    // these, so a card that just moved can't be found under the finger again and bounce back.
+    val slots = remember { Slots() }
+
+    /** Moves the dragged card to the place under the finger. */
     fun follow() {
         val d = dragging ?: return
-        val over = bounds.entries.firstOrNull { (k, r) -> k != d && r.contains(finger) }?.key ?: return
-        val to = order.indexOf(over)
-        if (to < 0) return
-        order = order.toMutableList().apply { remove(d); add(to, d) }
+        val at = finger - slots.origin
+        val to = slots.rects.indexOfFirst { it.contains(at) }
+        val from = order.indexOf(d)
+        if (to < 0 || from < 0 || to == from || to >= order.size) return
+        order = order.toMutableList().apply { removeAt(from); add(to, d) }
     }
 
     // Near the top or bottom edge while dragging: scroll, so a card can go anywhere on a long page.
@@ -128,14 +135,14 @@ fun StartScreen(st: StudioViewModel, goTab: (Int) -> Unit, openTool: (String) ->
         val cols = ((maxWidth - 32.dp + gap) / (160.dp + gap)).toInt().coerceAtLeast(1)
         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp)) {
             Text("What would you like to do?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 14.dp))
-            TileGrid(cols, gap) {
+            TileGrid(cols, gap, slots, Modifier.onGloballyPositioned { slots.origin = it.positionInRoot() }) {
                 for (t in shown) key(t.key) {
                     val lifted = dragging == t.key
                     val here = bounds[t.key]
                     Card(
                         Modifier
                             .zIndex(if (lifted) 1f else 0f)
-                            .onGloballyPositioned { bounds[t.key] = it.boundsInRoot() }
+                            .onGloballyPositioned { bounds[t.key] = Rect(it.positionInRoot(), it.size.toSize()) } // unclipped, also when partly scrolled away
                             .graphicsLayer {
                                 if (lifted && here != null) {
                                     translationX = finger.x - grab.x - here.left
@@ -191,15 +198,27 @@ fun StartScreen(st: StudioViewModel, goTab: (Int) -> Unit, openTool: (String) ->
  * Cards in [cols] equal columns; every card in a row as tall as the tallest one in it (measured by its natural
  * height first), so rows line up. One parent for all cards: a card dragged to another row keeps its gesture.
  */
+private class Slots {
+    var rects: List<Rect> = emptyList()
+    var origin = Offset.Zero
+}
+
 @Composable
-private fun TileGrid(cols: Int, gap: androidx.compose.ui.unit.Dp, content: @Composable () -> Unit) {
-    Layout(content) { items, c ->
+private fun TileGrid(cols: Int, gap: androidx.compose.ui.unit.Dp, slots: Slots, modifier: Modifier, content: @Composable () -> Unit) {
+    Layout(content, modifier) { items, c ->
         val g = gap.roundToPx()
         val w = ((c.maxWidth - g * (cols - 1)) / cols).coerceAtLeast(0)
         val rows = items.chunked(cols)
         val heights = rows.map { row -> row.maxOf { it.maxIntrinsicHeight(w) } }
         val placed = rows.mapIndexed { i, row -> row.map { it.measure(Constraints.fixed(w, heights[i])) } }
         val total = heights.sum() + g * (rows.size - 1).coerceAtLeast(0)
+        val rects = ArrayList<Rect>(items.size)
+        var top = 0
+        rows.forEachIndexed { i, row ->
+            row.indices.forEach { j -> rects.add(Rect((j * (w + g)).toFloat(), top.toFloat(), (j * (w + g) + w).toFloat(), (top + heights[i]).toFloat())) }
+            top += heights[i] + g
+        }
+        slots.rects = rects
         layout(c.maxWidth, total) {
             var y = 0
             placed.forEachIndexed { i, row ->
