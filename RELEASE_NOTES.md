@@ -1,13 +1,11 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.2.4 (test build, with NAS agent 1.6.0)
-- **No more USB promises:** the phone can't use the Tiiny's USB link (tested: a Titan 2 on the "To PC" port gets no connection; it's made for computers), so the song texts no longer mention USB.
-
-## What's new in 4.2.2 – 4.2.3 (test builds, with NAS agent 1.6.0)
-- **Full view of a 3D model** (tested on 4.2.1: swiped to from another result, its button was cut off): 🧊 View in 3D sits at the top beside Share, and tapping the picture opens the viewer too.
-
-## What's new in 4.2.1 (test build, with NAS agent 1.6.0)
-- **Full screens no longer run off the bottom** (tested on 4.2.0: the 3D page's "View in 3D" was cut off): the full view, the 3D viewer and Code's preview now fit between the status bar and the phone's bottom edge.
+## What's new in 4.3.0 (with NAS agent 1.6.0)
+Everything from the 4.2.1–4.2.4 test builds, tested on the phone, plus another review (programmer, white-hat, attacker) of the changes and of updates, page reading, sharing, notifications and unlocking.
+- **Full screens fit the screen:** the full view, the 3D viewer and Code's preview no longer run off the bottom.
+- **Full view of a 3D model:** 🧊 View in 3D at the top beside Share; tapping the picture opens the viewer too.
+- **No USB promises:** the Tiiny's USB link is made for computers (tested: the phone gets no connection on the "To PC" port), so the texts no longer mention it. Wi-Fi at home, WireGuard away.
+- NAS agent: unchanged at 1.6.0.
 
 ## What's new in 4.2.0 (with NAS agent 1.6.0)
 Everything from the 4.1.1–4.1.23 test builds, tested on the phone, plus a full review (as programmer, white-hat and attacker) of the app and the NAS agent.
