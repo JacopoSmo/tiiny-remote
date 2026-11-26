@@ -1,5 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.4.2
+- **Choosing images and files works again** (Create, Chat, Translate, the camera): since the app lock (4.3.x), every picker failed ("No file picker found", or the app closed).
+- If the app ever crashes, the reason goes into the log at the next start, so a shared log says what happened.
+
 ## What's new in 4.4.0 (with NAS agent 1.7.0)
 Everything from the 4.3.1–4.3.13 test builds, tested on the phone, plus a full review (programmer, white-hat, attacker) of the app, the NAS agent and the link between them, with every font and pictogram checked.
 

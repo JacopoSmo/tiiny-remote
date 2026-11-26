@@ -138,7 +138,7 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
             "photo" -> {
                 Text("A menu, a sign, a letter: take a photo or choose one.", style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { runCatching { camera.launch(shotUri) }.onFailure { error = "No camera app found." } }) {
+                    OutlinedButton(onClick = { runCatching { camera.launch(shotUri) }.onFailure { ApiLog.add("Opening another app failed: ${it.javaClass.name}: ${it.message}\n" + it.stackTrace.take(6).joinToString("\n") { f -> "  at $f" }, "App"); error = "No camera app found." } }) {
                         Text(choiceLabel("📷", "Take photo"))
                     }
                     Box(Modifier.padding(start = 8.dp)) {

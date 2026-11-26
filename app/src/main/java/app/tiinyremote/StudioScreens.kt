@@ -415,7 +415,7 @@ internal fun ImagePickerRow(images: List<PickedImage>, max: Int, label: String, 
                 try {
                     if (multi != null) multi.launch(req) else single.launch(req)
                 } catch (e: Exception) {
-                    ApiLog.add("Choose image: the phone's picker refused (${e.javaClass.simpleName}: ${e.message}); trying one image", "Create")
+                    ApiLog.add("Choose image: the phone's picker refused (${e.javaClass.name}: ${e.message})\n" + e.stackTrace.take(6).joinToString("\n") { f -> "  at $f" }, "Create")
                     runCatching { single.launch(req) }.onFailure { error = "The phone's image picker didn't open: ${it.message ?: it.javaClass.simpleName}" }
                 }
             }) { Text(if (images.isEmpty()) label else "Choose again") }
@@ -1785,7 +1785,8 @@ private fun AttachButton(seesImages: Boolean, st: StudioViewModel, onImage: (Pic
                 contentPadding = pad,
                 onClick = {
                     open = false
-                    pickImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    runCatching { pickImage.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+                        .onFailure { ApiLog.add("Opening another app failed: ${it.javaClass.name}: ${it.message}\n" + it.stackTrace.take(6).joinToString("\n") { f -> "  at $f" }, "App"); onError("The phone's image picker didn't open.") }
                 },
             )
             DropdownMenuItem(
@@ -1798,12 +1799,12 @@ private fun AttachButton(seesImages: Boolean, st: StudioViewModel, onImage: (Pic
                 text = { Text("📷 Take a photo") },
                 enabled = seesImages,
                 contentPadding = pad,
-                onClick = { open = false; runCatching { camera.launch(shotUri) }.onFailure { onError("No camera app found.") } },
+                onClick = { open = false; runCatching { camera.launch(shotUri) }.onFailure { ApiLog.add("Opening another app failed: ${it.javaClass.name}: ${it.message}\n" + it.stackTrace.take(6).joinToString("\n") { f -> "  at $f" }, "App"); onError("No camera app found.") } },
             )
             DropdownMenuItem(
                 text = { Text("📄 File: PDF, Office, text") },
                 contentPadding = pad,
-                onClick = { open = false; runCatching { pickFile.launch(Docs.MIMES) }.onFailure { onError("No file picker found.") } },
+                onClick = { open = false; runCatching { pickFile.launch(Docs.MIMES) }.onFailure { ApiLog.add("Opening another app failed: ${it.javaClass.name}: ${it.message}\n" + it.stackTrace.take(6).joinToString("\n") { f -> "  at $f" }, "App"); onError("No file picker found.") } },
             )
         }
     }

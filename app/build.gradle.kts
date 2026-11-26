@@ -86,6 +86,9 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     // Settings → Privacy → App lock (fingerprint, face or the phone's screen lock).
     implementation("androidx.biometric:biometric:1.1.0")
+    // biometric brings Fragment 1.2.5, whose FragmentActivity refuses the request codes of the ActivityResult API
+    // (every picker, camera and file chooser failed): the current Fragment has no such check.
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
 
     // Automations: reading email over IMAP (read-only).
     implementation("com.sun.mail:android-mail:1.6.7")
