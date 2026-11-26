@@ -1,5 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.3.12 (test build)
+- **Model updates:** stopping one now asks first and offers Pause. The Tiiny removes the old copy when an update begins, so stopping left no copy.
+- **Backup list:** the refresh button showed a stray sign; it shows ⟳ now.
+
 ## What's new in 4.3.10 – 4.3.11 (test builds, with NAS agent 1.7.0)
 - **One size scale everywhere**, five levels: page titles, section headings (Settings, Create), card titles, body text, notes and captions; headings a little larger than before.
 - **Typefaces:** Phone's font, Designed pair, or Inter everywhere.
