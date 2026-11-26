@@ -305,7 +305,6 @@ fun AppRoot(vm: MainViewModel) {
     val current by st.currentChat.collectAsState()
     val busyChats by st.busyChats.collectAsState()
     var historyOpen by remember { mutableStateOf(false) }
-    var tiinyCopies by remember { mutableStateOf(false) }
     val saving by st.saving.collectAsState()
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     // The top part in your order (Sidebar settings); Activity, Models and Settings always below.
@@ -399,9 +398,7 @@ fun AppRoot(vm: MainViewModel) {
                                 Box {
                                     IconButton(onClick = { historyOpen = true }) { Icon(HistoryIcon, contentDescription = "Chat history") }
                                     ChatHistoryMenu(historyOpen, chats, current, busyChats, { historyOpen = false }, { st.resumeChat(it.id); historyOpen = false },
-                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) },
-                                        onTiinyCopies = { tiinyCopies = true })
-                                    if (tiinyCopies) TiinyCopiesDialog(st) { tiinyCopies = false }
+                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) })
                                 }
                                 // Save: green, chats are kept in History; red, incognito (nothing is kept from now on).
                                 IconButton(onClick = { st.setSaving(!saving) }) {
@@ -412,8 +409,9 @@ fun AppRoot(vm: MainViewModel) {
                                 }
                                 IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             }
-                            // Create and the Gallery: what the Tiiny kept of the texts sent from here (Describe, OCR, prompts…).
-                            if (tab == 1 || tab == 6) {
+                            // Chat, Create and the Gallery: what the Tiiny kept of the texts sent from here (chats, Describe,
+                            // OCR, prompts…), always just left of ⟳.
+                            if (tab == 1 || tab == 2 || tab == 6) {
                                 var copies by remember { mutableStateOf(false) }
                                 IconButton(onClick = { copies = true }) {
                                     Text("🗃", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Copies kept on the Tiiny" })
@@ -444,7 +442,8 @@ fun AppRoot(vm: MainViewModel) {
                         }
                     }
                 },
-                snackbarHost = { SnackbarHost(snackbar) },
+                // Above the keyboard when it opens: an Undo bar must stay visible and reachable.
+                snackbarHost = { SnackbarHost(snackbar, Modifier.imePadding()) },
             ) { pad ->
                 Column(
                     Modifier
@@ -845,6 +844,7 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                     onInfo = { info = m },
                     onRename = { renameM = m },
                     onUpdate = { vm.updateModel(m) },
+                    updating = s.downloads.firstOrNull { it.id == m.id },
                     onDelete = { deleteM = m },
                     onLoad = { vm.load(m) },
                     onRetry = { vm.retry(m) },
@@ -976,6 +976,8 @@ private fun ModelCard(
     onInfo: () -> Unit,
     onRename: () -> Unit,
     onUpdate: () -> Unit,
+    /** Its update under way (from the Tiiny's download list), shown instead of "Update available". */
+    updating: Download? = null,
     onDelete: () -> Unit,
     onLoad: () -> Unit,
     onRetry: () -> Unit,
@@ -997,7 +999,20 @@ private fun ModelCard(
                         Icon(Icons.Filled.Delete, contentDescription = "Delete from the Tiiny", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f), modifier = Modifier.size(18.dp))
                     }
                 }
-                if (m.needUpdate) {
+                if (updating != null) {
+                    // The update under way: its share, live from the Tiiny's download list.
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(
+                            when {
+                                updating.failed -> "Update stopped by a problem"
+                                updating.paused -> "Update paused" + (updating.progress?.let { " at ${Math.round(it)}%" } ?: "")
+                                else -> "Updating " + (updating.progress?.let { "${Math.round(it)}%" } ?: "…")
+                            },
+                            style = MaterialTheme.typography.labelLarge, color = Color(0xFFE65100),
+                        )
+                        updating.progress?.let { LinearProgressIndicator(progress = { (it / 100).toFloat() }, modifier = Modifier.fillMaxWidth(), color = Color(0xFFE65100)) }
+                    }
+                } else if (m.needUpdate) {
                     TextButton(
                         onClick = onUpdate,
                         colors = ButtonDefaults.textButtonColors(containerColor = Color(0xFFE65100).copy(alpha = 0.15f), contentColor = Color(0xFFE65100)),
@@ -1540,23 +1555,14 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Tiiny", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text("Tiiny address") },
-            placeholder = { Text("http://192.168.x.x") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-        )
-        // Find the Tiiny on the home Wi-Fi instead of typing its address.
+        // Find the Tiiny on the home Wi-Fi (🔎, left of the address) instead of typing its address.
         val findCtx = LocalContext.current
         val findScope = rememberCoroutineScope()
         var finding by remember { mutableStateOf<Float?>(null) }
         var found by remember { mutableStateOf<List<String>?>(null) }
         var findNote by remember { mutableStateOf<String?>(null) }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(enabled = finding == null, onClick = {
+            IconButton(enabled = finding == null, onClick = {
                 findNote = null; found = null; finding = 0f
                 findScope.launch {
                     try {
@@ -1573,9 +1579,18 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         finding = null
                     }
                 }
-            }) { BtnLabel("Find on my Wi-Fi", symbol = "🔎") }
-            finding?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.weight(1f).padding(start = 8.dp)) }
+            }) { Text("🔎", fontSize = 22.sp, modifier = Modifier.semantics { contentDescription = "Find the Tiiny on my Wi-Fi" }) }
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("Tiiny address") },
+                placeholder = { Text("http://192.168.x.x") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
         }
+        finding?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
         findNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         found?.takeIf { it.size > 1 }?.let { hits -> Row { for (h in hits) TextButton(onClick = { url = h }) { Text(h.removePrefix("http://")) } } }
         SecretField(key, { key = it }, "API key (TiinyOS → Settings → API Key)")
@@ -2127,7 +2142,6 @@ private val historyTime = java.time.format.DateTimeFormatter.ofPattern("EEE d MM
 private fun ChatHistoryMenu(
     open: Boolean, chats: List<ChatInfo>, current: String, busy: Set<String>,
     onDismiss: () -> Unit, onOpen: (ChatInfo) -> Unit, onRename: (ChatInfo) -> Unit, onDelete: (ChatInfo) -> Unit,
-    onTiinyCopies: () -> Unit = {},
 ) {
     if (!open) return
     var confirm by remember { mutableStateOf<String?>(null) }
@@ -2174,8 +2188,7 @@ private fun ChatHistoryMenu(
                 }
             }
         },
-        // The Tiiny keeps its own copy of every chat (TiinyOS's vault, from every app): deletable there, by whole days.
-        dismissButton = { TextButton(onClick = { onDismiss(); onTiinyCopies() }) { Text("Copies on the Tiiny…", color = MaterialTheme.colorScheme.error) } },
+
         confirmButton = { TextButton(onClick = { confirm = null; onDismiss() }) { Text("Close") } },
     )
 }

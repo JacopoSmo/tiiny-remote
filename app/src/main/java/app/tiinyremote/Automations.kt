@@ -869,7 +869,7 @@ object NasAgent {
                 }
             }
             val code = conn.responseCode
-            ApiLog.add("NAS agent: backup $name (${file.length() / (1024 * 1024)} MB) -> HTTP $code", "Automate", isProblem = code >= 400)
+            ApiLog.add("NAS agent: backup $name (${Backup.mb(file.length())}) -> HTTP $code", "Automate", isProblem = code >= 400)
             if (code == 404) throw MediaException(OLD_AGENT)
             if (code >= 400) throw MediaException("The NAS didn't take the backup (HTTP $code).")
         } catch (e: java.io.IOException) {

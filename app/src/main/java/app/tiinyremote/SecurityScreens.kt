@@ -81,8 +81,9 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
             val file = withContext(Dispatchers.IO) { Backup.create(ctx, pw.toCharArray()) { what -> busy = "Packing: $what" } }
             busy = "Sending to the NAS"
             withContext(Dispatchers.IO) { NasAgent.uploadBackup(c, Backup.newName(), file) { progress = it } }
+            val size = file.length()
             file.delete()
-            note = "Backed up (${file.length() / (1024 * 1024)} MB, encrypted)."
+            note = "Backed up (${Backup.mb(size)}, encrypted)."
             refresh()
         } catch (e: Exception) {
             note = e.message ?: e.javaClass.simpleName
@@ -132,7 +133,7 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
         for (e in l) Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(fmt.format(java.util.Date(e.time * 1000)), style = MaterialTheme.typography.bodyMedium)
-                Text("${e.name.substringAfter('_').substringAfter('_')} · ${maxOf(1, e.size / (1024 * 1024))} MB", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${e.name.substringAfter('_').substringAfter('_')} · ${Backup.mb(e.size)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(onClick = { ask = e }, enabled = busy == null) { Text("Restore") }
             TextButton(onClick = { delAsk = e }, enabled = busy == null) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }

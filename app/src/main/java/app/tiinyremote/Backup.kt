@@ -131,17 +131,24 @@ object Backup {
             }
             zip.putNextEntry(ZipEntry("secrets.json")); zip.write(secrets.toString().toByteArray()); zip.closeEntry()
             val root = data(ctx)
+            // What went in, per folder (chats, results, voices…), for the log.
+            val count = linkedMapOf<String, Pair<Int, Long>>()
             for (top in listOf("files", "shared_prefs")) {
                 val dir = File(root, top)
                 dir.walkTopDown().filter { it.isFile }.forEach { f ->
                     val rel = f.relativeTo(root).invariantSeparatorsPath
-                    step(rel.substringAfter('/').substringBefore('/'))
+                    val part = if (top == "files") rel.substringAfter('/').substringBefore('/').let { if ('/' in rel.substringAfter('/')) it else "(app files)" } else "settings"
+                    step(part)
                     zip.putNextEntry(ZipEntry(rel))
                     f.inputStream().use { it.copyTo(zip, 1 shl 16) }
                     zip.closeEntry()
+                    val (n, b) = count[part] ?: (0 to 0L)
+                    count[part] = (n + 1) to (b + f.length())
                 }
             }
+            ApiLog.add("Backup packed: " + count.entries.joinToString(", ") { (k, v) -> "$k ${v.first} files ${mb(v.second)}" }, "Automate")
         }
+        ApiLog.add("Backup encrypted: ${mb(out.length())}", "Automate")
         return out
     }
 
@@ -215,6 +222,8 @@ object Backup {
         }
         f.delete()
     }
+
+    fun mb(bytes: Long) = String.format(java.util.Locale.ROOT, "%.1f MB", bytes / 1048576.0)
 
     /** A name for a new backup: date and time, then the phone's model. */
     fun newName(): String = java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.ROOT).format(java.util.Date()) +

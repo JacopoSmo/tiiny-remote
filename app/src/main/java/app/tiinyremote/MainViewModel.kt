@@ -764,7 +764,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateModel(m: ModelInfo) {
         cancelledDownloads.remove(m.id)
-        modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.download(m.id) }
+        modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.update(m.id) }
     }
     fun pauseDownload(d: Download) = modelAction("Pause download", d.id, "Paused ${d.name}") { this.pauseDownload(d.id) }
     fun resumeDownload(d: Download) {

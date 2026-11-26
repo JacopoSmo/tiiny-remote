@@ -521,6 +521,34 @@ class TiinyApi(url: String, private val key: String) {
         ok(call("POST", "/api/v1/models/${quote(id)}/download", JSONObject(), 60)) // the device expects an empty JSON body
     }
 
+    /**
+     * Starts a model's update. The download route alone answers "already downloaded" for an installed model (tested
+     * on TiinyOS 0.1.39), and no update route is documented, so the likely ones are tried in turn; each answer is
+     * logged. Returns which one started it, or throws when none did.
+     */
+    fun update(id: String): String {
+        val q = quote(id)
+        val tries = listOf(
+            "POST /api/v1/models/$q/update" to JSONObject(),
+            "POST /api/v1/models/$q/upgrade" to JSONObject(),
+            "POST /api/v1/models/$q/download?update=true" to JSONObject().put("update", true),
+            "POST /api/v1/models/$q/download?force=true" to JSONObject().put("force", true),
+        )
+        val answers = mutableListOf<String>()
+        for ((route, body) in tries) {
+            val (method, path) = route.split(' ', limit = 2)
+            val res = try { call(method, path, body, 60) } catch (e: Exception) { answers.add("$path: ${e.message}"); continue }
+            val already = res.second.contains("already downloaded", true)
+            answers.add("${path.substringAfter("/models/$q")}: HTTP ${res.first}${if (already) " (already downloaded)" else ""}")
+            if (res.first in 200..299 && !already) {
+                ApiLog.add("Update $id started via ${path.substringAfter("/models/$q")} (tried: ${answers.joinToString("; ")})", "Models")
+                return path
+            }
+        }
+        ApiLog.add("Update $id: the Tiiny started no update (tried: ${answers.joinToString("; ")})", "Models", isProblem = true)
+        throw IllegalStateException("The Tiiny didn't start the update (it says the model is already downloaded). Updating it in TiinyOS works meanwhile.")
+    }
+
     fun pauseDownload(id: String) {
         ok(call("POST", "/api/v1/models/${quote(id)}/pause_download", JSONObject(), 30))
     }
