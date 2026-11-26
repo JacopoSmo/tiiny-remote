@@ -136,6 +136,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
     )
     9 -> "Start" to listOf(
         GuideStep("✨", "What would you like to do?", "Tasks instead of models: tap one and the right page opens with the right tool; the model is picked there. Back returns here."),
+        GuideStep("✋", "Your order", "Long-press a card, then drag it where you want it (near the edge, the page scrolls). \"Original order\" at the bottom undoes it."),
         GuideStep("📲", "From outside the app", "Long-press the app's icon (Dictate, Chat, Translate copied text, Gallery), add the widget to the home screen, or the Quick Settings tiles \"Ask Tiiny\" and \"Translate copied\" (pull down twice, then edit the tiles)."),
         GuideStep(SIGN_MENU, "Open on it", "The sidebar's $SIGN_SETTINGS → Start with: Start.", "Sidebar"),
     )

@@ -120,7 +120,7 @@ fun PrivacySection(vm: MainViewModel, cur: AppSettings) {
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { makeAsk = true }, enabled = busy == null) { BtnLabel("Back up now", symbol = "📦") }
-        TextButton(onClick = { refresh() }, enabled = busy == null) { BtnLabel("Refresh", symbol = SIGN_REFRESH) }
+        OutlinedButton(onClick = { refresh() }, enabled = busy == null) { BtnLabel("Refresh", symbol = SIGN_REFRESH) }
     }
     busy?.let {
         Text(it, style = MaterialTheme.typography.bodySmall)
