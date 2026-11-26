@@ -126,8 +126,12 @@ internal fun RecsDialog(st: StudioViewModel, models: List<ModelInfo>, focus: Lis
                             Column(Modifier.weight(1f)) {
                                 Text(shop?.nameOf(r.id) ?: r.id.substringAfterLast('/'), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
-                                    r.why + (shop?.sizeOf(r.id)?.let { " · $it" } ?: "") +
-                                        (shop?.storeModel(r.id)?.npuUsage?.let { " · ${Math.round(it)}% NPU" } ?: ""),
+                                    // The NPU share comes from the Store; a reason that already names it would show it twice.
+                                    run {
+                                        val npu = shop?.storeModel(r.id)?.npuUsage
+                                        val why = if (npu != null) r.why.replace(Regex("""[,;·]?\s*\d+\s*% NPU"""), "").trim() else r.why
+                                        why + (shop?.sizeOf(r.id)?.let { " · $it" } ?: "") + (npu?.let { " · ${Math.round(it)}% NPU" } ?: "")
+                                    },
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
