@@ -89,7 +89,7 @@ internal fun ProjectDialog(st: StudioViewModel, project: Project, onOpenChat: (S
     if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
         title = { Text("Delete ${p.name}?") },
-        text = { Text("Its files go from this phone. Its chats stay, as ordinary chats.") },
+        text = { Text("The project's copies of its files go; your original files stay where they are. Its chats stay, as ordinary chats.") },
         confirmButton = { TextButton(onClick = { deleting = false; st.deleteProject(p.id); onClose() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { deleting = false }) { Text("Cancel") } },
     )
@@ -110,7 +110,7 @@ internal fun ProjectDialog(st: StudioViewModel, project: Project, onOpenChat: (S
                 Text("Files", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Each question gets the pieces of these files that match it: by meaning with an embedding model on the Tiiny " +
-                        "(the smallest installed, loaded if it fits), otherwise by words. The files stay on this phone.",
+                        "(the smallest installed, loaded if it fits), otherwise by words. The project keeps its own copy of each file's text, on this phone; ✕ removes that copy, never your original.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 for (d in docs) Row(verticalAlignment = Alignment.CenterVertically) {
