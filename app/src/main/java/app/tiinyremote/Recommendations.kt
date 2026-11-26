@@ -70,8 +70,8 @@ object Recs {
         listOf(
             Rec("chat", "Qwen/Qwen3.8-27B", "most capable (intelligence 52)"),
             Rec("chatfast", "Qwen/Qwen3.6-35B-A3B-Turbo", "about 3× faster, strong at code"),
-            Rec("helper", "Qwen/Qwen3-4B-Instruct-2507", "no thinking: quickest replies, light"),
-            Rec("helper", "Qwen/Qwen3.5-9B-Turbo", "better summaries, needs more room"),
+            Rec("helper", "Qwen/Qwen3-4B-Instruct-2507", "no thinking: quickest replies"),
+            Rec("helper", "Qwen/Qwen3.5-9B-Turbo", "better summaries, thinks first"),
             Rec("image", "Qwen/Qwen-Image-2.1", "best open image model here"),
             Rec("edit", "HiDream-ai/HiDream-O1-Image-Dev", "top open editor, 16% NPU"),
             Rec("edit", "Qwen/Qwen-Image-2.1", "edits too, text in images"),
