@@ -1471,7 +1471,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, appLock = false, lockAfter = 0)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, keepEmbed = false, keepRerank = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, appLock = false, lockAfter = 0)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1871,11 +1871,14 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // In the alphabetical order of their names.
         for ((label, on, kind) in listOf(
-            Triple("👂 Speech-to-text (dictation, Translate speech, ASR)", cur.keepAsr) { m: ModelInfo -> m.isAsr },
+            Triple("🔗 Embedding (searches projects' files by meaning)", cur.keepEmbed) { m: ModelInfo -> m.isEmbedder },
             Triple("$SIGN_OCR OCR (text from photos)", cur.keepOcr) { m: ModelInfo -> m.isOcr },
+            Triple("🥇 Reranker (sorts what projects' search found)", cur.keepRerank) { m: ModelInfo -> m.isReranker },
+            Triple("👂 Speech-to-text (dictation, Translate speech, ASR)", cur.keepAsr) { m: ModelInfo -> m.isAsr },
         )) {
-            val m = s.models.filter(kind).minByOrNull { it.npuUsage ?: 100.0 }
+            val m = smallestOfKind(s.models.filter(kind))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     SignText(label, style = MaterialTheme.typography.bodyLarge)
@@ -1887,7 +1890,12 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     )
                 }
                 Switch(checked = on, enabled = m != null || on, onCheckedChange = {
-                    vm.setDisplay(if ("Speech" in label) cur.copy(keepAsr = it) else cur.copy(keepOcr = it))
+                    vm.setDisplay(when {
+                        "Speech" in label -> cur.copy(keepAsr = it)
+                        "OCR" in label -> cur.copy(keepOcr = it)
+                        "Embedding" in label -> cur.copy(keepEmbed = it)
+                        else -> cur.copy(keepRerank = it)
+                    })
                 })
             }
         }

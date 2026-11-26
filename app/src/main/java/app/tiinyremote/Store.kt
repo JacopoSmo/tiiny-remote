@@ -61,6 +61,9 @@ data class AppSettings(
     /** Always ready: speech-to-text and OCR models kept loaded whenever there's room, so dictation, Translate and OCR start at once. */
     val keepAsr: Boolean = false,
     val keepOcr: Boolean = false,
+    /** Always ready: the embedding model and reranker that search projects' files. */
+    val keepEmbed: Boolean = false,
+    val keepRerank: Boolean = false,
     /** The screen the app opens on: "last" (where you left it) or a section's number. */
     val startScreen: String = "last",
     /** The sidebar's top part, in your order (section numbers, comma-separated); Activity, Models and Settings stay below. */
@@ -131,6 +134,8 @@ class Store(context: Context) {
         stayConnected = prefs.getBoolean("stay_connected", false),
         keepAsr = prefs.getBoolean("keep_asr", false),
         keepOcr = prefs.getBoolean("keep_ocr", false),
+        keepEmbed = prefs.getBoolean("keep_embed", false),
+        keepRerank = prefs.getBoolean("keep_rerank", false),
         startScreen = prefs.getString("start_screen", "last") ?: "last",
         navOrder = prefs.getString("nav_order", "") ?: "",
     )
@@ -175,6 +180,8 @@ class Store(context: Context) {
             .putBoolean("stay_connected", s.stayConnected)
             .putBoolean("keep_asr", s.keepAsr)
             .putBoolean("keep_ocr", s.keepOcr)
+            .putBoolean("keep_embed", s.keepEmbed)
+            .putBoolean("keep_rerank", s.keepRerank)
             .putString("start_screen", s.startScreen)
             .putString("nav_order", s.navOrder)
             .apply()

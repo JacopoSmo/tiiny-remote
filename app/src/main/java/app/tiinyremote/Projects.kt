@@ -6,6 +6,13 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+/**
+ * The smallest of these models, leaving the most room on the NPU; image-and-text (VL) ones only if there's no other.
+ * Always ready and projects' search pick the same one.
+ */
+fun smallestOfKind(models: List<ModelInfo>): ModelInfo? =
+    models.sortedWith(compareBy<ModelInfo>({ "-vl-" in it.id.lowercase() || it.id.lowercase().contains("vl-") }, { it.npuUsage ?: 100.0 })).firstOrNull()
+
 /** A project in Chat: a name, its files, and the chats that belong to it. */
 data class Project(val id: String, val name: String, val created: Long)
 
@@ -119,10 +126,7 @@ class Projects(filesDir: File) {
         return out.filter { it.isNotBlank() }
     }
 
-    /** The smallest installed model of [type] ("Text Embedding", "Text Reranking"); image-and-text ones only if there's no other. */
-    private fun smallest(models: List<ModelInfo>, type: String): ModelInfo? =
-        models.filter { it.type.equals(type, true) }
-            .sortedWith(compareBy<ModelInfo>({ "vl" in it.id.lowercase() }, { it.npuUsage ?: 100.0 })).firstOrNull()
+    private fun smallest(models: List<ModelInfo>, type: String): ModelInfo? = smallestOfKind(models.filter { it.type.equals(type, true) })
 
     /** Loads [m] if it fits beside what's loaded (never unloads anything for a search); true when it's ready. */
     private fun readyIfRoom(c: DeviceClient, m: ModelInfo, p: Progress): Boolean {

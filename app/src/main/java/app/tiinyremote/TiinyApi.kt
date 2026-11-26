@@ -78,6 +78,9 @@ data class ModelInfo(
     val isOcr get() = type == "Image-to-Text" && !id.contains("DocLayout", true)
     val isSpeech get() = type == "Text-to-Speech"
     val isAsr get() = type == "ASR"
+    /** Projects' search: finds the pieces of files by meaning (embedding) and sorts them (reranking). */
+    val isEmbedder get() = type.equals("Text Embedding", true)
+    val isReranker get() = type.equals("Text Reranking", true)
     val isMusic get() = type == "Music Generation"
     val isSongModel get() = isMusic && SONG_WORDS.containsMatchIn(id + desc.take(300))
     val isLoopModel get() = isMusic && !isSongModel

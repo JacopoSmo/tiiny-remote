@@ -174,18 +174,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun keepReady(models: List<ModelInfo>) {
         val st = settings
-        if (!st.keepAsr && !st.keepOcr) return
+        if (!st.keepAsr && !st.keepOcr && !st.keepEmbed && !st.keepRerank) return
         val now = System.currentTimeMillis()
         if (now - readyTried < 60_000 || NpuGate.busy || models.any { it.status == "loading" }) return
         val free = 100 - models.filter { it.status == "running" }.sumOf { it.npuUsage ?: 0.0 }
         val wanted = listOfNotNull(
             if (st.keepAsr) "speech-to-text" to { m: ModelInfo -> m.isAsr } else null,
             if (st.keepOcr) "OCR" to { m: ModelInfo -> m.isOcr } else null,
+            if (st.keepEmbed) "projects' search" to { m: ModelInfo -> m.isEmbedder } else null,
+            if (st.keepRerank) "projects' search order" to { m: ModelInfo -> m.isReranker } else null,
         )
         for ((what, kind) in wanted) {
             if (models.any { it.status == "running" && kind(it) }) continue
-            // The smallest of its kind on the Tiiny, leaving the most room for the chat models.
-            val m = models.filter { kind(it) && it.id !in _state.value.unavailable }.minByOrNull { it.npuUsage ?: 100.0 } ?: continue
+            // The smallest of its kind on the Tiiny, leaving the most room for the chat models (the one projects use).
+            val m = smallestOfKind(models.filter { kind(it) && it.id !in _state.value.unavailable }) ?: continue
             if ((m.npuUsage ?: 100.0) > free) {
                 if (readyNoRoom != m.id) {
                     readyNoRoom = m.id
@@ -327,9 +329,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun unload(model: ModelInfo) {
         // Unloading an "Always ready" model yourself means you don't want it kept: that setting goes off.
         val s0 = settings
-        if (s0.keepAsr && model.isAsr || s0.keepOcr && model.isOcr) {
-            setDisplay(s0.copy(keepAsr = s0.keepAsr && !model.isAsr, keepOcr = s0.keepOcr && !model.isOcr))
-            toast("Always ready: ${if (model.isAsr) "speech-to-text" else "OCR"} switched off")
+        if (s0.keepAsr && model.isAsr || s0.keepOcr && model.isOcr || s0.keepEmbed && model.isEmbedder || s0.keepRerank && model.isReranker) {
+            setDisplay(s0.copy(
+                keepAsr = s0.keepAsr && !model.isAsr, keepOcr = s0.keepOcr && !model.isOcr,
+                keepEmbed = s0.keepEmbed && !model.isEmbedder, keepRerank = s0.keepRerank && !model.isReranker,
+            ))
+            val what = when {
+                model.isAsr -> "speech-to-text"
+                model.isOcr -> "OCR"
+                model.isEmbedder -> "the embedding model"
+                else -> "the reranker"
+            }
+            toast("Always ready: $what switched off")
         }
         viewModelScope.launch {
             setWorking(model.id, true)
