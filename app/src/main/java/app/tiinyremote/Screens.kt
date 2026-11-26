@@ -304,6 +304,9 @@ fun AppRoot(vm: MainViewModel) {
     val current by st.currentChat.collectAsState()
     val busyChats by st.busyChats.collectAsState()
     var historyOpen by remember { mutableStateOf(false) }
+    val projectList by st.projectList.collectAsState()
+    var openProject by remember { mutableStateOf<Project?>(null) }
+    var newProject by remember { mutableStateOf(false) }
     val saving by st.saving.collectAsState()
     var renaming by remember { mutableStateOf<ChatInfo?>(null) }
     // The top part in your order (Sidebar settings); Activity, Models and Settings always below.
@@ -397,7 +400,10 @@ fun AppRoot(vm: MainViewModel) {
                                 Box {
                                     IconButton(onClick = { historyOpen = true }) { Icon(HistoryIcon, contentDescription = "Chat history") }
                                     ChatHistoryMenu(historyOpen, chats, current, busyChats, { historyOpen = false }, { st.resumeChat(it.id); historyOpen = false },
-                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) })
+                                        onRename = { renaming = it; historyOpen = false }, onDelete = { st.deleteChat(it.id) },
+                                        projects = projectList, onProject = { openProject = it; historyOpen = false }, onNewProject = { newProject = true; historyOpen = false })
+                                    openProject?.let { pr -> ProjectDialog(st, pr, onOpenChat = { st.resumeChat(it); openProject = null }) { openProject = null } }
+                                    if (newProject) ProjectNameDialog(null) { n -> newProject = false; if (n != null) openProject = st.createProject(n) }
                                 }
                                 // Save: green, chats are kept in History; red, incognito (nothing is kept from now on).
                                 IconButton(onClick = { st.setSaving(!saving) }) {
@@ -2146,17 +2152,31 @@ private val historyTime = java.time.format.DateTimeFormatter.ofPattern("EEE d MM
 private fun ChatHistoryMenu(
     open: Boolean, chats: List<ChatInfo>, current: String, busy: Set<String>,
     onDismiss: () -> Unit, onOpen: (ChatInfo) -> Unit, onRename: (ChatInfo) -> Unit, onDelete: (ChatInfo) -> Unit,
+    projects: List<Project> = emptyList(), onProject: (Project) -> Unit = {}, onNewProject: () -> Unit = {},
 ) {
     if (!open) return
+    // Chats of a project are listed in the project; here only the others.
+    val ids = projects.map { it.id }.toSet()
+    val loose = chats.filter { it.project == null || it.project !in ids }
     var confirm by remember { mutableStateOf<String?>(null) }
     ScaledAlertDialog(
         onDismissRequest = { confirm = null; onDismiss() },
         title = { Text("Chats") },
         text = {
             Column {
-                if (chats.isEmpty()) Text("No saved chats yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Projects first: a name, files and chats; each question in them gets the matching pieces of the files.
+                for (p in projects) Row(
+                    Modifier.fillMaxWidth().clickable { onProject(p) }.padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("📁 ${p.name}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text("${chats.count { it.project == p.id }} chats", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                TextButton(onClick = onNewProject) { BtnLabel("New project", symbol = "＋") }
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                if (loose.isEmpty()) Text("No saved chats yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LazyColumn(Modifier.heightIn(max = 380.dp)) {
-                    items(chats, key = { it.id }) { c ->
+                    items(loose, key = { it.id }) { c ->
                         Row(
                             Modifier.fillMaxWidth()
                                 .background(if (c.id == current) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent)

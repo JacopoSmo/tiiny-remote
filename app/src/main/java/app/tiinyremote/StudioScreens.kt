@@ -1451,6 +1451,23 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 ) { Icon(androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown, contentDescription = "Jump to the newest message") }
             }
         }
+        // In a project: its name and files, above the message; tap for the project, ✕ takes this chat out of it.
+        val proj by st.currentProject.collectAsState()
+        val projTick by st.projectTick.collectAsState()
+        var projOpen by remember { mutableStateOf(false) }
+        proj?.let { pr ->
+            val n = remember(projTick, pr.id) { st.projects.docs(pr.id).size }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "📁 ${pr.name} · $n file" + (if (n == 1) "" else "s"),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).clickable { projOpen = true }.padding(vertical = 6.dp),
+                )
+                TextButton(onClick = { st.setChatProject(st.currentChat.value, null) }) { Text("✕") }
+            }
+            if (projOpen) ProjectDialog(st, pr, onOpenChat = { st.resumeChat(it); projOpen = false }) { projOpen = false }
+        }
         // What's attached to the next message, only when something is: a small line, not a permanent row.
         if (image.isNotEmpty() || files.isNotEmpty() || attachError != null) {
             // One line per file: a long name is cut with … so its ✕ always stays on screen.

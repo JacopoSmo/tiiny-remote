@@ -39,7 +39,7 @@ data class SavedVoice(val id: String, val name: String, val text: String)
 data class Source(val title: String, val url: String)
 
 /** A saved chat in the list; [model] is the chat model it last used. */
-data class ChatInfo(val id: String, val title: String, val updated: Long, val model: String = "")
+data class ChatInfo(val id: String, val title: String, val updated: Long, val model: String = "", val project: String? = null)
 
 data class ChatMsg(
     val role: String,
@@ -259,6 +259,69 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val condensed = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, String>>()
     /** Saved chats, newest first. */
     val chatList: StateFlow<List<ChatInfo>> = _chatList.asStateFlow()
+
+    // ---------- projects: a name, files, and chats; each question gets the matching pieces of the files ----------
+    val projects = Projects(app.filesDir)
+    private val chatProject = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val _projectList = MutableStateFlow(projects.list())
+    val projectList: StateFlow<List<Project>> = _projectList.asStateFlow()
+    /** Bumped when a project's files change, so open screens read them again. */
+    private val _projectTick = MutableStateFlow(0)
+    val projectTick: StateFlow<Int> = _projectTick.asStateFlow()
+    private val _currentProjectMap = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** The project of the open chat, or null. */
+    val currentProject: StateFlow<Project?> by lazy {
+        combine(_currentChat, _currentProjectMap, _projectList) { id, map, list -> map[id]?.let { pid -> list.find { it.id == pid } } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }
+    private fun setChatProjectRaw(id: String, pid: String?) {
+        if (pid == null) chatProject.remove(id) else chatProject[id] = pid
+        _currentProjectMap.value = HashMap(chatProject)
+    }
+
+    fun projectOf(chatId: String): String? = chatProject[chatId]
+
+    fun createProject(name: String): Project = projects.create(name).also { _projectList.value = projects.list() }
+    fun renameProject(id: String, name: String) { projects.rename(id, name); _projectList.value = projects.list() }
+
+    /** The project and its files go; its chats stay, as ordinary chats. */
+    fun deleteProject(id: String) {
+        projects.delete(id)
+        chatProject.entries.filter { it.value == id }.map { it.key }.forEach { cid -> setChatProjectRaw(cid, null); loadMessages(cid); saveChat(cid) }
+        _chatList.update { l -> l.map { if (it.project == id) it.copy(project = null) else it } }
+        _projectList.value = projects.list()
+    }
+
+    /** Adds files to a project (on a background thread); [done] gets what couldn't go in. */
+    fun addProjectFiles(pid: String, files: List<PickedFile>, done: (List<String>) -> Unit) {
+        viewModelScope.launch {
+            val problems = withContext(Dispatchers.IO) { files.mapNotNull { projects.add(pid, it) } }
+            files.forEach { f -> ApiLog.add("Project file added: ${f.name} (${f.text.length} characters)", "Chat") }
+            _projectTick.update { it + 1 }
+            done(problems)
+        }
+    }
+
+    fun removeProjectFile(pid: String, did: String) {
+        viewModelScope.launch(Dispatchers.IO) { projects.removeDoc(pid, did); _projectTick.update { it + 1 } }
+    }
+
+    /** Puts a chat into a project (or out of it, with null). */
+    fun setChatProject(id: String, pid: String?) {
+        setChatProjectRaw(id, pid)
+        _chatList.update { l -> l.map { if (it.id == id) it.copy(project = pid) else it } }
+        saveChat(id)
+    }
+
+    /** Opens a new, empty chat in [pid]. */
+    fun newChatIn(pid: String) {
+        val cur = _currentChat.value
+        if ((_all.value[cur] ?: emptyList()).isEmpty()) { setChatProjectRaw(cur, pid); return }
+        val id = newChatId()
+        _all.update { it + (id to emptyList()) }
+        setChatProjectRaw(id, pid)
+        selectChat(id)
+    }
     private val _currentChat = MutableStateFlow(
         prefs.getString("chat_current", null)?.takeIf { java.io.File(chatsDir, "$it.json").exists() } ?: newChatId(),
     )
@@ -570,7 +633,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 o.optString("auto_title").takeIf { it.isNotBlank() }?.let { autoTitles[f.nameWithoutExtension] = it }
                 val model = o.optString("model")
                 if (model.isNotBlank()) lastModels[f.nameWithoutExtension] = model
-                ChatInfo(f.nameWithoutExtension, title, o.optLong("updated", f.lastModified()), model)
+                val project = o.optString("project").takeIf { it.isNotBlank() }
+                project?.let { setChatProjectRaw(f.nameWithoutExtension, it) }
+                ChatInfo(f.nameWithoutExtension, title, o.optLong("updated", f.lastModified()), model, project)
             } catch (e: Exception) {
                 null
             }
@@ -681,12 +746,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val doc = JSONObject().put("title", title).put("custom", custom != null).put("updated", now).put("messages", a)
         if (auto != null) doc.put("auto_title", auto)
         lastModels[id]?.let { doc.put("model", it) }
+        chatProject[id]?.let { doc.put("project", it) }
         tmp.writeText(doc.toString())
         if (!tmp.renameTo(f)) {
             f.delete()
             tmp.renameTo(f)
         }
-        _chatList.update { l -> (listOf(ChatInfo(id, title, now, lastModels[id] ?: "")) + l.filter { it.id != id }).sortedByDescending { it.updated } }
+        _chatList.update { l -> (listOf(ChatInfo(id, title, now, lastModels[id] ?: "", chatProject[id])) + l.filter { it.id != id }).sortedByDescending { it.updated } }
     }
 
     /** Changes a chat's messages; a chat deleted meanwhile (or never loaded) stays as it is, so a late answer can't bring it back. */
@@ -703,6 +769,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Starts a new chat; the current one stays in the list. */
     fun newChat() {
+        // In a project, a new chat stays in it.
+        chatProject[_currentChat.value]?.let { newChatIn(it); return }
         if ((_all.value[_currentChat.value] ?: emptyList()).isEmpty()) return
         val id = newChatId()
         _all.update { it + (id to emptyList()) }
@@ -1672,7 +1740,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         // answer runs without tools and web search, so a manipulated file can't make anything or send anything out.
         val files = (_all.value[id].orEmpty().mapNotNull { m -> m.fileName?.let { it to (m.fileText ?: "") } }) +
             listOfNotNull(file?.let { it.name to it.text })
-        val suspicious = files.mapNotNull { (name, body) -> Safety.screen(name + "\n" + body).takeIf { it.isNotEmpty() }?.let { name to it } }
+        val suspicious = files.mapNotNull { (name, body) -> Safety.screen(name + "\n" + body).takeIf { it.isNotEmpty() }?.let { name to it } } +
+            (chatProject[id]?.let { pid -> projects.flagged(pid).map { (n, why) -> n to why.split("; ") } } ?: emptyList())
         val canMake = wantsTools && suspicious.isEmpty()
         val web = wantsWeb && suspicious.isEmpty()
         if (suspicious.isNotEmpty() && (wantsTools || wantsWeb)) {
@@ -1735,7 +1804,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     val firstQuestion = shown.count { it.role == "user" } == 1
                     var system = SYSTEM_PROMPT +
-                        (if (shown.any { it.fileText != null }) "\n\n" + Safety.RULE else "") +
+                        (if (shown.any { it.fileText != null } || chatProject[id] != null) "\n\n" + Safety.RULE else "") +
                         (if (shown.any { it.image != null }) "\n\n" + Safety.IMAGE_RULE else "") +
                         (if (canMake) TOOLS_PROMPT else "") + (if (web) webPrompt() else "") +
                         when (chatMode) {
@@ -1757,6 +1826,25 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     } else {
                         convo.put(JSONObject().put("role", "system").put("content", system))
                         for (m in shown) convo.put(asMessage(m, m === shown.last()))
+                    }
+                    // A project's chat: the pieces of its files that match this question (and the one before, for follow-ups)
+                    // go with the question, at the end of its message, like the depth below (the prompt cache stays).
+                    chatProject[id]?.let { pid ->
+                        if (question.isBlank()) return@let
+                        val before = shown.filter { it.role == "user" }.dropLast(1).lastOrNull()?.text.orEmpty().takeLast(300)
+                        val found = try {
+                            projects.retrieve(c, pid, (before + "\n" + question).trim(), models, Progress({ m, _ -> setStatus(id, m) }, { chatStop.get() }))
+                        } catch (e: Exception) {
+                            ApiLog.add("Project search failed (${e.message}); answering without the files", "Chat", isProblem = true)
+                            null
+                        }
+                        if (found == null || found.passages.isEmpty() || convo.length() == 0) return@let
+                        ApiLog.add("Project: ${found.passages.size} passages ${found.how}, from " + found.passages.map { it.first }.distinct().joinToString(), "Chat")
+                        val last = convo.getJSONObject(convo.length() - 1)
+                        if (last.optString("role") == "user") when (val content = last.opt("content")) {
+                            is String -> last.put("content", content + Projects.asContext(found))
+                            is JSONArray -> content.put(JSONObject().put("type", "text").put("text", Projects.asContext(found)))
+                        }
                     }
                     // How deep to think goes with this question, at the end of its message, not in the system prompt: the
                     // Tiiny keeps one prompt cache per model, keyed on the exact start of the conversation, so a system
