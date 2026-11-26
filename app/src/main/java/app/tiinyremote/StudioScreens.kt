@@ -238,7 +238,7 @@ internal fun ModelPicker(tool: String, fits: (ModelInfo) -> Boolean, s: UiState,
         val shop0 = LocalModelShop.current
         val rec0 = if (shop0?.showRecs == true) Recs.forTasks(Recs.tasksFor(tool)).firstOrNull() else null
         var ask0 by remember { mutableStateOf(false) }
-        if (rec0 != null && s.device == DeviceState.ONLINE) {
+        if (rec0 != null && shop0 != null && s.device == DeviceState.ONLINE) {
             LaunchedEffect(Unit) { if (shop0.store == null) shop0.loadStore() }
             val loading = rec0.id in shop0.downloading
             OutlinedButton(enabled = !loading, onClick = { ask0 = true }) {
