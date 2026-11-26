@@ -413,6 +413,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         if (!deviceBusy.compareAndSet(false, true)) { _recResult.value = "Something else is using the Tiiny's models. Try again when it's done."; return }
         _recBusy.value = "Starting…"
         _recResult.value = null
+        // Kept going with the app in the background ("Keep working in the background").
+        Background.set(getApplication(), "recs", "Reviewing the recommended models")
         viewModelScope.launch {
             try {
                 val summary = withContext(Dispatchers.IO) {
@@ -435,6 +437,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 _recBusy.value = null
                 deviceBusy.set(false)
+                Background.set(getApplication(), "recs", null)
             }
         }
     }

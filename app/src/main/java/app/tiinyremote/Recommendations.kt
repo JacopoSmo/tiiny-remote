@@ -160,7 +160,7 @@ object Recs {
             "Store (${store.size} models):\n${storeLines(store)}"
         p.update("${model.name} is reviewing ${store.size} models", null)
         val mode = Tools.thinkingMode(c, model.id)
-        val body = JSONObject().put("model", model.id).put("max_tokens", 12000).put("stream", false)
+        val body = JSONObject().put("model", model.id).put("max_tokens", 12000).put("stream", true)
             .put("messages", JSONArray()
                 .put(JSONObject().put("role", "system").put("content", SYSTEM))
                 .put(JSONObject().put("role", "user").put("content", user)))
@@ -168,10 +168,27 @@ object Recs {
             "always" -> body.put("reasoning_effort", "high")
             "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", true))
         }
-        val r = c.request("POST", "/v1/chat/completions", body, 1800)
-        if (!r.ok) throw MediaException(r.error())
-        val text = r.json().optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.optString("content").orEmpty()
-            .replace(Regex("(?s)<think>.*?</think>"), "")
+        // Streamed: the thinking takes minutes, and a connection silent that long was cut (tested: "connection
+        // abort" after 8 minutes). Text keeps coming this way, and the progress shows how far it is. Cut anyway (the
+        // phone's Wi-Fi), it's asked once more.
+        var thought = 0
+        var lastShown = 0L
+        fun ask(): DeviceClient.Completion = c.streamChat(body, { content, reasoning ->
+            thought += content.length + reasoning.length
+            val now = System.currentTimeMillis()
+            if (now - lastShown > 1500) {
+                lastShown = now
+                p.update("${model.name} is thinking it over (${thought / 1000}k characters)", null)
+            }
+        }, { false })
+        val done = try {
+            ask().also { if (!it.ended) throw java.io.IOException("the answer stopped before its end") }
+        } catch (e: java.io.IOException) {
+            ApiLog.add("Recommendation review: the connection dropped (${e.message}); asking once more", "Models")
+            thought = 0
+            ask()
+        }
+        val text = done.content.replace(Regex("(?s)<think>.*?</think>"), "")
         val start = text.indexOf('{')
         val end = text.lastIndexOf('}')
         val arr = (if (start in 0 until end) runCatching { JSONObject(text.substring(start, end + 1)).getJSONArray("recs") }.getOrNull() else null)
