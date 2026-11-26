@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -695,6 +695,74 @@ def scheduler():
         time.sleep(20)
 
 
+# ---------- encrypted link and backups ----------
+
+TLS_DIR = os.path.join(DATA, "tls")
+HTTPS_ONLY_F = os.path.join(TLS_DIR, "https-only")
+BACKUP_NAME = re.compile(r"[A-Za-z0-9._-]{1,80}")
+BACKUP_MAX = 20 * 1024 ** 3   # 20 GB
+BACKUP_KEEP = 5               # per app, the newest
+
+
+def tls_context():
+    """The agent's own certificate (made once, kept in /data/tls): the app pins it the first time it connects, so the
+    token and the settings (an email password, say) travel encrypted on the home network. None without openssl."""
+    import ssl
+    import subprocess
+    os.makedirs(TLS_DIR, exist_ok=True)
+    cert, key = os.path.join(TLS_DIR, "cert.pem"), os.path.join(TLS_DIR, "key.pem")
+    if not (os.path.exists(cert) and os.path.exists(key)):
+        try:
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes",
+                            "-days", "7300", "-subj", "/CN=Tiiny Remote NAS agent", "-keyout", key, "-out", cert],
+                           check=True, capture_output=True, timeout=60)
+            os.chmod(key, 0o600)
+            log("Made the agent's certificate for the encrypted link (kept in /data/tls).")
+        except Exception as e:
+            log(f"No encrypted link: the certificate couldn't be made ({e}). Plain HTTP only.")
+            return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(cert, key)
+    return ctx
+
+
+class Server(ThreadingHTTPServer):
+    """One port for both: a connection that starts with a TLS greeting is encrypted, any other is plain HTTP (older
+    apps, /health). Worked out in the connection's own thread, so a silent client never holds up the others."""
+    daemon_threads = True
+    tls = None
+
+    def finish_request(self, request, client_address):
+        request.settimeout(30)
+        try:
+            first = request.recv(1, socket.MSG_PEEK)
+        except OSError:
+            return
+        if first == b"\x16" and self.tls is not None:
+            try:
+                request = self.tls.wrap_socket(request, server_side=True)
+            except Exception:
+                return  # not a real TLS greeting, or the client gave up
+        super().finish_request(request, client_address)
+
+
+def backup_dir():
+    d = os.path.join(DATA, "backups", CTX.app)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def backups():
+    d = backup_dir()
+    out = []
+    for n in os.listdir(d):
+        if n.endswith(".trb"):
+            st = os.stat(os.path.join(d, n))
+            out.append({"name": n[:-4], "size": st.st_size, "time": int(st.st_mtime)})
+    return sorted(out, key=lambda b: b["time"], reverse=True)
+
+
 # ---------- the app's interface ----------
 
 class Handler(BaseHTTPRequestHandler):
@@ -712,9 +780,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def encrypted(self):
+        return getattr(self.connection, "cipher", None) is not None
+
     def authorized(self):
+        # Once the app has used the encrypted link, plain HTTP is refused (except /health): the token and settings
+        # can't be sent unencrypted by mistake. Deleting /data/tls/https-only allows it again.
+        if not self.encrypted() and os.path.exists(HTTPS_ONLY_F):
+            self.reply(426, {"error": "this agent only takes the encrypted link now: update Tiiny Remote (4.4 or newer)"})
+            return False
         got = self.headers.get("Authorization", "")
         if hmac.compare_digest(got.encode(), ("Bearer " + TOKEN).encode()):
+            if self.encrypted() and not os.path.exists(HTTPS_ONLY_F):
+                open(HTTPS_ONLY_F, "w").close()
+                log("The app now uses the encrypted link: plain HTTP is refused from here on.")
             return True
         time.sleep(1)  # slows down guessing
         self.reply(401, {"error": "unauthorized"})
@@ -750,8 +829,26 @@ class Handler(BaseHTTPRequestHandler):
                 err = str(e)[:300]
                 log(f"Status check: the Tiiny isn't reachable: {err}")
             return self.reply(200, {"version": VERSION, "automations": len(config().get("automations", [])),
-                                    "tiiny_ok": not err, "tiiny_error": err, "app": CTX.app,
+                                    "tiiny_ok": not err, "tiiny_error": err, "app": CTX.app, "encrypted": self.encrypted(),
                                     "running": sorted(r.split(":", 1)[1] for r in RUNNING if r.startswith(CTX.app + ":"))})
+        if path == "/backups":
+            return self.reply(200, {"backups": backups()})
+        if path == "/backup":
+            name = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("name") or [""])[0]
+            f = os.path.join(backup_dir(), name + ".trb")
+            if not BACKUP_NAME.fullmatch(name) or not os.path.exists(f):
+                return self.reply(404, {"error": "no such backup"})
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(os.path.getsize(f)))
+            self.end_headers()
+            with open(f, "rb") as fh:
+                while True:
+                    chunk = fh.read(1 << 20)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            return
         if path == "/runs":
             with LOCK:
                 runs = load(RUNS_F, [])
@@ -763,6 +860,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.route()
         if not self.authorized():
             return
+        if path == "/backup":
+            return self.put_backup()
         if path != "/config":
             return self.reply(404, {"error": "not found"})
         try:
@@ -779,6 +878,55 @@ class Handler(BaseHTTPRequestHandler):
             save(CONFIG_F, {"apps": apps})
         log(f"Config received from the {app} app: {len(cfg.get('automations', []))} automation(s), "
             f"time zone {cfg.get('time_zone') or 'not sent'}")
+        self.reply(200, {"ok": True})
+
+    def put_backup(self):
+        """A backup from the app: already encrypted on the phone with the user's backup password, which the NAS never
+        sees. Streamed to disk; the newest five are kept."""
+        name = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("name") or [""])[0]
+        try:
+            n = int(self.headers.get("Content-Length", "-1"))
+        except ValueError:
+            n = -1
+        if not BACKUP_NAME.fullmatch(name) or n < 0 or n > BACKUP_MAX:
+            if 0 < n <= 1_000_000:
+                self.rfile.read(n)  # read what was sent, so the answer arrives instead of a cut connection
+            return self.reply(400, {"error": "bad backup name or size"})
+        d = backup_dir()
+        part = os.path.join(d, name + ".part")
+        try:
+            with open(part, "wb") as fh:
+                left = n
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        raise IOError("the upload stopped early")
+                    fh.write(chunk)
+                    left -= len(chunk)
+            os.replace(part, os.path.join(d, name + ".trb"))
+        except Exception as e:
+            try:
+                os.remove(part)
+            except OSError:
+                pass
+            return self.reply(500, {"error": str(e)})
+        for old in backups()[BACKUP_KEEP:]:
+            try:
+                os.remove(os.path.join(d, old["name"] + ".trb"))
+            except OSError:
+                pass
+        log(f"Backup received from the {CTX.app} app: {name} ({n // (1024 * 1024)} MB, encrypted on the phone).")
+        self.reply(200, {"ok": True})
+
+    def do_DELETE(self):
+        path = self.route()
+        if not self.authorized():
+            return
+        name = (urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("name") or [""])[0]
+        f = os.path.join(backup_dir(), name + ".trb")
+        if path != "/backup" or not BACKUP_NAME.fullmatch(name) or not os.path.exists(f):
+            return self.reply(404, {"error": "no such backup"})
+        os.remove(f)
         self.reply(200, {"ok": True})
 
     def do_POST(self):
@@ -807,7 +955,9 @@ def main():
     os.makedirs(DATA, exist_ok=True)
     threading.Thread(target=scheduler, daemon=True).start()
     log(f"Tiiny Remote NAS agent {VERSION} on port {PORT} (time zone: {zone().key}; the app sends the phone's)")
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    srv = Server(("0.0.0.0", PORT), Handler)
+    srv.tls = tls_context()
+    srv.serve_forever()
 
 
 if __name__ == "__main__":

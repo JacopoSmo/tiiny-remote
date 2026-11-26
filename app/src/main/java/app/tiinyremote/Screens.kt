@@ -1856,6 +1856,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        PrivacySection(vm, cur)
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("App updates", style = MaterialTheme.typography.titleMedium)
         val ctx = LocalContext.current
         val version = remember { AppUpdate.installed(ctx) }

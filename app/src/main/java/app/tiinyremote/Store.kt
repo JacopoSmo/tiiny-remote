@@ -73,6 +73,9 @@ data class AppSettings(
     val designedFonts: Boolean = false,
     /** Display → Status bar: the quiet single line instead of the coloured block. */
     val quietStatus: Boolean = false,
+    /** Privacy: a fingerprint, face or the screen lock to open the app, after [lockAfter] seconds away (0: at once). */
+    val appLock: Boolean = false,
+    val lockAfter: Int = 60,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -107,6 +110,8 @@ class Store(context: Context) {
         lineIcons = prefs.getBoolean("lineIcons", false),
         designedFonts = prefs.getBoolean("designedFonts", false),
         quietStatus = prefs.getBoolean("quietStatus", false),
+        appLock = prefs.getBoolean("appLock", false),
+        lockAfter = prefs.getInt("lockAfter", 60),
         uiScale = prefs.getString("ui_scale", "1.0") ?: "1.0",
         textScale = prefs.getString("text_scale", "1.0") ?: "1.0",
         enterSends = prefs.getBoolean("enter_sends", true),
@@ -147,6 +152,8 @@ class Store(context: Context) {
             .putBoolean("lineIcons", s.lineIcons)
             .putBoolean("designedFonts", s.designedFonts)
             .putBoolean("quietStatus", s.quietStatus)
+            .putBoolean("appLock", s.appLock)
+            .putInt("lockAfter", s.lockAfter)
             .putString("ui_scale", s.uiScale)
             .putString("text_scale", s.textScale)
             .putBoolean("enter_sends", s.enterSends)
@@ -166,6 +173,13 @@ class Store(context: Context) {
     }
 
     /** The login key the Tiiny gave in exchange for its password (what "tiiny login" keeps), encrypted. */
+    /** The backup password, when "Remember it on this phone" was ticked (encrypted; never part of a backup). */
+    fun backupPassword(): String? = Crypto.decrypt(prefs.getString("backup_password", null))?.takeIf { it.isNotEmpty() }
+
+    fun setBackupPassword(pw: String?) {
+        prefs.edit().putString("backup_password", pw?.let { Crypto.encrypt(it) }).apply()
+    }
+
     fun authKey(): String? = Crypto.decrypt(prefs.getString("auth_key", null))?.takeIf { it.isNotEmpty() }
 
     fun setAuthKey(key: String?) {

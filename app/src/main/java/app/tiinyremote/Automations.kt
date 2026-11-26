@@ -679,17 +679,72 @@ object NasAgent {
 
     fun init(ctx: Context) {
         app = if (ctx.packageName.endsWith(".exp")) "exp" else "normal"
+        pins = ctx.getSharedPreferences("agent_tls", Context.MODE_PRIVATE)
     }
 
     private const val REFUSED = "The NAS agent refused the token: it must be exactly the AGENT_TOKEN in the setup file on the NAS " +
         "(on the NAS: grep AGENT_TOKEN ~/tiiny-agent/docker-compose.yml)."
 
-    private fun call(c: Connectors, method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> {
+    // ---- The encrypted link (agent 1.7+): the agent makes its own certificate; the app trusts the one it meets first
+    // and from then on only that one (pinned), so the token and the settings travel encrypted on the home network.
+    private var pins: android.content.SharedPreferences? = null
+    /** Agents that answered without encryption (older than 1.7) this session, by address: asked plainly from then on. */
+    private val plainOnly = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    private fun hostKey(base: String) = URL(base).let { "${it.host}:${if (it.port > 0) it.port else 8765}" }
+
+    /** The pinned certificate's fingerprint (SHA-256), shortened for showing; null before the first encrypted contact. */
+    fun pinOf(c: Connectors): String? = runCatching { pins?.getString(hostKey(c.nasUrl.trim()), null) }.getOrNull()
+        ?.chunked(2)?.take(8)?.joinToString(":")?.uppercase()
+
+    /** Forget the pinned certificate (after setting up the agent again): the next contact pins the new one. */
+    fun forgetPin(c: Connectors) {
+        runCatching { pins?.edit()?.remove(hostKey(c.nasUrl.trim()))?.apply() }
+        plainOnly.clear()
+    }
+
+    private class PinTrust(val key: String) : javax.net.ssl.X509TrustManager {
+        var changed = false
+        override fun checkClientTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) =
+            throw java.security.cert.CertificateException("not a server")
+        override fun checkServerTrusted(chain: Array<java.security.cert.X509Certificate>, authType: String) {
+            val fp = java.security.MessageDigest.getInstance("SHA-256").digest(chain[0].encoded).joinToString("") { "%02x".format(it) }
+            val p = pins ?: throw java.security.cert.CertificateException("no store")
+            val known = p.getString(key, null)
+            if (known == null) {
+                p.edit().putString(key, fp).apply()
+                ApiLog.add("NAS agent: encrypted link set up; certificate pinned (${fp.take(16)}…)", "Automate")
+            } else if (known != fp) {
+                changed = true
+                throw java.security.cert.CertificateException("pinned certificate differs")
+            }
+        }
+        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+    }
+
+    private const val CHANGED = "The NAS agent's certificate has changed, so the app stopped (someone could be posing as your NAS). " +
+        "If you set the agent up again, tap \"Forget certificate\" under Automate → Connectors → NAS agent."
+
+    /**
+     * A connection to the agent: encrypted when the agent offers it (pinned), else plain for agents before 1.7, but
+     * never plain again once a certificate is pinned for this address.
+     */
+    private fun open(c: Connectors, method: String, path: String, timeoutSec: Int): HttpURLConnection {
         if (!c.nasReady) throw MediaException("The NAS agent isn't set up: Automate → Connectors → NAS agent.")
         // Spaces or a line break copied along with the address or the token would break the request.
         val base = c.nasUrl.trim().trimEnd('/')
         if (!base.startsWith("http://") && !base.startsWith("https://")) throw MediaException("The NAS agent's address must start with http:// (e.g. http://192.168.3.10:8765).")
-        val conn = URL(base + path).openConnection() as HttpURLConnection
+        val key = hostKey(base)
+        val pinned = pins?.getString(key, null) != null
+        val plain = base.startsWith("http://") && key in plainOnly && !pinned
+        val conn = if (plain) URL(base + path).openConnection() as HttpURLConnection else {
+            val tm = PinTrust(key)
+            val ssl = javax.net.ssl.SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
+            (URL("https://" + base.substringAfter("://") + path).openConnection() as javax.net.ssl.HttpsURLConnection).apply {
+                sslSocketFactory = ssl.socketFactory
+                hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true } // the pinned certificate is the check
+            }
+        }
         conn.connectTimeout = 8_000
         conn.readTimeout = timeoutSec * 1000
         conn.requestMethod = method
@@ -697,6 +752,31 @@ object NasAgent {
         conn.setRequestProperty("Accept", "application/json")
         // Which app asks, in a header: agents before 1.5 ignore it (a ?app= in the address made them answer 404).
         conn.setRequestProperty("X-Tiiny-App", app)
+        return conn
+    }
+
+    /** Is this failure an agent that doesn't speak TLS (older than 1.7), with nothing pinned yet? Then ask plainly. */
+    private fun plainAgent(c: Connectors, e: Exception): Boolean {
+        val key = runCatching { hostKey(c.nasUrl.trim()) }.getOrNull() ?: return false
+        if (pins?.getString(key, null) != null || !c.nasUrl.trim().startsWith("http://")) return false
+        val tls = e is javax.net.ssl.SSLException || e.cause is javax.net.ssl.SSLException ||
+            e is java.net.SocketException && e.message?.contains("reset", true) == true
+        if (tls) plainOnly.add(key)
+        return tls
+    }
+
+    private fun call(c: Connectors, method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> =
+        try {
+            call1(c, method, path, body, timeoutSec)
+        } catch (e: TlsRetry) {
+            call1(c, method, path, body, timeoutSec)
+        }
+
+    private class TlsRetry : Exception()
+
+    private fun call1(c: Connectors, method: String, path: String, body: JSONObject?, timeoutSec: Int): Pair<Int, String> {
+        val base = c.nasUrl.trim().trimEnd('/')
+        val conn = open(c, method, path, timeoutSec)
         try {
             if (body != null) {
                 conn.doOutput = true
@@ -707,9 +787,18 @@ object NasAgent {
             val text = (if (code >= 400) conn.errorStream else conn.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
             ApiLog.add("NAS agent: $method $path -> HTTP $code", "Automate", isProblem = code >= 400)
             if (code == 401) throw MediaException(REFUSED)
+            if (code == 426) throw MediaException("The NAS agent only takes the encrypted link, and this connection wasn't encrypted. Tap Test again; if it stays, tap \"Forget certificate\" in Connectors → NAS agent.")
             if (code >= 400) throw MediaException("The NAS agent answered HTTP $code.")
             return code to text
         } catch (e: java.io.IOException) {
+            if (generateSequence<Throwable>(e) { it.cause }.take(6).any { it.message?.contains("pinned certificate differs") == true }) {
+                ApiLog.add("NAS agent: the certificate differs from the pinned one: stopped", "Automate", isProblem = true)
+                throw MediaException(CHANGED)
+            }
+            if (plainAgent(c, e)) {
+                ApiLog.add("NAS agent: no encrypted link (agent older than 1.7): asking without encryption", "Automate")
+                throw TlsRetry()
+            }
             // Android reports a 401 without a login challenge as an error of its own: it's the token, not the network.
             if (e.message?.contains("authentication challenge", true) == true) {
                 ApiLog.add("NAS agent: $method $path -> HTTP 401 (token refused)", "Automate", isProblem = true)
@@ -726,8 +815,11 @@ object NasAgent {
         val (_, t) = call(c, "GET", "/status")
         val o = JSONObject(t)
         val why = o.optString("tiiny_error").takeIf { it.isNotBlank() }
-        val agent = "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
+        val agentLine = "NAS agent ${o.optString("version")} works: ${o.optInt("automations").let { if (it == 1) "1 automation" else "$it automations" }}, Tiiny " +
             if (o.optBoolean("tiiny_ok")) "reachable from the NAS." else "not reachable from the NAS" + (why?.let { ": $it" } ?: ".")
+        val link = if (o.optBoolean("encrypted")) "\nEncrypted link: on (certificate ${pinOf(c) ?: "pinned"})."
+        else "\nNot encrypted: update the agent to 1.7 for an encrypted link."
+        val agent = agentLine + link
         // With ntfy set: a test push, sent by the NAS itself, the way results go out.
         if (c.ntfyUrl.isBlank()) return agent
         val push = try {
@@ -738,6 +830,81 @@ object NasAgent {
             if (e.message?.contains("HTTP 404") == true) "To test the push, update the agent (1.5.5 or newer)." else "The push didn't work: ${e.message}"
         }
         return "$agent\n$push"
+    }
+
+    // ---- Backups (agent 1.7+), each already encrypted on the phone (Backup.kt).
+
+    private const val OLD_AGENT = "Backups need NAS agent 1.7 or newer: update it (Automate → Connectors → Set up NAS, step 5)."
+
+    fun backups(c: Connectors): List<Backup.Entry> = try {
+        Backup.parseList(call(c, "GET", "/backups").second)
+    } catch (e: MediaException) {
+        throw if (e.message?.contains("HTTP 404") == true) MediaException(OLD_AGENT) else e
+    }
+
+    fun deleteBackup(c: Connectors, name: String) {
+        call(c, "DELETE", "/backup?name=" + java.net.URLEncoder.encode(name, "UTF-8"))
+    }
+
+    /** Streams [file] to the NAS; [step] gets the share sent (0–1). */
+    fun uploadBackup(c: Connectors, name: String, file: java.io.File, step: (Float) -> Unit) {
+        call(c, "GET", "/status") // the encrypted link is set up (and pinned) before anything private goes out
+        val conn = open(c, "PUT", "/backup?name=" + java.net.URLEncoder.encode(name, "UTF-8"), 120)
+        try {
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/octet-stream")
+            conn.setFixedLengthStreamingMode(file.length())
+            val total = file.length().coerceAtLeast(1)
+            var sent = 0L
+            conn.outputStream.use { out ->
+                file.inputStream().use { inp ->
+                    val buf = ByteArray(1 shl 16)
+                    while (true) {
+                        val n = inp.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        sent += n
+                        step(sent.toFloat() / total)
+                    }
+                }
+            }
+            val code = conn.responseCode
+            ApiLog.add("NAS agent: backup $name (${file.length() / (1024 * 1024)} MB) -> HTTP $code", "Automate", isProblem = code >= 400)
+            if (code == 404) throw MediaException(OLD_AGENT)
+            if (code >= 400) throw MediaException("The NAS didn't take the backup (HTTP $code).")
+        } catch (e: java.io.IOException) {
+            throw MediaException("The backup didn't reach the NAS: ${e.message ?: e.javaClass.simpleName}")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** Fetches backup [name] into [to]; [step] gets the share received (0–1). */
+    fun downloadBackup(c: Connectors, name: String, to: java.io.File, step: (Float) -> Unit) {
+        call(c, "GET", "/status")
+        val conn = open(c, "GET", "/backup?name=" + java.net.URLEncoder.encode(name, "UTF-8"), 120)
+        try {
+            val code = conn.responseCode
+            if (code >= 400) throw MediaException("The NAS didn't hand out the backup (HTTP $code).")
+            val total = conn.contentLengthLong.coerceAtLeast(1)
+            var got = 0L
+            conn.inputStream.use { inp ->
+                to.outputStream().use { out ->
+                    val buf = ByteArray(1 shl 16)
+                    while (true) {
+                        val n = inp.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        got += n
+                        step(got.toFloat() / total)
+                    }
+                }
+            }
+        } catch (e: java.io.IOException) {
+            throw MediaException("The backup couldn't be fetched: ${e.message ?: e.javaClass.simpleName}")
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /** Sends the NAS automations and what they need (Tiiny address and key, search, email, calendar link, push). */

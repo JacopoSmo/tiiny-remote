@@ -551,6 +551,21 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
                 TextButton(onClick = { av.saveConnectors(current()); av.testNas(current()) }, enabled = nasUrl.isNotBlank() && token.isNotBlank()) {
                     BtnLabel("Test", symbol = "🔌")
                 }
+                // The pinned certificate of the encrypted link (agent 1.7+): only needed after setting the agent up anew.
+                var forget by remember { mutableStateOf(false) }
+                if (NasAgent.pinOf(current()) != null) TextButton(onClick = { forget = true }) { BtnLabel("Forget certificate", symbol = "🔐") }
+                if (forget) androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { forget = false },
+                    title = { Text("Forget the agent's certificate?") },
+                    text = {
+                        Text(
+                            "Only if you set the NAS agent up again (its certificate is new then). The next Test trusts the " +
+                                "certificate it meets, so do it at home on your own Wi-Fi.",
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { forget = false; NasAgent.forgetPin(current()) }) { Text("Forget") } },
+                    dismissButton = { TextButton(onClick = { forget = false }) { Text("Cancel") } },
+                )
             }
             TestAnswer("nas", testing, tests, openLogs)
             var guide by remember { mutableStateOf<String?>(null) }

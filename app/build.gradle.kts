@@ -84,6 +84,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // The optional daily check for a newer Tiiny Remote.
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // Settings → Privacy → App lock (fingerprint, face or the phone's screen lock).
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Automations: reading email over IMAP (read-only).
     implementation("com.sun.mail:android-mail:1.6.7")

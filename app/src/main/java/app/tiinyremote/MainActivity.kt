@@ -13,13 +13,18 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
     private val vm: MainViewModel by viewModels()
 
     companion object {
@@ -35,15 +40,18 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Background.visible = true
+        AppLock.onStart(vm.state.value.settings)
     }
 
     override fun onStop() {
         Background.visible = false
+        AppLock.onStop()
         super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Backup.applySecrets(this) // after a restore: the backup's passwords, sealed again with this phone's key
         NasAgent.init(this) // which app this is for the NAS agent (normal or exp)
         // The daily update check (Settings) is kept scheduled, or cancelled, to match the setting.
         AppUpdate.schedule(this, Store(this).load().dailyUpdateCheck)
@@ -60,7 +68,10 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val set = vm.state.collectAsState().value.settings
-            AppTheme(set.theme, set.style, set.designedFonts, set.lineIcons) { AppRoot(vm) }
+            AppTheme(set.theme, set.style, set.designedFonts, set.lineIcons) {
+                val locked by AppLock.locked.collectAsState()
+                if (locked) LockScreen { AppLock.ask(this) } else AppRoot(vm)
+            }
         }
     }
 }
@@ -93,6 +104,22 @@ fun AppTheme(theme: String = "auto", style: String = "wallpaper", designedFonts:
     }
     MaterialTheme(colorScheme = scheme, typography = Look.typography(style, designedFonts)) {
         androidx.compose.runtime.CompositionLocalProvider(LocalLineIcons provides lineIcons, content = content)
+    }
+}
+
+/** The app lock's screen: nothing of the app shows until the phone says it's you. Asks at once, and on tap. */
+@Composable
+fun LockScreen(ask: () -> Unit) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { ask() }
+    androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
+        androidx.compose.foundation.layout.Column(
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp, androidx.compose.ui.Alignment.CenterVertically),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        ) {
+            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Lock, contentDescription = null, modifier = androidx.compose.ui.Modifier.size(48.dp))
+            Text("Tiiny Remote is locked", style = MaterialTheme.typography.titleMedium)
+            androidx.compose.material3.Button(onClick = ask) { Text("Unlock") }
+        }
     }
 }
 
