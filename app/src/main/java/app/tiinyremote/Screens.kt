@@ -1984,6 +1984,49 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             ?: chatModels.firstOrNull { it.running && it.id != helper }
         var speedInfo by remember { mutableStateOf(false) }
         var history by remember { mutableStateOf(false) }
+        // Several pairs at once: up to 3 helpers × up to 6 main models, each pair loaded and tested in turn.
+        val byName = chatModels.sortedBy { it.name.lowercase() }
+        var testHelpers by remember { mutableStateOf(st.speedSet("helpers").filter { id -> chatModels.any { it.id == id } }) }
+        var testMains by remember { mutableStateOf(st.speedSet("mains").filter { id -> chatModels.any { it.id == id } }) }
+        val pairs = testMains.sumOf { m -> testHelpers.count { it != m } }
+        val batch = testHelpers.isNotEmpty() && testMains.isNotEmpty()
+        val testing = speed?.startsWith("Testing") == true
+        Box {
+            var pick by remember { mutableStateOf(false) }
+            OutlinedButton(onClick = { pick = true }, modifier = Modifier.fillMaxWidth(), enabled = !testing) {
+                Text(
+                    "Test models: " + (if (!batch) "the loaded pair" else
+                        "${testHelpers.size} helper${if (testHelpers.size > 1) "s" else ""} × ${testMains.size} main · $pairs pair${if (pairs != 1) "s" else ""}") + "  ▾",
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            ScaledDropdownMenu(expanded = pick, onDismissRequest = { pick = false }) {
+                DropdownMenuItem(
+                    text = { Text("Only the loaded pair") },
+                    onClick = { testHelpers = emptyList(); testMains = emptyList(); st.setSpeedSet("helpers", testHelpers); st.setSpeedSet("mains", testMains); pick = false },
+                )
+                HorizontalDivider()
+                DropdownMenuItem(text = { Text("Helpers (up to 3)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
+                for (m in byName) {
+                    val on = m.id in testHelpers
+                    DropdownMenuItem(
+                        text = { Text((if (on) "☑ " else "☐ ") + m.name) },
+                        enabled = on || testHelpers.size < 3,
+                        onClick = { testHelpers = if (on) testHelpers - m.id else testHelpers + m.id; st.setSpeedSet("helpers", testHelpers) },
+                    )
+                }
+                HorizontalDivider()
+                DropdownMenuItem(text = { Text("Main models (up to 6)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
+                for (m in byName) {
+                    val on = m.id in testMains
+                    DropdownMenuItem(
+                        text = { Text((if (on) "☑ " else "☐ ") + m.name) },
+                        enabled = on || testMains.size < 6,
+                        onClick = { testMains = if (on) testMains - m.id else testMains + m.id; st.setSpeedSet("mains", testMains) },
+                    )
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 SettingDropdown(
@@ -1996,9 +2039,21 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(
+            if (testing && batch) OutlinedButton(onClick = { st.stopSpeedTest() }, modifier = Modifier.weight(1f)) { BtnLabel("Stop after this step", symbol = "■") }
+            else if (batch) OutlinedButton(
+                onClick = {
+                    st.speedTestAll(
+                        testMains.mapNotNull { id -> chatModels.firstOrNull { it.id == id } },
+                        testHelpers.mapNotNull { id -> chatModels.firstOrNull { it.id == id } },
+                        cur.speedRuns,
+                    )
+                },
+                enabled = pairs > 0 && !testing,
+                modifier = Modifier.weight(1f),
+            ) { Text("Speed tests: $pairs pair${if (pairs != 1) "s" else ""}, one after the other") }
+            else OutlinedButton(
                 onClick = { if (big != null && small != null) st.speedTest(big, small, cur.speedRuns) },
-                enabled = big != null && small != null && speed?.startsWith("Testing") != true,
+                enabled = big != null && small != null && !testing,
                 modifier = Modifier.weight(1f),
             ) { Text("Speed test: one at a time or both at once?") }
             IconButton(onClick = { speedInfo = true }) {
@@ -2008,6 +2063,10 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         if (speedInfo) ModelChoiceInfo { speedInfo = false }
         Text(
             when {
+                batch && pairs == 0 -> "Choose at least one helper and one other main model."
+                batch -> "Tests $pairs pair${if (pairs != 1) "s" else ""} one after the other, ${if (cur.speedRuns == 1) "once" else "${cur.speedRuns} times"} each: " +
+                    "only that pair is loaded for its test, your models are loaded back at the end. " +
+                    "About ${Tools.fmtDuration(pairs * (cur.speedRuns * 2L + 2) * 60)}; it keeps going in the background. Each pair goes to 📊 Statistics."
                 helper.isBlank() -> "Choose a helper first."
                 small == null -> "Load the helper and your chat model to run the speed test."
                 big == null -> "Load your chat model too to run the speed test."

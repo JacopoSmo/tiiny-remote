@@ -1468,6 +1468,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- speed test: one model at a time, or two at once ----------
 
     private val _speed = MutableStateFlow<String?>(null)
+
+    /** Set by Stop: a test of several pairs ends at the next pause. */
+    @Volatile
+    private var speedStop = false
     /** The speed test's progress, then its result. */
     val speed: StateFlow<String?> = _speed.asStateFlow()
 
@@ -1553,133 +1557,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val n = runs.coerceIn(1, 5)
+        speedStop = false
         _speed.value = "Testing…"
         viewModelScope.launch {
             try {
-                val out = withContext(Dispatchers.IO) {
-                    val c = client()
-                    /** (tokens written, seconds taken) for one ~300-token answer, thinking off where possible. */
-                    fun one(model: String): Pair<Int, Double> {
-                        val body = JSONObject().put("model", model).put("stream", false).put("max_tokens", 300).put("temperature", 0.7)
-                            .put("messages", JSONArray().put(JSONObject().put("role", "user")
-                                .put("content", "Write a story of about 250 words about a lighthouse keeper and a storm.")))
-                        when (Tools.thinkingMode(c, model)) {
-                            "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-                            "always" -> body.put("reasoning_effort", "low")
-                        }
-                        var t0 = System.nanoTime()
-                        var r = c.request("POST", "/v1/chat/completions", body, 600)
-                        if (!r.ok && r.code >= 500) {
-                            // A model that has only just loaded can answer 500 once (seen with gpt-oss): one retry.
-                            Thread.sleep(5000)
-                            t0 = System.nanoTime()
-                            r = c.request("POST", "/v1/chat/completions", body, 600)
-                        }
-                        val secs = (System.nanoTime() - t0) / 1e9
-                        if (!r.ok) throw MediaException("${model.substringAfterLast('/')}: ${r.error()}")
-                        val o = r.json()
-                        val msg = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-                        val written = (msg?.optString("content").orEmpty() + msg?.optString("reasoning_content").orEmpty()).length
-                        val tokens = o.optJSONObject("usage")?.optInt("completion_tokens", 0)?.takeIf { it > 0 } ?: maxOf(1, written / 4)
-                        return tokens to secs
-                    }
-                    fun rate(r: Pair<Int, Double>) = r.first / r.second
-                    val bigRates = mutableListOf<Double>()
-                    val smallRates = mutableListOf<Double>()
-                    val bothGains = mutableListOf<Double>()
-                    val helperGains = mutableListOf<Double>()
-                    // Times, not added-up speeds, per run: the same work (what each wrote alone), timed one after the
-                    // other and at the same time. When the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
-                    fun gain(seqS: Double, parS: Double) = (1 - parS / seqS) * 100
-                    // A short pause before every measurement, so one doesn't run into the end of the one before.
-                    suspend fun pause() = kotlinx.coroutines.delay(PAUSE_MS)
-                    for (i in 1..n) {
-                        val run = if (n > 1) " (run $i of $n)" else ""
-                        if (i > 1) pause()
-                        _speed.value = "Testing${run}: ${big.name} alone…"
-                        val a = one(big.id)
-                        pause()
-                        _speed.value = "Testing${run}: ${small.name} alone…"
-                        val b = one(small.id)
-                        pause()
-                        _speed.value = "Testing${run}: both at the same time…"
-                        val (a2, b2) = coroutineScope {
-                            val x = async { one(big.id) }
-                            val y = async { one(small.id) }
-                            x.await() to y.await()
-                        }
-                        pause()
-                        _speed.value = "Testing${run}: ${small.name} twice at the same time…"
-                        val (h1, h2) = coroutineScope {
-                            val x = async { one(small.id) }
-                            val y = async { one(small.id) }
-                            x.await() to y.await()
-                        }
-                        bigRates += rate(a)
-                        smallRates += rate(b)
-                        bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
-                        helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
-                    }
-                    fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
-                    fun pct(v: Double) = "${Math.round(v)}%"
-                    // From 3 runs on, clear outliers (a hiccup on the Tiiny, say) are left out, one at a time: a value
-                    // more than 3 robust standard deviations (MAD) from the median of the rest, and more than `floor`
-                    // away. At least 3 values stay: 1 can go of 3 or 4 runs, 2 of 5.
-                    fun clean(l: List<Double>, floor: Double): Pair<List<Double>, List<Double>> {
-                        fun median(v: List<Double>) = v.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
-                        var kept = l
-                        val out = ArrayList<Double>()
-                        val most = if (l.size < 3) 0 else maxOf(1, l.size - 3)
-                        while (out.size < most) {
-                            val m = median(kept)
-                            val mad = median(kept.map { kotlin.math.abs(it - m) }) * 1.4826
-                            val worst = kept.indices.maxByOrNull { kotlin.math.abs(kept[it] - m) } ?: break
-                            if (kotlin.math.abs(kept[worst] - m) <= maxOf(3 * mad, floor)) break
-                            out += kept[worst]
-                            kept = kept.filterIndexed { j, _ -> j != worst }
-                        }
-                        return kept to out
-                    }
-                    val (bigOk, bigOut) = clean(bigRates, bigRates.average() * 0.1)
-                    val (smallOk, smallOut) = clean(smallRates, smallRates.average() * 0.1)
-                    val (bothOk, bothOut) = clean(bothGains, 5.0)
-                    val (helperOk, helperOut) = clean(helperGains, 5.0)
-                    val bigRate = bigOk.average()
-                    val smallRate = smallOk.average()
-                    // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
-                    prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
-                    fun outText(out: List<Double>, show: (Double) -> String) =
-                        if (out.isEmpty()) "" else " [left out as outlier${if (out.size > 1) "s" else ""}: ${out.joinToString(", ") { show(it) }}]"
-                    fun spread(l: List<Double>, out: List<Double>) =
-                        (if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else "") + outText(out) { f(it) }
-                    fun verdict(l: List<Double>, out: List<Double>): String {
-                        val p = l.average()
-                        val text = when {
-                            p >= 10 -> "${pct(p)} sooner: worth it"
-                            p >= 3 -> "${pct(p)} sooner: a little faster"
-                            p > -3 -> "no gain, the Tiiny takes them in turn"
-                            p > -5 -> "about the same"
-                            else -> "${pct(-p)} slower: better one after the other"
-                        }
-                        return text + (if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else "") + outText(out) { pct(it) }
-                    }
-                    // Kept for History: which pairs work best, and how each model performs over time.
-                    addSpeedHistory(
-                        SpeedRecord(System.currentTimeMillis(), big.name, small.name, n, bigRate, smallRate, bothOk.average(), helperOk.average(),
-                            bigOut.size + smallOut.size + bothOut.size + helperOut.size),
-                    )
-                    val faster = (smallRate / bigRate - 1) * 100
-                    val pages = if (smallRate >= bigRate * PAGE_RULE)
-                        "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
-                    else
-                        "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
-                            "${big.name} reads web pages itself."
-                    (if (n > 1) "Average of $n runs. " else "") +
-                        "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigOk, bigOut)}, ${small.name} ${f(smallRate)} tok/s${spread(smallOk, smallOut)}.\n" +
-                        "Both models at once: ${verdict(bothOk, bothOut)}.\n" +
-                        "${small.name} twice at once: ${verdict(helperOk, helperOut)}.\n" +
-                        pages
-                }
+                val out = withContext(Dispatchers.IO) { measurePair(client(), big, small, n, "") }
                 _speed.value = out
                 ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
                 Notifier.done(getApplication(), "Speed test finished", out)
@@ -1690,6 +1572,235 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 deviceBusy.set(false)
             }
         }
+    }
+
+    /** The models chosen for the speed test of several pairs (Settings → Fast helper model): ids, in order. */
+    fun speedSet(key: String): List<String> = setting("speed.$key", "").split('\n').filter { it.isNotBlank() }
+    fun setSpeedSet(key: String, ids: List<String>) = setSetting("speed.$key", ids.joinToString("\n"))
+
+    /** Ends a test of several pairs at its next pause (the pair being measured is left unfinished, not saved). */
+    fun stopSpeedTest() { speedStop = true }
+
+    /**
+     * The speed test for every chosen main model with every chosen helper ([runs] times each), one pair after the
+     * other, loading each pair by itself (other models are unloaded for it) so you needn't change models. Each pair is
+     * saved to 📊 Statistics as it finishes. Afterwards the models loaded before are loaded again.
+     */
+    fun speedTestAll(mains: List<ModelInfo>, helpers: List<ModelInfo>, runs: Int) {
+        if (_speed.value?.startsWith("Testing") == true) return
+        val pairs = mains.flatMap { m -> helpers.filter { it.id != m.id }.map { m to it } }
+        if (pairs.isEmpty()) return
+        if (!deviceBusy.compareAndSet(false, true)) {
+            note("The Tiiny is busy with a job: run the test when it's done.")
+            return
+        }
+        val n = runs.coerceIn(1, 5)
+        speedStop = false
+        _speed.value = "Testing…"
+        val app = getApplication<Application>()
+        Background.set(app, "speed", "Speed test of ${pairs.size} pairs")
+        viewModelScope.launch {
+            val lines = ArrayList<String>()
+            var done = 0
+            try {
+                withContext(Dispatchers.IO) {
+                    val c = client()
+                    val before = Tools.runningIds(c)
+                    val p = Progress({ msg, _ -> _speed.value = "Testing: $msg…" }, { speedStop })
+                    fun stop(id: String) { c.request("POST", "/api/v1/models/${c.quote(id)}/stop", null, 120) }
+                    fun launch(m: ModelInfo) {
+                        if (m.id in Tools.runningIds(c, log = false)) return
+                        p.update("loading ${m.name}", null)
+                        NpuGate.awaitQuiet(m.id)
+                        val r = c.request("POST", "/api/v1/models/${c.quote(m.id)}/launch", JSONObject().put("model_id", m.id), 120)
+                        if (!r.ok) throw MediaException("${m.name}: ${r.error()}")
+                        Tools.waitLoaded(c, m.id, p)
+                    }
+                    try {
+                        for ((i, pair) in pairs.withIndex()) {
+                            if (speedStop) break
+                            val (big, small) = pair
+                            val tag = " pair ${i + 1} of ${pairs.size}, ${big.name} + ${small.name}"
+                            val share = (big.npuUsage ?: 0.0) + (small.npuUsage ?: 0.0)
+                            if (share > 100) {
+                                lines += "${big.name} + ${small.name}: skipped, together ${Math.round(share)}% of the NPU"
+                                continue
+                            }
+                            try {
+                                // Only this pair on the NPU, so every pair is measured alike.
+                                for (id in Tools.runningIds(c) - setOf(big.id, small.id)) {
+                                    p.update("unloading ${id.substringAfterLast('/')}", null)
+                                    stop(id)
+                                }
+                                launch(big)
+                                launch(small)
+                                val out = measurePair(c, big, small, n, ",$tag")
+                                lines += "${big.name} + ${small.name}: " + out.lines().drop(if (n > 1) 0 else 0).joinToString(" ")
+                                done++
+                            } catch (e: Exception) {
+                                if (speedStop) break
+                                lines += "${big.name} + ${small.name}: failed (${e.message})"
+                                ApiLog.add("Speed test, ${big.name} + ${small.name} failed: ${e.message}", "Chat", isProblem = true)
+                            }
+                        }
+                    } finally {
+                        // What was loaded before comes back (best effort; a failure is only logged).
+                        try {
+                            val now = Tools.runningIds(c, log = false)
+                            for (id in now - before) { _speed.value = "Testing: unloading ${id.substringAfterLast('/')}…"; stop(id) }
+                            for (id in before - now) {
+                                _speed.value = "Testing: loading ${id.substringAfterLast('/')} back…"
+                                NpuGate.awaitQuiet(id)
+                                c.request("POST", "/api/v1/models/${c.quote(id)}/launch", JSONObject().put("model_id", id), 120)
+                            }
+                            for (id in before - now) Tools.waitLoaded(c, id, Progress({ _, _ -> }, { false }))
+                        } catch (e: Exception) {
+                            ApiLog.add("Speed test: couldn't load the earlier models back: ${e.message}", "Chat", isProblem = true)
+                        }
+                    }
+                }
+                val head = (if (speedStop) "Stopped after $done of ${pairs.size} pairs" else "$done of ${pairs.size} pairs tested") +
+                    (if (n > 1) ", $n runs each" else "") + ". Results in 📊 Statistics."
+                _speed.value = head + "\n" + lines.joinToString("\n")
+                ApiLog.add("Speed test of several pairs: $head " + lines.joinToString(" | "), "Chat")
+                Notifier.done(app, "Speed test finished", head)
+            } catch (e: Exception) {
+                _speed.value = "Speed test failed: ${e.message}"
+                ApiLog.add("Speed test of several pairs failed: ${e.message}", "Chat", isProblem = true)
+            } finally {
+                speedStop = false
+                deviceBusy.set(false)
+                Background.set(app, "speed", null)
+            }
+        }
+    }
+
+    /**
+     * One speed test of a pair: each alone, both at once, the helper twice at once, [n] times; kept for 📊 Statistics.
+     * Both must be loaded. [tag] goes into the progress (the pair, in a test of several). Blocks: call on IO.
+     */
+    private suspend fun measurePair(c: DeviceClient, big: ModelInfo, small: ModelInfo, n: Int, tag: String): String {
+        /** (tokens written, seconds taken) for one ~300-token answer, thinking off where possible. */
+        fun one(model: String): Pair<Int, Double> {
+            val body = JSONObject().put("model", model).put("stream", false).put("max_tokens", 300).put("temperature", 0.7)
+                .put("messages", JSONArray().put(JSONObject().put("role", "user")
+                    .put("content", "Write a story of about 250 words about a lighthouse keeper and a storm.")))
+            when (Tools.thinkingMode(c, model)) {
+                "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
+                "always" -> body.put("reasoning_effort", "low")
+            }
+            var t0 = System.nanoTime()
+            var r = c.request("POST", "/v1/chat/completions", body, 600)
+            if (!r.ok && r.code >= 500) {
+                // A model that has only just loaded can answer 500 once (seen with gpt-oss): one retry.
+                Thread.sleep(5000)
+                t0 = System.nanoTime()
+                r = c.request("POST", "/v1/chat/completions", body, 600)
+            }
+            val secs = (System.nanoTime() - t0) / 1e9
+            if (!r.ok) throw MediaException("${model.substringAfterLast('/')}: ${r.error()}")
+            val o = r.json()
+            val msg = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            val written = (msg?.optString("content").orEmpty() + msg?.optString("reasoning_content").orEmpty()).length
+            val tokens = o.optJSONObject("usage")?.optInt("completion_tokens", 0)?.takeIf { it > 0 } ?: maxOf(1, written / 4)
+            return tokens to secs
+        }
+        fun rate(r: Pair<Int, Double>) = r.first / r.second
+        val bigRates = mutableListOf<Double>()
+        val smallRates = mutableListOf<Double>()
+        val bothGains = mutableListOf<Double>()
+        val helperGains = mutableListOf<Double>()
+        // Times, not added-up speeds, per run: the same work (what each wrote alone), timed one after the
+        // other and at the same time. When the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
+        fun gain(seqS: Double, parS: Double) = (1 - parS / seqS) * 100
+        // A short pause before every measurement, so one doesn't run into the end of the one before.
+        suspend fun pause() { if (speedStop) throw MediaException("Stopped"); kotlinx.coroutines.delay(PAUSE_MS) }
+        for (i in 1..n) {
+            val run = if (n > 1) " (run $i of $n)" else ""
+            if (i > 1) pause()
+            _speed.value = "Testing${tag}${run}: ${big.name} alone…"
+            val a = one(big.id)
+            pause()
+            _speed.value = "Testing${tag}${run}: ${small.name} alone…"
+            val b = one(small.id)
+            pause()
+            _speed.value = "Testing${tag}${run}: both at the same time…"
+            val (a2, b2) = coroutineScope {
+                val x = async { one(big.id) }
+                val y = async { one(small.id) }
+                x.await() to y.await()
+            }
+            pause()
+            _speed.value = "Testing${tag}${run}: ${small.name} twice at the same time…"
+            val (h1, h2) = coroutineScope {
+                val x = async { one(small.id) }
+                val y = async { one(small.id) }
+                x.await() to y.await()
+            }
+            bigRates += rate(a)
+            smallRates += rate(b)
+            bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
+            helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
+        }
+        fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
+        fun pct(v: Double) = "${Math.round(v)}%"
+        // From 3 runs on, clear outliers (a hiccup on the Tiiny, say) are left out, one at a time: a value
+        // more than 3 robust standard deviations (MAD) from the median of the rest, and more than `floor`
+        // away. At least 3 values stay: 1 can go of 3 or 4 runs, 2 of 5.
+        fun clean(l: List<Double>, floor: Double): Pair<List<Double>, List<Double>> {
+            fun median(v: List<Double>) = v.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
+            var kept = l
+            val out = ArrayList<Double>()
+            val most = if (l.size < 3) 0 else maxOf(1, l.size - 3)
+            while (out.size < most) {
+                val m = median(kept)
+                val mad = median(kept.map { kotlin.math.abs(it - m) }) * 1.4826
+                val worst = kept.indices.maxByOrNull { kotlin.math.abs(kept[it] - m) } ?: break
+                if (kotlin.math.abs(kept[worst] - m) <= maxOf(3 * mad, floor)) break
+                out += kept[worst]
+                kept = kept.filterIndexed { j, _ -> j != worst }
+            }
+            return kept to out
+        }
+        val (bigOk, bigOut) = clean(bigRates, bigRates.average() * 0.1)
+        val (smallOk, smallOut) = clean(smallRates, smallRates.average() * 0.1)
+        val (bothOk, bothOut) = clean(bothGains, 5.0)
+        val (helperOk, helperOut) = clean(helperGains, 5.0)
+        val bigRate = bigOk.average()
+        val smallRate = smallOk.average()
+        // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
+        prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
+        fun outText(out: List<Double>, show: (Double) -> String) =
+            if (out.isEmpty()) "" else " [left out as outlier${if (out.size > 1) "s" else ""}: ${out.joinToString(", ") { show(it) }}]"
+        fun spread(l: List<Double>, out: List<Double>) =
+            (if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else "") + outText(out) { f(it) }
+        fun verdict(l: List<Double>, out: List<Double>): String {
+            val p = l.average()
+            val text = when {
+                p >= 10 -> "${pct(p)} sooner: worth it"
+                p >= 3 -> "${pct(p)} sooner: a little faster"
+                p > -3 -> "no gain, the Tiiny takes them in turn"
+                p > -5 -> "about the same"
+                else -> "${pct(-p)} slower: better one after the other"
+            }
+            return text + (if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else "") + outText(out) { pct(it) }
+        }
+        // Kept for History: which pairs work best, and how each model performs over time.
+        addSpeedHistory(
+            SpeedRecord(System.currentTimeMillis(), big.name, small.name, n, bigRate, smallRate, bothOk.average(), helperOk.average(),
+                bigOut.size + smallOut.size + bothOut.size + helperOut.size),
+        )
+        val faster = (smallRate / bigRate - 1) * 100
+        val pages = if (smallRate >= bigRate * PAGE_RULE)
+            "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
+        else
+            "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
+                "${big.name} reads web pages itself."
+        return (if (n > 1) "Average of $n runs. " else "") +
+            "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigOk, bigOut)}, ${small.name} ${f(smallRate)} tok/s${spread(smallOk, smallOut)}.\n" +
+            "Both models at once: ${verdict(bothOk, bothOut)}.\n" +
+            "${small.name} twice at once: ${verdict(helperOk, helperOut)}.\n" +
+            pages
     }
 
     /**

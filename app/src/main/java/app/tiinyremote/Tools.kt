@@ -47,7 +47,7 @@ object Tools {
         return (0 until list.length()).mapNotNull { list.optJSONObject(it)?.optString("model_id")?.takeIf { s -> s.isNotBlank() } }.toSet()
     }
 
-    private fun waitLoaded(c: DeviceClient, model: String, p: Progress) {
+    fun waitLoaded(c: DeviceClient, model: String, p: Progress) {
         val until = System.currentTimeMillis() + 420_000 // the biggest models take about 2 minutes
         while (System.currentTimeMillis() < until) {
             check(p)
