@@ -98,7 +98,7 @@ object Discover {
         val wantKey = answers.filter { (_, a) -> a.first in setOf(401, 403) && a.second.trimStart().startsWith("{") }.map { it.first }
         if (hits.isEmpty() && key != null) for (ip in wantKey.take(3)) ask(ip, key)?.let { if (looksTiiny(it.second)) hits.add(ip) }
         ApiLog.add(
-            "Find on my Wi-Fi: searched $base1–254; ${answers.size} answered on port 80" +
+            "Find on my Wi-Fi: searched ${base}1–254; ${answers.size} answered on port 80" +
                 (if (answers.isNotEmpty()) " (" + answers.take(12).joinToString(", ") { (ip, a) -> "${ip.substringAfterLast('.')}: HTTP ${a.first}" } + ")" else "") +
                 (if (hits.isEmpty()) "; no Tiiny among them" else "; Tiiny at " + hits.joinToString()),
             "Device", isProblem = hits.isEmpty(),
