@@ -160,6 +160,8 @@ object Tools {
 
     /** The picture forming, while an image is made with live preview on (and the step it shows); null otherwise. */
     val livePreview = kotlinx.coroutines.flow.MutableStateFlow<Pair<ByteArray, Int>?>(null)
+    /** Whether the progress card shows the preview (switchable while the image is being made). */
+    val showPreview = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     /** Each image model's own step count, as its live route tells it ("… between 1 and steps (40)"). */
     private val modelSteps = java.util.concurrent.ConcurrentHashMap<String, Int>()

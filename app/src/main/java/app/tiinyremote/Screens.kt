@@ -100,6 +100,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -214,6 +216,13 @@ fun AppRoot(vm: MainViewModel) {
         if (history.size > 30) history.removeAt(0)
         toolId = id
     }
+    /** Straight to a Create tool from another page (Start, the Gallery): one step back returns there. */
+    fun openCreate(id: String) {
+        history.add(tab to toolId)
+        if (history.size > 30) history.removeAt(0)
+        tab = 1
+        toolId = id
+    }
     val canGoBack = history.isNotEmpty() || (tab == 1 && toolId != null && toolId != "image")
     fun back() {
         if (history.isNotEmpty()) {
@@ -266,9 +275,10 @@ fun AppRoot(vm: MainViewModel) {
     val undo by st.undo.collectAsState()
     LaunchedEffect(undo) {
         val u = undo ?: return@LaunchedEffect
-        st.undoShown()
+        // Cleared only once the bar is gone: clearing it first restarted this and took the bar away at once.
         val r = snackbar.showSnackbar(u.msg, actionLabel = "Undo", withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Long)
         if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) u.undo()
+        if (st.undo.value === u) st.undoShown()
     }
 
     LaunchedEffect(s.toast) {
@@ -402,6 +412,14 @@ fun AppRoot(vm: MainViewModel) {
                                 }
                                 IconButton(onClick = { st.newChat() }) { Icon(Icons.Filled.Add, contentDescription = "New chat") }
                             }
+                            // Create and the Gallery: what the Tiiny kept of the texts sent from here (Describe, OCR, prompts…).
+                            if (tab == 1 || tab == 6) {
+                                var copies by remember { mutableStateOf(false) }
+                                IconButton(onClick = { copies = true }) {
+                                    Text("🗃", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Copies kept on the Tiiny" })
+                                }
+                                if (copies) TiinyCopiesDialog(st) { copies = false }
+                            }
                             // Models: "Help me choose" asks the chat model which model fits what you want to do.
                             if (tab == 0) IconButton(onClick = { st.askInChat(HELP_CHOOSE_DRAFT) }) {
                                 Text("🧭", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Help me choose a model" })
@@ -440,7 +458,7 @@ fun AppRoot(vm: MainViewModel) {
                     Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
                         0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
                         1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openGallery = { galleryStart = it; goTab(6) })
-                        6 -> CreationsScreen(st, galleryStart) { t -> goTab(1); openToolNav(t) }
+                        6 -> CreationsScreen(st, galleryStart) { t -> openCreate(t) }
                         7 -> TranslateScreen(s, st)
                         2 -> ChatScreen(s, vm, st)
                         3 -> UnlockScreen(s, vm)
@@ -451,7 +469,7 @@ fun AppRoot(vm: MainViewModel) {
                             goTab(3)
                         })
                         8 -> CodeScreen(s, vm, st)
-                        9 -> StartScreen(st, { goTab(it) }, { openToolNav(it) })
+                        9 -> StartScreen(st, { goTab(it) }, { openCreate(it) })
                         else -> SettingsScreen(s, vm, st)
                     } }
                 }
@@ -739,6 +757,28 @@ private fun ModelsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel, onO
                             }
                         }
                         Spacer(Modifier.width(8.dp))
+                        // Updates at a glance: every model with an update, and the updates under way, in one list.
+                        val updatingIds = s.downloads.map { it.id }.toSet()
+                        val toUpdate = s.models.filter { it.needUpdate || it.id in updatingIds }
+                        var updatesOpen by remember { mutableStateOf(false) }
+                        if (toUpdate.isNotEmpty()) {
+                            BadgedBox(badge = { Badge { Text("${toUpdate.size}") } }) {
+                                Surface(
+                                    onClick = { updatesOpen = true },
+                                    shape = CircleShape,
+                                    color = Color.Transparent,
+                                    border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.size(40.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text("⟳", fontSize = 20.sp, color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.semantics { contentDescription = "Update models: ${toUpdate.size}" })
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        if (updatesOpen) UpdatesDialog(s, vm) { updatesOpen = false }
                         // Round button in the "Loaded" colour: loaded models to the top.
                         val loadedColor = Color(0xFFE65100)
                         Surface(
@@ -1254,6 +1294,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         "🔎" to "Find (Settings: the Tiiny on your Wi-Fi)",
         "📦" to "Back up now (Settings → Privacy and backup)",
         "🔐" to "Forget the NAS agent's certificate (Connectors)",
+        "🗃" to "Copies the Tiiny keeps of texts and chats (Chat's history, Create, Gallery)",
         "↩" to "Undo a delete (the bar at the bottom)",
     )
     ScaledAlertDialog(
@@ -1410,7 +1451,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, designedFonts = false, quietStatus = false, appLock = false, lockAfter = 0)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, quietStatus = false, appLock = false, lockAfter = 0)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1468,9 +1509,11 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         // The look: colours, pictograms, typefaces and status bar, each on its own (alphabetical after Mode's light/dark).
         SettingDropdown("Style", Look.STYLES, cur.style) { vm.setDisplay(cur.copy(style = it)) }
         SettingDropdown("Mode", THEMES, cur.theme) { vm.setDisplay(cur.copy(theme = it)) }
-        SettingDropdown("Pictograms", listOf("emoji" to "Colourful (the phone's emoji)", "lines" to "Line icons (one family)"), if (cur.lineIcons) "lines" else "emoji") {
-            vm.setDisplay(cur.copy(lineIcons = it == "lines"))
-        }
+        SettingDropdown(
+            "Pictograms",
+            listOf("emoji" to "Colourful (the phone's emoji)", "lines_colour" to "Line icons (colourful)", "lines_style" to "Line icons (the style's colour)"),
+            if (!cur.lineIcons) "emoji" else if (cur.lineColour) "lines_colour" else "lines_style",
+        ) { vm.setDisplay(cur.copy(lineIcons = it != "emoji", lineColour = it == "lines_colour")) }
         SettingDropdown("Status bar", listOf("standard" to "Standard (coloured)", "quiet" to "Quiet (one thin line)"), if (cur.quietStatus) "quiet" else "standard") {
             vm.setDisplay(cur.copy(quietStatus = it == "quiet"))
         }
@@ -1536,6 +1579,151 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         findNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         found?.takeIf { it.size > 1 }?.let { hits -> Row { for (h in hits) TextButton(onClick = { url = h }) { Text(h.removePrefix("http://")) } } }
         SecretField(key, { key = it }, "API key (TiinyOS → Settings → API Key)")
+        // Restart and power off: in the Tiiny's own section, beside its address and key.
+        var powerAsk by remember { mutableStateOf<Boolean?>(null) } // true: restart, false: power off
+        val tiinyOn = s.device == DeviceState.ONLINE
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { powerAsk = true }, enabled = tiinyOn) { BtnLabel("Restart", Icons.Filled.Refresh) }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = { powerAsk = false },
+                enabled = tiinyOn,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+            ) { BtnLabel("Power off", PowerIcon) }
+        }
+        Text(
+            "Both unload the models and stop what's running. After a restart it's locked until unlocked (automatic with the saved password); after power off, its power button starts it again.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        powerAsk?.let { restart ->
+            val running = s.models.any { it.busy } || s.downloads.isNotEmpty()
+            ScaledAlertDialog(
+                onDismissRequest = { powerAsk = null },
+                title = { Text(if (restart) "Restart the Tiiny?" else "Power off the Tiiny?") },
+                text = {
+                    Text(
+                        (if (running) "Something is still running on it (a model at work or a download): it will be stopped. " else "") +
+                            if (restart) "The loaded models are unloaded. It's back in a few minutes, locked until unlocked " +
+                                "(the app does that by itself with the saved password)."
+                            else "The loaded models are unloaded and it switches off in about 10 seconds. " +
+                                "To switch it on again, press the power button on the Tiiny.",
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { vm.power(restart); powerAsk = null }) {
+                        Text(if (restart) "Restart" else "Power off", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { powerAsk = null }) { Text("Keep it on") } },
+            )
+        }
+
+        // Everything about reaching the Tiiny together: its address and power, unlocking it, WireGuard from away.
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("Unlocking after a restart", style = MaterialTheme.typography.titleMedium)
+        SecretField(tpw, { tpw = it }, "Tiiny password (the one tiiny login asks for)")
+        Text(
+            "Used to unlock the Tiiny directly. It goes only to the Tiiny and is stored encrypted on this phone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = auto, onCheckedChange = { auto = it })
+            Spacer(Modifier.width(10.dp))
+            Text("Unlock automatically when the Tiiny is locked")
+        }
+        DangerButton("Forget saved Tiiny login key", onClick = { vm.forgetTiinyLogin() })
+        // The NAS fallback belongs to unlocking: right under it.
+        Text("NAS, as a fallback for unlocking", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+        OutlinedTextField(
+            value = host,
+            onValueChange = { host = it },
+            label = { Text("NAS address") },
+            placeholder = { Text("192.168.x.x") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+        )
+        OutlinedTextField(
+            value = port,
+            onValueChange = { v -> port = v.filter { it.isDigit() }.take(5) },
+            label = { Text("SSH port") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+        OutlinedTextField(
+            value = user,
+            onValueChange = { user = it },
+            label = { Text("NAS username") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        SecretField(pw, { pw = it }, "NAS password")
+        OutlinedTextField(
+            value = cmd,
+            onValueChange = { cmd = it },
+            label = { Text("Unlock command (advanced)") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+        )
+        TextButton(onClick = { cmd = DEFAULT_UNLOCK_COMMAND }) { Text("Reset unlock command") }
+
+        Button(onClick = { vm.saveSettings(current()) }, modifier = Modifier.fillMaxWidth()) { Text("Save") }
+        OutlinedButton(
+            onClick = {
+                vm.saveSettings(current())
+                vm.testNas()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Save and test NAS login") }
+        DangerButton("Forget saved NAS key", onClick = { vm.forgetHostKey() })
+
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        Text("WireGuard VPN", style = MaterialTheme.typography.titleMedium)
+        val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            vm.permissionResult(granted)
+        }
+        OutlinedTextField(
+            value = tunnel,
+            onValueChange = { tunnel = it },
+            label = { Text("Tunnel name, exactly as in the WireGuard app") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "In the WireGuard app, turn on Settings → \"Allow remote control apps\" so this app can switch the " +
+                "tunnel. Then allow it here once.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when {
+                !s.vpn.wireguardInstalled -> Text("WireGuard app not found on this phone.", style = MaterialTheme.typography.bodyMedium)
+                s.vpn.permitted -> Text("Control of WireGuard: allowed", style = MaterialTheme.typography.bodyMedium)
+                else -> OutlinedButton(onClick = { permLauncher.launch(Vpn.PERMISSION) }) { Text("Allow controlling WireGuard") }
+            }
+            Spacer(Modifier.weight(1f))
+            if (s.vpn.wireguardInstalled) TextButton(onClick = { vm.openWireGuard() }) { BtnLabel("Open WireGuard", androidx.compose.material.icons.Icons.AutoMirrored.Filled.ExitToApp) }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = autoVpn, onCheckedChange = { autoVpn = it })
+            Spacer(Modifier.width(10.dp))
+            Text("Switch the VPN on automatically when I'm away from home (or the Tiiny isn't reachable)")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = offHome, onCheckedChange = { offHome = it }, enabled = autoVpn)
+            Spacer(Modifier.width(10.dp))
+            Text("…and off again when I'm back on my home network")
+        }
+        Text(
+            "Home is recognised by your Wi-Fi having the Tiiny's address range (e.g. 192.168.3.x); no location " +
+                "access is needed. Automatic switching runs while this app is open and pauses for 10 minutes after " +
+                "you switch the VPN yourself.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Web search", style = MaterialTheme.typography.titleMedium)
@@ -1754,158 +1942,11 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         )
         speed?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Text("Unlocking after a restart", style = MaterialTheme.typography.titleMedium)
-        SecretField(tpw, { tpw = it }, "Tiiny password (the one tiiny login asks for)")
-        Text(
-            "Used to unlock the Tiiny directly. It goes only to the Tiiny and is stored encrypted on this phone.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = auto, onCheckedChange = { auto = it })
-            Spacer(Modifier.width(10.dp))
-            Text("Unlock automatically when the Tiiny is locked")
-        }
-        DangerButton("Forget saved Tiiny login key", onClick = { vm.forgetTiinyLogin() })
-
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Text("WireGuard VPN", style = MaterialTheme.typography.titleMedium)
-        val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            vm.permissionResult(granted)
-        }
-        OutlinedTextField(
-            value = tunnel,
-            onValueChange = { tunnel = it },
-            label = { Text("Tunnel name, exactly as in the WireGuard app") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Text(
-            "In the WireGuard app, turn on Settings → \"Allow remote control apps\" so this app can switch the " +
-                "tunnel. Then allow it here once.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            when {
-                !s.vpn.wireguardInstalled -> Text("WireGuard app not found on this phone.", style = MaterialTheme.typography.bodyMedium)
-                s.vpn.permitted -> Text("Control of WireGuard: allowed", style = MaterialTheme.typography.bodyMedium)
-                else -> OutlinedButton(onClick = { permLauncher.launch(Vpn.PERMISSION) }) { Text("Allow controlling WireGuard") }
-            }
-            Spacer(Modifier.weight(1f))
-            if (s.vpn.wireguardInstalled) TextButton(onClick = { vm.openWireGuard() }) { BtnLabel("Open WireGuard", androidx.compose.material.icons.Icons.AutoMirrored.Filled.ExitToApp) }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = autoVpn, onCheckedChange = { autoVpn = it })
-            Spacer(Modifier.width(10.dp))
-            Text("Switch the VPN on automatically when I'm away from home (or the Tiiny isn't reachable)")
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = offHome, onCheckedChange = { offHome = it }, enabled = autoVpn)
-            Spacer(Modifier.width(10.dp))
-            Text("…and off again when I'm back on my home network")
-        }
-        Text(
-            "Home is recognised by your Wi-Fi having the Tiiny's address range (e.g. 192.168.3.x); no location " +
-                "access is needed. Automatic switching runs while this app is open and pauses for 10 minutes after " +
-                "you switch the VPN yourself.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Text("NAS, as a fallback for unlocking", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
-            value = host,
-            onValueChange = { host = it },
-            label = { Text("NAS address") },
-            placeholder = { Text("192.168.x.x") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-        )
-        OutlinedTextField(
-            value = port,
-            onValueChange = { v -> port = v.filter { it.isDigit() }.take(5) },
-            label = { Text("SSH port") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        )
-        OutlinedTextField(
-            value = user,
-            onValueChange = { user = it },
-            label = { Text("NAS username") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        SecretField(pw, { pw = it }, "NAS password")
-        OutlinedTextField(
-            value = cmd,
-            onValueChange = { cmd = it },
-            label = { Text("Unlock command (advanced)") },
-            modifier = Modifier.fillMaxWidth(),
-            minLines = 2,
-        )
-        TextButton(onClick = { cmd = DEFAULT_UNLOCK_COMMAND }) { Text("Reset unlock command") }
-
-        Button(onClick = { vm.saveSettings(current()) }, modifier = Modifier.fillMaxWidth()) { Text("Save") }
-        OutlinedButton(
-            onClick = {
-                vm.saveSettings(current())
-                vm.testNas()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Save and test NAS login") }
-        DangerButton("Forget saved NAS key", onClick = { vm.forgetHostKey() })
-
         Text(
             "The log (with Share) is in the Activity tab.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Text("Tiiny", style = MaterialTheme.typography.titleMedium)
-        var powerAsk by remember { mutableStateOf<Boolean?>(null) } // true: restart, false: power off
-        val tiinyOn = s.device == DeviceState.ONLINE
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = { powerAsk = true }, enabled = tiinyOn) { BtnLabel("Restart", Icons.Filled.Refresh) }
-            Spacer(Modifier.width(8.dp))
-            OutlinedButton(
-                onClick = { powerAsk = false },
-                enabled = tiinyOn,
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            ) { BtnLabel("Power off", PowerIcon) }
-        }
-        Text(
-            "Both unload the models and stop what's running. After a restart it's locked until unlocked (automatic with the saved password); after power off, its power button starts it again.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        powerAsk?.let { restart ->
-            val running = s.models.any { it.busy } || s.downloads.isNotEmpty()
-            ScaledAlertDialog(
-                onDismissRequest = { powerAsk = null },
-                title = { Text(if (restart) "Restart the Tiiny?" else "Power off the Tiiny?") },
-                text = {
-                    Text(
-                        (if (running) "Something is still running on it (a model at work or a download): it will be stopped. " else "") +
-                            if (restart) "The loaded models are unloaded. It's back in a few minutes, locked until unlocked " +
-                                "(the app does that by itself with the saved password)."
-                            else "The loaded models are unloaded and it switches off in about 10 seconds. " +
-                                "To switch it on again, press the power button on the Tiiny.",
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { vm.power(restart); powerAsk = null }) {
-                        Text(if (restart) "Restart" else "Power off", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = { TextButton(onClick = { powerAsk = null }) { Text("Keep it on") } },
-            )
-        }
-
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         PrivacySection(vm, cur)
 
@@ -2144,7 +2185,7 @@ private fun ChatHistoryMenu(
  * Only whole days can be deleted: the warning says so before anything is deleted.
  */
 @Composable
-private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
+internal fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
     var days by remember { mutableStateOf<List<String>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var ask by remember { mutableStateOf<List<String>?>(null) } // the days about to be deleted (the confirmation)
@@ -2154,11 +2195,11 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
     if (list != null) {
         AlertDialog(
             onDismissRequest = { ask = null },
-            title = { Text(if (list.size == 1) (if (list[0] == today) "Delete all of today's chats?" else "Delete all chats of ${list[0]}?") else "Delete all ${list.size} days?") },
+            title = { Text(if (list.size == 1) (if (list[0] == today) "Delete everything kept of today?" else "Delete everything kept of ${list[0]}?") else "Delete all ${list.size} days?") },
             text = {
                 Text(
-                    "Every chat of ${if (list.size == 1) "that day" else "those days"} goes, from all apps, with what the Tiiny " +
-                        "remembered from them. TiinyOS's own chat list stays. Can't be undone.",
+                    "Everything the Tiiny kept of ${if (list.size == 1) "that day" else "those days"} goes: chats from all apps, and the texts " +
+                        "sent from Create, Gallery and Translate, with what it remembered from them. TiinyOS's own chat list stays. Can't be undone.",
                 )
             },
             confirmButton = { TextButton(onClick = { st.deleteTiinyChatDays(list); ask = null; onClose() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
@@ -2172,16 +2213,18 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "The Tiiny keeps a copy of every chat from every app, even incognito ones, by day. Only whole days can be deleted.",
+                    "The Tiiny keeps a copy of every text it answers, by day: chats from every app (incognito ones too), and what Create, " +
+                        "the Gallery and Translate send as text (Describe, OCR, Improve prompt, lyrics, translations). " +
+                        "Images, sound and videos it doesn't keep. Only whole days can be deleted.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 val d = days
                 when {
                     error != null -> Text("Couldn't ask the Tiiny: $error", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     d == null -> Text("Asking the Tiiny…", style = MaterialTheme.typography.bodySmall)
-                    d.isEmpty() -> Text("It keeps no chats right now.", style = MaterialTheme.typography.bodyMedium)
+                    d.isEmpty() -> Text("It keeps nothing right now.", style = MaterialTheme.typography.bodyMedium)
                     else -> Text(
-                        "It keeps chats of ${d.size} day${if (d.size == 1) "" else "s"}" + (if (d.size > 1) ", from ${d.first()} to ${d.last()}." else ": ${d[0]}."),
+                        "It keeps texts of ${d.size} day${if (d.size == 1) "" else "s"}" + (if (d.size > 1) ", from ${d.first()} to ${d.last()}." else ": ${d[0]}."),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -2193,6 +2236,65 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
                 if (today in d) TextButton(onClick = { ask = listOf(today) }) { Text("Delete today", color = MaterialTheme.colorScheme.error) }
                 if (d.isNotEmpty()) TextButton(onClick = { ask = d }) { Text("Delete all", color = MaterialTheme.colorScheme.error) }
             }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Close") } },
+    )
+}
+
+/**
+ * Models → ⟳: every model with an update and every update under way, with its state: update one, all of them, or
+ * pause and resume. The same as each card's "Update available", in one place. Finished ones show "Updated".
+ */
+@Composable
+private fun UpdatesDialog(s: UiState, vm: MainViewModel, onClose: () -> Unit) {
+    val downloads = s.downloads.associateBy { it.id }
+    // Models updated while this was open stay listed as "Updated" instead of vanishing.
+    val seen = remember { mutableStateListOf<String>() }
+    val now = s.models.filter { it.needUpdate || it.id in downloads }
+    for (m in now) if (m.id !in seen) seen.add(m.id)
+    val rows = seen.mapNotNull { id -> s.models.firstOrNull { it.id == id } }
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        title = { ClosableTitle(onClose) { Text("Update models") } },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (rows.isEmpty()) Text("All models are up to date.")
+                for (m in rows) {
+                    val d = downloads[m.id]
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(m.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    when {
+                                        d == null && !m.needUpdate -> "Updated ✓"
+                                        d == null -> "Update available" + (m.sizeBytes.takeIf { it > 0 }?.let { " · ${gbSize(it)}" } ?: "")
+                                        d.failed -> "Stopped by a problem: Retry"
+                                        d.paused -> "Paused" + (d.progress?.let { " at ${Math.round(it)}%" } ?: "")
+                                        else -> "Updating" + (d.progress?.let { " · ${Math.round(it)}%" } ?: "…")
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (d == null && !m.needUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            when {
+                                d == null && m.needUpdate -> TextButton(onClick = { vm.updateModel(m) }) { BtnLabel("Update", symbol = "⟳") }
+                                d != null && (d.paused || d.failed) -> TextButton(onClick = { vm.resumeDownload(d) }) { Text(if (d.failed) "Retry" else "Resume") }
+                                d != null -> TextButton(onClick = { vm.pauseDownload(d) }) { Text("❚❚ Pause") }
+                            }
+                        }
+                        if (d != null && !d.paused && !d.failed) {
+                            val p = d.progress
+                            if (p != null) LinearProgressIndicator(progress = { (p / 100).toFloat() }, modifier = Modifier.fillMaxWidth())
+                            else LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            val waiting = rows.filter { it.needUpdate && it.id !in downloads }
+            if (waiting.size > 1) TextButton(onClick = { waiting.forEach { vm.updateModel(it) } }) { BtnLabel("Update all (${waiting.size})", symbol = "⟳") }
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Close") } },
     )

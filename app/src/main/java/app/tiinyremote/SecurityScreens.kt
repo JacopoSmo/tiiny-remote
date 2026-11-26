@@ -195,6 +195,9 @@ private fun PasswordDialog(
     var pw by remember { mutableStateOf(remembered ?: "") }
     var pw2 by remember { mutableStateOf("") }
     var keep by remember { mutableStateOf(remembered != null) }
+    var visible by remember { mutableStateOf(false) } // Show / Hide while typing
+    val mask = if (visible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation()
+    val eye: @Composable () -> Unit = { TextButton(onClick = { visible = !visible }) { Text(if (visible) "Hide" else "Show") } }
     val okEnabled = pw.length >= 8 && (!twice || pw == pw2)
     AlertDialog(
         onDismissRequest = onCancel,
@@ -202,8 +205,8 @@ private fun PasswordDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(text, style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(pw, { pw = it }, label = { Text("Backup password (8 or more characters)") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                if (twice) OutlinedTextField(pw2, { pw2 = it }, label = { Text("The same again") }, singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                OutlinedTextField(pw, { pw = it }, label = { Text("Backup password (8 or more characters)") }, singleLine = true, visualTransformation = mask, trailingIcon = eye)
+                if (twice) OutlinedTextField(pw2, { pw2 = it }, label = { Text("The same again") }, singleLine = true, visualTransformation = mask, trailingIcon = eye,
                     isError = pw2.isNotEmpty() && pw2 != pw)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(keep, { keep = it })

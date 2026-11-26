@@ -69,6 +69,8 @@ data class AppSettings(
     val style: String = "wallpaper",
     /** Display → Pictograms: one family of line icons instead of the phone's colour emoji. */
     val lineIcons: Boolean = false,
+    /** With line icons: each in its own colour (true) or all in the style's accent colour (false). */
+    val lineColour: Boolean = false,
     /** Display → Typefaces: the designed pair (Inter and the style's title face) instead of the phone's font. */
     val designedFonts: Boolean = false,
     /** Display → Status bar: the quiet single line instead of the coloured block. */
@@ -108,6 +110,7 @@ class Store(context: Context) {
         theme = prefs.getString("theme", "auto") ?: "auto",
         style = prefs.getString("style", "wallpaper") ?: "wallpaper",
         lineIcons = prefs.getBoolean("lineIcons", false),
+        lineColour = prefs.getBoolean("lineColour", false),
         designedFonts = prefs.getBoolean("designedFonts", false),
         quietStatus = prefs.getBoolean("quietStatus", false),
         appLock = prefs.getBoolean("appLock", false),
@@ -150,6 +153,7 @@ class Store(context: Context) {
             .putString("theme", s.theme)
             .putString("style", s.style)
             .putBoolean("lineIcons", s.lineIcons)
+            .putBoolean("lineColour", s.lineColour)
             .putBoolean("designedFonts", s.designedFonts)
             .putBoolean("quietStatus", s.quietStatus)
             .putBoolean("appLock", s.appLock)

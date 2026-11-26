@@ -2,6 +2,8 @@
 
 package app.tiinyremote
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -321,10 +323,23 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
     if (mine?.running == true) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(mine.message.ifBlank { "Working…" })
-                // Live preview (Create → Image → Advanced): the picture as it forms.
+                // Top: what's happening; on the right the preview switch (images) and ✕ to stop.
+                val showPv by Tools.showPreview.collectAsState()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(mine.message.ifBlank { "Working…" }, modifier = Modifier.weight(1f))
+                    if (tool == "image" || tool == "edit") {
+                        Text("Preview", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Switch(
+                            checked = showPv,
+                            onCheckedChange = { Tools.showPreview.value = it; st.setSetting("img.preview", if (it) "1" else "0") },
+                            modifier = Modifier.padding(horizontal = 6.dp).semantics { contentDescription = "Show the preview" },
+                        )
+                    }
+                    IconButton(onClick = { st.cancel() }) { Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Stop") }
+                }
+                // Live preview: the picture as it forms.
                 val live by Tools.livePreview.collectAsState()
-                if (tool == "image" || tool == "edit") live?.let { (bytes, step) ->
+                if ((tool == "image" || tool == "edit") && showPv) live?.let { (bytes, step) ->
                     val bmp = remember(bytes) { android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
                     bmp?.let { Image(it.asImageBitmap(), "Preview at step $step", Modifier.fillMaxWidth().heightIn(max = 320.dp), contentScale = ContentScale.Fit) }
                 }
@@ -337,7 +352,6 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(onClick = { st.cancel() }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) }
             }
         }
     } else {

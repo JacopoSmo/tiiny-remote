@@ -199,7 +199,8 @@ fun SignText(
     val tint = if (color != androidx.compose.ui.graphics.Color.Unspecified) color else androidx.compose.material3.LocalContentColor.current
     androidx.compose.material3.Text(
         annotated, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight,
-        inlineContent = iconContent(annotated, SIGN_ICONS, tint, 1.25f) { k -> if (k == SIGN_WEB) WEB_BLUE else tint },
+        // Web search's sign is blue among colourful pictograms; with line icons in the style's colour it's that colour.
+        inlineContent = iconContentTinted(annotated, SIGN_ICONS, tint, 1.25f) { k -> if (k == SIGN_WEB) WEB_BLUE else null },
     )
 }
 

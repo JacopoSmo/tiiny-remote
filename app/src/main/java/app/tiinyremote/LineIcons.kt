@@ -38,6 +38,36 @@ import androidx.compose.ui.unit.em
  */
 val LocalLineIcons = compositionLocalOf { false }
 
+/** With line icons: true = each in its own colour (LINE_COLOURS), false = all in the style's accent colour. */
+val LocalLineColour = compositionLocalOf { false }
+
+/** The colour of each line pictogram in "Line icons (colourful)", after the emoji's own colours. */
+val LINE_COLOURS: Map<String, Color> by lazy {
+    fun c(v: Long) = Color(v)
+    val blue = c(0xFF1E88E5); val teal = c(0xFF00897B); val amber = c(0xFFF9A825); val orange = c(0xFFEF6C00)
+    val red = c(0xFFE53935); val green = c(0xFF43A047); val purple = c(0xFF8E24AA); val brown = c(0xFF8D6E63)
+    val slate = c(0xFF607D8B); val pink = c(0xFFD81B60); val ice = c(0xFF4FC3F7)
+    mapOf(
+        "🧊" to ice, "💬" to blue, "🛠" to slate, "👁" to teal, "👂" to orange, "⚠" to amber, "🎬" to slate, "🖼" to teal,
+        "📄" to slate, "📊" to blue, "💭" to purple, "🎓" to purple, "🧭" to red, "🔌" to amber, "📷" to slate, "🧠" to pink,
+        "⚡" to amber, "💻" to slate, "🗂" to amber, "📁" to amber, "🎵" to purple, "🏷" to amber, "🔗" to blue, "📅" to red,
+        "🧩" to green, "💡" to amber, "🤔" to amber, "🖥" to slate, "🐙" to purple, "🥇" to amber, "🗣" to orange, "🔒" to amber,
+        "🔐" to amber, "🔓" to amber, "✉" to blue, "⚙" to slate, "⏳" to amber, "👋" to amber, "❓" to red, "🔎" to blue,
+        "✍" to brown, "🙂" to amber, "🎯" to red, "📶" to green, "📬" to blue, "📍" to red, "🎙" to slate, "🖌" to orange,
+        "🎞" to slate, "🌐" to blue, "🌡" to red, "🎲" to red, "📰" to slate, "🎧" to purple, "📝" to brown, "➰" to teal,
+        "🗑" to red, "🧹" to brown, "📜" to brown, "🎤" to slate, "🕘" to blue, "💾" to blue, "🌙" to amber, "🔍" to blue,
+        "👤" to slate, "🔊" to blue, "🎨" to pink, "✨" to amber, "🙋" to amber, "📦" to brown, "🗃" to brown, "📲" to green,
+    )
+}
+
+/** The tint of pictogram [k] in a text of colour [text]: its own (colourful), the style's accent, or the text's. */
+@Composable
+fun pictoTint(k: String, text: Color, accent: Color = androidx.compose.material3.MaterialTheme.colorScheme.primary): Color = when {
+    !LocalLineIcons.current -> text
+    LocalLineColour.current -> LINE_COLOURS[k] ?: text
+    else -> accent
+}
+
 /** A thin, round-capped line pictogram on a 24-unit grid, from SVG path data. */
 private fun line(name: String, d: String): ImageVector = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
     addPath(
@@ -120,6 +150,7 @@ val LINE_ICONS: Map<String, ImageVector> by lazy {
         "✨" to "M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z",
         "🙋" to "M12 7a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21c0-5 2.5-8 6-8s6 3 6 8M18 13l2-6",
         "📦" to "M12 3l8 4v10l-8 4-8-4V7zM4 7l8 4 8-4M12 11v10M8 5l8 4",
+        "🗃" to "M3 4h18v5H3zM4 9v11h16V9M10 13h4",
         "📲" to "M9 3h10v18H9zM13 18h2M2 11h8M7 8l3 3-3 3",
     ).mapValues { (k, d) -> line(k, d) }
 }
@@ -173,6 +204,20 @@ fun iconContent(text: AnnotatedString, extra: Map<String, ImageVector>, tint: Co
         }
     }
 
+/** [iconContent], each pictogram tinted as Settings → Display → Pictograms says. */
+@Composable
+fun iconContentTinted(text: AnnotatedString, extra: Map<String, ImageVector>, tint: Color, size: Float = 1.2f, special: (String) -> Color? = { null }): Map<String, InlineTextContent> {
+    val colourful = LocalLineColour.current
+    val lines = LocalLineIcons.current
+    val accent = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    return iconContent(text, extra, tint, size) { k ->
+        when {
+            lines && !colourful -> accent // line icons in the style's colour: every pictogram, the web sign too
+            else -> special(k) ?: if (lines) LINE_COLOURS[k] ?: tint else tint
+        }
+    }
+}
+
 /**
  * The app's Text: exactly Material's, except that with Settings → Display → Pictograms → "Line icons" the colour
  * emoji in it are drawn as the app's line pictograms. (Files use this one instead of importing Material's.)
@@ -207,7 +252,7 @@ fun Text(
         val tint = color.takeOrElse { style.color.takeOrElse { LocalContentColor.current } }
         androidx.compose.material3.Text(
             icons, modifier, color, fontSize, fontStyle, fontWeight, fontFamily, letterSpacing, textDecoration, textAlign,
-            lineHeight, overflow, softWrap, maxLines, minLines, iconContent(icons, emptyMap(), tint), onTextLayout ?: {}, style,
+            lineHeight, overflow, softWrap, maxLines, minLines, iconContentTinted(icons, emptyMap(), tint), onTextLayout ?: {}, style,
         )
     }
 }

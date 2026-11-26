@@ -568,6 +568,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         if (!st.autoVpn || !st.vpnConfigured || !v.permitted || v.switching) return
         if (now < vpnPausedUntil || now - lastVpnSwitch < 60_000) return
+        // "Find on my Wi-Fi" keeps the Wi-Fi busy: a missed answer then doesn't mean you've left home.
+        if (Discover.busySince(20_000)) return
         // A new network (home, away, unknown) gives automatic switching a fresh try after it gave up.
         val net = v.onHome.toString()
         if (net != autoNet) {

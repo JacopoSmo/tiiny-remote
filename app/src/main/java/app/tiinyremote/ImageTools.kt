@@ -454,7 +454,10 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         val g = if (cfgAuto) null else cfg.toDouble()
         val srcs = if (edit) images.map { it.dataUri } else emptyList()
         val count = n
-        val every = if (livePreview) 4 else 0
+        // Previews come every 4 steps with Live preview on, every 8 with it off (shown only if it's switched on
+        // while the image is being made: the switch beside ✕ on the progress card).
+        val every = if (livePreview) 4 else 8
+        Tools.showPreview.value = livePreview
         st.run(tool) { c, store, p, _ -> Tools.image(c, store, mid, pr, neg, size, stp, sd, srcs, p, count, g, every) }
     }
 }

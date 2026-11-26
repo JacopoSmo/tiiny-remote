@@ -30,7 +30,7 @@ private class Task(val icon: String, val title: String, val sub: String, val go:
  */
 @Composable
 fun StartScreen(st: StudioViewModel, goTab: (Int) -> Unit, openTool: (String) -> Unit) {
-    fun tool(id: String) { goTab(1); openTool(id) }
+    fun tool(id: String) = openTool(id) // one step: Back returns to Start
     val tasks = listOf(
         Task("💬", "Ask anything", "Chat with a model on your Tiiny") { goTab(2) },
         Task(SIGN_MIC, "Dictate a question", "Speak; the answer comes as text") { goTab(2); Nav.dictate.value = true },
