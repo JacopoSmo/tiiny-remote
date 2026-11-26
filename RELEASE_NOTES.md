@@ -1,50 +1,35 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.3.12 (test build)
-- **Model updates:** stopping one now asks first and offers Pause. The Tiiny removes the old copy when an update begins, so stopping left no copy.
-- **Backup list:** the refresh button showed a stray sign; it shows ⟳ now.
-
-## What's new in 4.3.10 – 4.3.11 (test builds, with NAS agent 1.7.0)
-- **One size scale everywhere**, five levels: page titles, section headings (Settings, Create), card titles, body text, notes and captions; headings a little larger than before.
-- **Typefaces:** Phone's font, Designed pair, or Inter everywhere.
-- **Model updates actually start:** the download route answers "already downloaded" for an installed model (tested on 4.3.9: nothing happened), so the likely update routes are tried in turn and the log names the one that worked. While it runs, the card says "Updating X%" with a bar, and ⟳ Update models shows the same.
-- **🗃 Copies on the Tiiny** in the same place in Chat, Create and the Gallery: just left of ⟳ (in Chat after ＋); the chat list no longer has its own link.
-- **Settings → Tiiny:** 🔎 sits left of the address, on the same line.
-- **Undo** stays above the keyboard when it opens.
-- **Backup:** sizes shown correctly (with one decimal; "0 MB" was read after the temporary file was gone), and the log lists what went in, per folder.
-
-## What's new in 4.3.7 – 4.3.9 (test builds, with NAS agent 1.7.0)
-- **Models → ⟳ Update models** (beside the orange ▶, with the number waiting): every model with an update in one list, each with its state (available, updating with %, paused, updated ✓); update one or all, pause, resume.
-- **Pictograms:** three kinds: colourful emoji, line icons in colour, line icons in the style's colour (web search's sign too, which was always blue).
-- **Undo after deleting** now shows (it vanished at once: tested on 4.3.6).
-- **Backup password:** Show / Hide while typing.
-- **Copies on the Tiiny (🗃) in Create and the Gallery:** the Tiiny keeps the texts sent from there (Describe, OCR, Improve prompt, lyrics) like chats, by day; images, sound and videos it doesn't keep.
-- **Back from Start** (or the Gallery) into a Create tool returns there in one step (it went to Create Image first).
-- **Find on my Wi-Fi:** tries the saved address first, asks a few addresses at a time (it choked the Wi-Fi, so the app thought you'd left home and switched the VPN on: tested on 4.3.6), asks with the API key where a Tiiny wants it, and logs what answered.
-- **Settings grouped:** everything about the Tiiny together: address and key, Restart and Power off, unlocking after a restart with the NAS fallback right under it, then WireGuard.
-- **While an image is being made:** ✕ (stop) at the top right of the progress card, with a Preview switch beside it: the preview can be shown or hidden any time.
-- Help (?) and the welcome tour cover all of it.
-
-## What's new in 4.3.1 – 4.3.6 (test builds, with NAS agent 1.7.0)
+## What's new in 4.4.0 (with NAS agent 1.7.0)
+Everything from the 4.3.1–4.3.13 test builds, tested on the phone, plus a full review (programmer, white-hat, attacker) of the app, the NAS agent and the link between them, with every font and pictogram checked.
 
 **Look (Settings → Display)**
-- **Style:** colours from your wallpaper (the standard, as before) or a designed look: A · Ink & Paper, B · Graphite & Brass, C · Alpine Slate, each light and dark (Mode).
-- **Pictograms:** colourful emoji (as before) or one family of line icons, drawn for this app.
-- **Typefaces:** the phone's font, or a designed pair: Inter for reading, titles in the style's own face (Newsreader, Inter Tight, Manrope).
-- **Status bar:** standard (the coloured block) or quiet: one thin line with a dot, the model and a slim NPU bar.
+- **Style:** colours from your wallpaper (the standard) or a designed look: A · Ink & Paper, B · Graphite & Brass, C · Alpine Slate, each light and dark.
+- **Pictograms:** colourful emoji, line icons in colour, or line icons in the style's colour. With line icons, every pictogram in the app is one thin-line family: the bin, share, back, history, microphone, the buttons' signs (⟳, ✎, ⤓, ⏸, ■…), the bottom bar.
+- **Typefaces:** Phone's font, Designed pair (titles in the style's face, text in Inter), or Inter everywhere.
+- **One size scale everywhere**, five levels: page titles, section headings, card titles, body text, notes and captions. Every text sits on one of them.
+- **Status bar:** standard or quiet (one thin line).
 
 **Privacy and backup (Settings)**
-- **App lock:** fingerprint, face or the screen lock to open the app, at once or after 1, 5 or 15 minutes away. Jobs and automations go on while it's locked.
-- **Encrypted link to the NAS agent** (agent 1.7): the agent makes its own certificate; the app pins it the first time and refuses any other after that. Once the app has used it, the agent refuses unencrypted requests. Test in Connectors shows "Encrypted link: on"; "Forget certificate" is there for setting the agent up anew.
-- **Backup to the NAS:** settings, chats, the Gallery, voices, Code projects and automations, encrypted on the phone with your backup password (the NAS can't read it), the newest five kept. Restore brings one back, also onto a new phone.
+- **App lock:** fingerprint, face or the screen lock, at once or after 1, 5 or 15 minutes away. With it on, the recent-apps view shows no picture of the app.
+- **Backup to the NAS:** everything of the app's, encrypted on the phone with your backup password (Show / Hide while typing); the NAS can't read it; the newest five kept; ⟳ reloads the list. Restore checks the whole backup first (a cut-off one is refused), then puts it in place as the app closes.
+- **Encrypted link to the NAS agent:** the app pins the agent's own certificate the first time; Test shows its fingerprint, and the agent's log shows the same. If an agent that offers encryption answers without it, Test says so and tries encrypted again.
+- **Find on my Wi-Fi** never sends your API key to an unknown device: a device that wants a key is only offered as "maybe the Tiiny".
 
 **Easier**
-- **Start page:** what you can do, as tasks ("Translate", "Make a song", "Read text from a photo"…), each opening the right page and tool. First in the sidebar for new setups.
-- **Find on my Wi-Fi** (Settings → Tiiny): finds the Tiiny's address by itself.
-- **Undo instead of "Are you sure?":** deleting in the Gallery, the full view and the chat list happens at once; Undo at the bottom brings it back for a few seconds.
-- **From outside the app:** long-press the icon (Dictate, Chat, Translate copied text, Gallery), a home-screen widget (Chat, Dictate, Translate), and Quick Settings tiles "Ask Tiiny" and "Translate copied".
+- **Start page:** tasks instead of models. Cards in a row line up; **long-press a card and drag it** anywhere ("Original order" undoes it).
+- **Undo instead of "Are you sure?"** in the Gallery, the full view and the chat list; it stays above the keyboard.
+- **From outside the app:** the icon's long-press menu, a home-screen widget, Quick Settings tiles "Ask Tiiny" and "Translate copied".
+- **Copies on the Tiiny (🗃)** in Chat, Create and the Gallery, just left of ⟳: the texts the Tiiny keeps, by day, to delete.
+- **Settings grouped:** everything about the Tiiny together (🔎 left of the address).
 
-**NAS agent 1.7.0:** the encrypted link and the backups. Update it on the NAS: `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d`.
+**Models**
+- **Updates work:** each card's Update and ⟳ Update models (all waiting updates in one list) start the Tiiny's update; the card shows "Updating X%". The Tiiny removes the old copy when an update begins, so ✕ on an update offers Pause; stopping leaves no copy.
+- While an image is being made: ✕ and a Preview switch at the top right of the progress card.
+
+**NAS agent 1.7.0:** the encrypted link and the backups; an email with an odd date or a calendar entry with an odd time no longer stops the whole summary; cut-off backup uploads are cleaned up; the log shows the certificate's fingerprint. Update it on the NAS: `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d`.
+
+Help (?) on every page and the welcome tour cover all of it.
 
 ## What's new in 4.3.0 (with NAS agent 1.6.0)
 Everything from the 4.2.1–4.2.4 test builds, tested on the phone, plus another review (programmer, white-hat, attacker) of the changes and of updates, page reading, sharing, notifications and unlocking.

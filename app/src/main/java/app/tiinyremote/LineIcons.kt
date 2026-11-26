@@ -170,6 +170,8 @@ val LINE_ICONS: Map<String, ImageVector> by lazy {
         "⇄" to "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
         "↔" to "M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4",
         "⤴" to "M5 19v-6a4 4 0 0 1 4-4h10M15 5l4 4-4 4",
+        "▤" to "M3 5h18v14H3zM3 9h18M7 13h10M7 16h6",
+        "■" to "M6.5 6.5h11v11h-11z",
         "ⓘ" to "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.1",
     ).mapValues { (k, d) -> line(k, d) }
 }
