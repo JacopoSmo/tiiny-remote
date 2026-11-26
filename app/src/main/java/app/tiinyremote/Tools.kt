@@ -638,8 +638,8 @@ object Tools {
         val plain = songInfo(c, model).plain
         val caption = config.optString("caption")
         val lyrics = config.optString("lyrics")
-        // SongGeneration on its own port (Wi-Fi, WireGuard): a complete song of exactly the asked length, with its
-        // separate tracks. Over the gateway alone (USB) it can only make the opening of a full-length arrangement.
+        // SongGeneration on its own port: a complete song of exactly the asked length, with its separate tracks.
+        // Through the gateway alone (its port unreachable) it can only make the opening of a full-length arrangement.
         val direct = if (!plain && !preview && resume == null) ownPort(c, model) else null
         // Separate tracks need the model's own port; over the gateway the song comes as one mix.
         if (direct == null && config.optString("generation_type") == "separate") config.put("generation_type", "mixed")

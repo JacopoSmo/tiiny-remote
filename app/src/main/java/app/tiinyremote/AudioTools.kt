@@ -529,7 +529,7 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         Triple("bgm", "Instrumental", "No vocals"),
         Triple("vocal", "Vocals only", "A cappella vocal track"),
     ) + (if (sm.plain) emptyList() else listOf(
-        Triple("separate", "Separate tracks", "The song, plus vocals and backing as their own files (over Wi-Fi or WireGuard; over USB only the song)"),
+        Triple("separate", "Separate tracks", "The song, plus vocals and backing as their own files"),
     ))
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for ((v, l, _) in modes) FilterChip(selected = t == v, onClick = { type = v }, label = { Text(l) })

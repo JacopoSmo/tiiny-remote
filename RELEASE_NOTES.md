@@ -1,6 +1,9 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
-## What's new in 4.2.2 (test build, with NAS agent 1.6.0)
+## What's new in 4.2.4 (test build, with NAS agent 1.6.0)
+- **No more USB promises:** the phone can't use the Tiiny's USB link (tested: a Titan 2 on the "To PC" port gets no connection; it's made for computers), so the song texts no longer mention USB.
+
+## What's new in 4.2.2 – 4.2.3 (test builds, with NAS agent 1.6.0)
 - **Full view of a 3D model** (tested on 4.2.1: swiped to from another result, its button was cut off): 🧊 View in 3D sits at the top beside Share, and tapping the picture opens the viewer too.
 
 ## What's new in 4.2.1 (test build, with NAS agent 1.6.0)

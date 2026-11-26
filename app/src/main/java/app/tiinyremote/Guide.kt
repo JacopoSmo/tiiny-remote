@@ -74,7 +74,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("✍", "Describe and start", "Fill in what it asks for (a description, a photo, a text) and start. Long jobs keep running in the background; you get a notice when they're done.", "Middle"),
         GuideStep("🙂", "Characters (Image)", "Describe someone once; tick them and they look the same in every image.", "Image → Characters"),
         GuideStep("👁", "Live preview (Image)", "Watch the image form. Makes images slower; off by default.", "Image → Advanced"),
-        GuideStep("🎵", "Songs", "Over Wi-Fi or WireGuard a song is complete and exactly as long as chosen, with vocals and backing as extra files. Over USB a shorter song is the opening of a full-length one.", "Audio → Song"),
+        GuideStep("🎵", "Songs", "A song is exactly as long as chosen; with Separate tracks, vocals and backing come as extra files. If the song model's own port can't be reached, a shorter song is the opening of a full-length one.", "Audio → Song"),
         GuideStep("🖼", "Results", "Everything made lands in the Gallery. Under a result: Send to chat, Edit (images), $SIGN_SHARE Share. 🧊 3D models open in the app's own viewer (turn with a finger, pinch to zoom); \"Other app\" hands the file on."),
     )
     2 -> "Chat" to listOf(
