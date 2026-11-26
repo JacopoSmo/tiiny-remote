@@ -167,6 +167,11 @@ private fun ModelMenu(
         onDismissRequest = onDismiss,
         modifier = Modifier.widthIn(min = 220.dp, max = 330.dp).heightIn(max = 460.dp),
     ) {
+        // First line, so it's seen without scrolling a long list: the recommended set and why.
+        if (recs.isNotEmpty()) DropdownMenuItem(
+            text = { Text("👍 Recommended · ⓘ why these", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) },
+            onClick = onWhy,
+        )
         // Recommended but not on the Tiiny: offered first, one tap to download (asked once, with the size).
         val have = choices.map { it.id }.toSet()
         for (r in recs.filter { it.id !in have && shop?.storeModel(it.id) != null }.distinctBy { it.id }) {
@@ -217,10 +222,6 @@ private fun ModelMenu(
                 onClick = { onPick(m) },
             )
         }
-        if (recs.isNotEmpty() || shop?.showRecs == true) DropdownMenuItem(
-            text = { Text("ⓘ Why these? Recommended models", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) },
-            onClick = onWhy,
-        )
     }
 }
 
