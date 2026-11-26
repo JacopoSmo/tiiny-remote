@@ -25,7 +25,7 @@ object Recs {
     val TASKS = listOf(
         RecTask("chat", "Chat, careful", "general chat and reasoning where quality matters most; may be slower"),
         RecTask("chatfast", "Chat, fast · code", "quick everyday chat and writing code; speed matters"),
-        RecTask("helper", "Fast helper (Settings)", "a small, quick chat model loaded beside the main one: names chats, condenses pages and long chats, writes prompts; small"),
+        RecTask("helper", "Fast helper (Settings)", "a quick chat model loaded beside the main one: names chats, condenses pages and long chats, writes prompts. Rank: it must fit beside a main chat model (low NPU share, a pass-or-fail test), then speed (no thinking first, fast replies), then good enough at following instructions"),
         RecTask("image", "Create images", "text-to-image quality, text in images"),
         RecTask("edit", "Edit images", "changing a photo with words"),
         RecTask("pe_t2i", "Prompts for Qwen-Image", "rewriting image prompts for Qwen-Image (prompt enhancer)"),
@@ -70,8 +70,8 @@ object Recs {
         listOf(
             Rec("chat", "Qwen/Qwen3.8-27B", "most capable (intelligence 52)"),
             Rec("chatfast", "Qwen/Qwen3.6-35B-A3B-Turbo", "about 3× faster, strong at code"),
-            Rec("helper", "Qwen/Qwen3.5-9B-Turbo", "newest small one, 24% NPU"),
-            Rec("helper", "Qwen/Qwen3-4B-Instruct-2507", "no thinking: quickest replies"),
+            Rec("helper", "Qwen/Qwen3-4B-Instruct-2507", "no thinking: quickest replies, light"),
+            Rec("helper", "Qwen/Qwen3.5-9B-Turbo", "better summaries, needs more room"),
             Rec("image", "Qwen/Qwen-Image-2.1", "best open image model here"),
             Rec("edit", "HiDream-ai/HiDream-O1-Image-Dev", "top open editor, 16% NPU"),
             Rec("edit", "Qwen/Qwen-Image-2.1", "edits too, text in images"),
@@ -135,7 +135,7 @@ object Recs {
         "context · abilities · version date · description) and a list of tasks. For each task pick the best one or two models " +
         "FROM THE LIST ONLY. Judge by what the list says: model generation and version date (newer families usually beat older " +
         "ones), size, abilities, description and known model families. A model must fit beside others: prefer under 60% of the " +
-        "NPU unless the task needs more; for tasks marked small, prefer the smallest that does the job well. Do not invent ids. " +
+        "NPU unless the task needs more; for tasks marked small, prefer the smallest that does the job well. Where a task states how to rank, follow it. Do not invent ids. " +
         "Answer with JSON only, no prose: {\"recs\":[{\"task\":\"<task key>\",\"id\":\"<exact id>\",\"why\":\"<at most 8 words>\"}]}"
 
     /** The store as lines for the model: short, one per model, the description cut. */
