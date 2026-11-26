@@ -612,8 +612,23 @@ object Tools {
         val r = c.multipart("/v1/audio/transcriptions", fields, listOf(DeviceClient.Part("file", filename, mime, body)), 3600)
         val o = r.json()
         val text = o.opt("text")?.toString()?.trim()
-        if (!r.ok || text == null) throw MediaException(r.error())
-        val out = speakerLines(o, text)
+        val out = if (r.ok && text != null) speakerLines(o, text) else {
+            // Refused whole (the Tiiny's speech service has failed on long audio before): in ~60 s parts instead,
+            // each with its own speaker numbers, marked, rather than nothing.
+            if (!mime.contains("wav")) throw MediaException(r.error())
+            ApiLog.add("Who said what: the whole recording was refused (${r.error()}); trying it in parts", "Create")
+            val parts = Wav.asrParts(body)
+            if (parts.size < 2) throw MediaException(r.error())
+            parts.mapIndexed { i, part ->
+                check(p)
+                p.update("Transcribing, part ${i + 1} of ${parts.size}", i * 100 / parts.size)
+                val rp = c.multipart("/v1/audio/transcriptions", fields, listOf(DeviceClient.Part("file", filename, mime, part)), 3600)
+                val op = rp.json()
+                val tp = op.opt("text")?.toString()?.trim()
+                if (!rp.ok || tp == null) throw MediaException(rp.error())
+                "— Part ${i + 1} (speakers numbered anew) —\n" + speakerLines(op, tp)
+            }.joinToString("\n\n")
+        }
         ApiLog.add("Transcript with speakers: ${out.lines().count { it.startsWith("Speaker ") }} turns", "Create")
         val id = store.newId()
         return ResultEntry(id, "transcript", "Who said what: $filename", emptyList(), out, model, System.currentTimeMillis())
