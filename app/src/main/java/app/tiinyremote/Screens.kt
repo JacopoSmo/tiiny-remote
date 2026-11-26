@@ -1923,6 +1923,9 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val chatModels = s.models.filter { it.isChat }
         // 👍 the recommended helpers (Settings → Display → Recommended models), a missing one offered below.
         val helperRecs = if (s.settings.showRecs) Recs.forTasks(listOf("helper")) else emptyList()
+        val helperM = chatModels.firstOrNull { it.id == helper }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(Modifier.weight(1f)) {
         SettingDropdown(
             "Helper",
             // ● = loaded now, as in the chat's model menu; mixture-of-experts models carry their tag.
@@ -1937,6 +1940,18 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             helper = it
             vm.setDisplay(cur.copy(helperModel = it))
         }
+          }
+          // Load (▶) or unload (■) the chosen helper right here, as on the Models page; a swap is asked as there.
+          if (helperM != null) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+              when {
+                  helperM.id in s.working || helperM.status == "loading" -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                  helperM.running -> IconButton(onClick = { vm.unload(helperM) }) { SignText("■", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                  else -> IconButton(onClick = { vm.load(helperM) }) {
+                      Icon(Icons.Filled.PlayArrow, contentDescription = "Load ${helperM.name}", tint = MaterialTheme.colorScheme.primary)
+                  }
+              }
+          }
+        }
         helperRecs.firstOrNull { r -> chatModels.none { it.id == r.id } && helperRecs.none { h -> chatModels.any { it.id == h.id } } }?.let { r ->
             var ask by remember { mutableStateOf(false) }
             val shop = LocalModelShop.current
@@ -1948,7 +1963,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         SignText(
             "A small chat model loaded beside your main one. It names chats, suggests follow-ups, condenses long chats and files, and runs Improve prompt, lyrics and tags. " +
-                "It condenses web pages only if the speed test found it at least 25% faster ($SIGN_INFO). Never loaded by itself: without it, the chat model does all this.",
+                "It condenses web pages only if the speed test found it at least 25% faster ($SIGN_INFO). Load it with ▶ beside the menu (■ unloads it); the app never loads it by itself. Not loaded, the chat model does all this.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
