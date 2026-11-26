@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget: three quick ways in. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_bg" android:orientation="horizontal" android:padding="6dp" android:gravity="center">
+    <TextView android:id="@+id/w_chat" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+        android:gravity="center" android:drawableTop="@drawable/ic_q_chat" android:drawablePadding="4dp"
+        android:text="@string/sc_chat" android:textColor="#FFEEEBE5" android:textSize="12sp" />
+    <TextView android:id="@+id/w_dictate" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+        android:gravity="center" android:drawableTop="@drawable/ic_q_mic" android:drawablePadding="4dp"
+        android:text="@string/sc_dictate_short" android:textColor="#FFEEEBE5" android:textSize="12sp" />
+    <TextView android:id="@+id/w_translate" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent"
+        android:gravity="center" android:drawableTop="@drawable/ic_q_tr" android:drawablePadding="4dp"
+        android:text="@string/sc_translate_short" android:textColor="#FFEEEBE5" android:textSize="12sp" />
+</LinearLayout>

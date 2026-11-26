@@ -126,4 +126,8 @@ fun LockScreen(ask: () -> Unit) {
 /** A screen to open, asked from outside the UI (a notification): AppRoot goes there and clears it. */
 object Nav {
     val request = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    /** Start dictating in Chat at once (tile, widget, shortcut). */
+    val dictate = kotlinx.coroutines.flow.MutableStateFlow(false)
+    /** Put the copied text into Translate (tile, widget, shortcut). */
+    val translateClip = kotlinx.coroutines.flow.MutableStateFlow(false)
 }

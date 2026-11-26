@@ -227,7 +227,14 @@ fun AppRoot(vm: MainViewModel) {
     // A notification can ask for a screen (an automation's result opens Automate).
     val navRequest by Nav.request.collectAsState()
     LaunchedEffect(navRequest) {
-        if (navRequest == "automations") goTab(5)
+        // From a notification, a Quick Settings tile, the widget or the icon's long-press menu (QuickAccess).
+        when (navRequest) {
+            "automations" -> goTab(5)
+            "chat" -> goTab(2)
+            "dictate" -> { goTab(2); Nav.dictate.value = true }
+            "gallery" -> goTab(6)
+            "translate_clip" -> { goTab(7); Nav.translateClip.value = true }
+        }
         Nav.request.value = null
     }
     val openTool by st.openTool.collectAsState()
@@ -253,6 +260,15 @@ fun AppRoot(vm: MainViewModel) {
             snackbar.showSnackbar(msg)
             st.noteShown()
         }
+    }
+
+    // Undo after a delete: the bar offers it for ten seconds.
+    val undo by st.undo.collectAsState()
+    LaunchedEffect(undo) {
+        val u = undo ?: return@LaunchedEffect
+        st.undoShown()
+        val r = snackbar.showSnackbar(u.msg, actionLabel = "Undo", withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Long)
+        if (r == androidx.compose.material3.SnackbarResult.ActionPerformed) u.undo()
     }
 
     LaunchedEffect(s.toast) {
@@ -435,6 +451,7 @@ fun AppRoot(vm: MainViewModel) {
                             goTab(3)
                         })
                         8 -> CodeScreen(s, vm, st)
+                        9 -> StartScreen(st, { goTab(it) }, { openToolNav(it) })
                         else -> SettingsScreen(s, vm, st)
                     } }
                 }
@@ -1233,6 +1250,11 @@ private fun PictogramLegend(onClose: () -> Unit) {
         "🧊" to "A 3D model: opens in the app's 3D viewer",
         "🎬" to "A video",
         "↓" to "Jump to the newest message",
+        "✨" to "Start: what you can do, as tasks",
+        "🔎" to "Find (Settings: the Tiiny on your Wi-Fi)",
+        "📦" to "Back up now (Settings → Privacy and backup)",
+        "🔐" to "Forget the NAS agent's certificate (Connectors)",
+        "↩" to "Undo a delete (the bar at the bottom)",
     )
     ScaledAlertDialog(
         onDismissRequest = onClose,
@@ -1388,7 +1410,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "")
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, stayConnected = false, keepAsr = false, keepOcr = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, designedFonts = false, quietStatus = false, appLock = false, lockAfter = 0)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1484,6 +1506,35 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
         )
+        // Find the Tiiny on the home Wi-Fi instead of typing its address.
+        val findCtx = LocalContext.current
+        val findScope = rememberCoroutineScope()
+        var finding by remember { mutableStateOf<Float?>(null) }
+        var found by remember { mutableStateOf<List<String>?>(null) }
+        var findNote by remember { mutableStateOf<String?>(null) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(enabled = finding == null, onClick = {
+                findNote = null; found = null; finding = 0f
+                findScope.launch {
+                    try {
+                        val hits = Discover.find(findCtx) { finding = it }
+                        found = hits
+                        when (hits.size) {
+                            0 -> findNote = "No Tiiny answered on this Wi-Fi. Is it on, and on the same network?"
+                            1 -> { url = hits[0]; findNote = "Found: ${hits[0]} (filled in; Save to keep it)." }
+                            else -> findNote = "Several found: pick one."
+                        }
+                    } catch (e: Exception) {
+                        findNote = e.message
+                    } finally {
+                        finding = null
+                    }
+                }
+            }) { BtnLabel("Find on my Wi-Fi", symbol = "🔎") }
+            finding?.let { LinearProgressIndicator(progress = { it }, modifier = Modifier.weight(1f).padding(start = 8.dp)) }
+        }
+        findNote?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        found?.takeIf { it.size > 1 }?.let { hits -> Row { for (h in hits) TextButton(onClick = { url = h }) { Text(h.removePrefix("http://")) } } }
         SecretField(key, { key = it }, "API key (TiinyOS → Settings → API Key)")
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
@@ -2069,8 +2120,8 @@ private fun ChatHistoryMenu(
                             IconButton(onClick = { onRename(c) }) {
                                 Icon(Icons.Filled.Edit, contentDescription = "Rename", modifier = Modifier.size(20.dp))
                             }
-                            // Delete asks once more: a second tap on the red bin.
-                            IconButton(onClick = { if (confirm == c.id) { onDelete(c); confirm = null } else confirm = c.id }) {
+                            // Deleted at once; the Undo bar brings it back.
+                            IconButton(onClick = { onDelete(c) }) {
                                 Icon(
                                     Icons.Filled.Delete, contentDescription = if (confirm == c.id) "Tap again to delete" else "Delete",
                                     tint = if (confirm == c.id) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2080,7 +2131,6 @@ private fun ChatHistoryMenu(
                         }
                     }
                 }
-                if (confirm != null) Text("Tap the red bin again to delete.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
             }
         },
         // The Tiiny keeps its own copy of every chat (TiinyOS's vault, from every app): deletable there, by whole days.
@@ -2149,10 +2199,10 @@ private fun TiinyCopiesDialog(st: StudioViewModel, onClose: () -> Unit) {
 }
 
 /** Every section's number: 0 Models, 1 Create, 2 Chat, 3 Activity, 4 Settings, 5 Automate, 6 Gallery, 7 Translate, 8 Code. */
-private val ALL_TABS = 0..8
+private val ALL_TABS = 0..9
 
 /** The sidebar's top part, default order. */
-private val DEFAULT_TOP = listOf(2, 8, 1, 6, 5, 7)
+private val DEFAULT_TOP = listOf(9, 2, 8, 1, 6, 5, 7)
 
 /** The top part in the order saved in Settings (numbers missing there, new sections say, go at the end). */
 internal fun topOrder(saved: String): List<Int> {
@@ -2169,6 +2219,7 @@ internal fun navEntry(i: Int): Triple<String, androidx.compose.ui.graphics.vecto
     6 -> Triple("Gallery", GalleryIcon, 6)
     7 -> Triple("Translate", TranslateIcon, 7)
     8 -> Triple("Code", CodeIcon, 8)
+    9 -> Triple("Start", LINE_ICONS.getValue("✨"), 9)
     else -> Triple("Settings", Icons.Filled.Settings, 4)
 }
 

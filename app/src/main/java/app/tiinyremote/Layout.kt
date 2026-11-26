@@ -450,20 +450,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                         Text(e.title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
                         if (position != null) Text("$position · swipe for more", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    var askDelete by remember(e.id) { mutableStateOf(false) }
-                    if (askDelete) androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { askDelete = false },
-                        title = { Text("Delete this result?") },
-                        text = {
-                            Text(
-                                (if (e.files.size > 1) "All ${e.files.size} images of \"${e.title}\" are deleted from this phone." else "\"${e.title}\" is deleted from this phone.") +
-                                    " This can't be undone; copies saved to the phone's own folders stay.",
-                            )
-                        },
-                        confirmButton = { TextButton(onClick = { askDelete = false; onClose(); st.delete(e) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
-                        dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
-                    )
-                    TextButton(onClick = { askDelete = true }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
+                    TextButton(onClick = { onClose(); st.delete(e) }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
                     if (name != null) TextButton(onClick = { onClose(); st.sendToChat(e, name) }) {
                         BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send)
                     } else if (e.kind != "image" && st.canSendToChat(e)) TextButton(onClick = { onClose(); st.sendToChat(e) }) {

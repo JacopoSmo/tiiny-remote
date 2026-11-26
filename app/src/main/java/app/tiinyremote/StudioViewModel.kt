@@ -287,6 +287,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private var remote = RemoteJob()
 
     init {
+        // Results deleted just before the app closed (their Undo time unused) go for good now.
+        Thread { runCatching { store.emptyTrash() } }.start()
         resumePendingVideo()
     }
 
@@ -436,12 +438,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- results ----------
 
-    fun delete(e: ResultEntry) {
-        Player.playing?.let { if (it in e.files) Player.stop() }
-        store.delete(e)
-        _results.value = store.all()
-        if (_job.value?.result?.id == e.id) _job.value = null
-    }
+    /** Something just deleted that can still come back: the Undo bar shows [msg] for a few seconds. */
+    class Undo(val msg: String, val undo: () -> Unit)
+    private val _undo = MutableStateFlow<Undo?>(null)
+    val undo: StateFlow<Undo?> = _undo.asStateFlow()
+    fun undoShown() { _undo.value = null }
+
+    fun delete(e: ResultEntry) = deleteMany(listOf(e))
 
     fun saveToPhone(e: ResultEntry) {
         if (e.files.isEmpty()) {
@@ -515,14 +518,25 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Deletes at once, no question asked; the Undo bar brings them back within ten seconds. */
     fun deleteMany(list: List<ResultEntry>) {
         for (e in list) {
             Player.playing?.let { if (it in e.files) Player.stop() }
-            store.delete(e)
             if (_job.value?.result?.id == e.id) _job.value = null
         }
+        store.trash(list)
         _results.value = store.all()
-        note(if (list.size == 1) "Deleted." else "${list.size} results deleted.")
+        val ids = list.map { it.id }
+        var undone = false
+        _undo.value = Undo(if (list.size == 1) "\"${list[0].title.take(40)}\" deleted." else "${list.size} results deleted.") {
+            undone = true
+            store.untrash(list)
+            _results.value = store.all()
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(12_000)
+            if (!undone) store.emptyTrash(ids)
+        }
     }
 
     fun open(name: String) {
@@ -719,7 +733,27 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Deletes a chat at once; the Undo bar brings it back (its file waits ten seconds before it goes). */
     fun deleteChat(id: String) {
+        val info = _chatList.value.firstOrNull { it.id == id }
+        val title = info?.title ?: "Chat"
+        val keep = chatFile(id).takeIf { it.exists() }?.readBytes()
+        val custom = customTitles[id]
+        deleteChatNow(id)
+        if (keep != null) _undo.value = Undo("\"${title.take(40)}\" deleted.") {
+            // On the chats' own disk queue, after the deletion it undoes.
+            chatDisk.execute {
+                chatFile(id).writeBytes(keep)
+                custom?.let { customTitles[id] = it }
+                viewModelScope.launch {
+                    _chatList.value = loadChatList()
+                    selectChat(id)
+                }
+            }
+        }
+    }
+
+    private fun deleteChatNow(id: String) {
         stops[id]?.set(true)
         _all.update { it - id }
         customTitles.remove(id)

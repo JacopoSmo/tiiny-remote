@@ -142,7 +142,6 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     var viewed by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     // Long-press marks results; then a tap marks or unmarks, and the bar on top shares or deletes them.
     var selected by remember { mutableStateOf(setOf<String>()) }
-    var askDelete by remember { mutableStateOf(false) }
     fun toggle(e: ResultEntry) { selected = if (e.id in selected) selected - e.id else selected + e.id }
     val q = query.trim().lowercase()
     val shown = results
@@ -164,15 +163,6 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
     val marked = results.filter { it.id in selected }
     // Back leaves marking first.
     androidx.activity.compose.BackHandler(enabled = marked.isNotEmpty()) { selected = emptySet() }
-    if (askDelete) androidx.compose.material3.AlertDialog(
-        onDismissRequest = { askDelete = false },
-        title = { Text("Delete ${marked.size} result${if (marked.size == 1) "" else "s"}?") },
-        text = { Text("They're deleted from this phone. This can't be undone; copies saved to the phone's own folders stay.") },
-        confirmButton = {
-            TextButton(onClick = { askDelete = false; st.deleteMany(marked); selected = emptySet() }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-        },
-        dismissButton = { TextButton(onClick = { askDelete = false }) { Text("Cancel") } },
-    )
     Column(Modifier.fillMaxSize()) {
     if (marked.isNotEmpty()) Row(
         Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 10.dp),
@@ -181,7 +171,8 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
         Text("${marked.size} marked", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
         TextButton(onClick = { selected = shown.map { it.id }.toSet() }) { Text("All") }
         TextButton(onClick = { st.shareMany(marked) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
-        TextButton(onClick = { askDelete = true }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
+        // Deleted at once; the Undo bar brings them back.
+        TextButton(onClick = { st.deleteMany(marked); selected = emptySet() }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
         TextButton(onClick = { selected = emptySet() }) { Text("✕") }
     }
     LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

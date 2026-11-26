@@ -81,7 +81,7 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("💭", "Options", "The signs beside it open the chat's options: thinking depth (💭), tools (🛠: make images, speak, make music, and find models for you), web search ($SIGN_WEB), follow-up ideas (💡), and Socratic (🤔) or Student (🎓) mode.", "Right of the model"),
         GuideStep(SIGN_ADD, "Attach", "$SIGN_ADD adds an image (from the phone, the Gallery or a new photo, for models that see images) or a file: PDF, Word, Excel, PowerPoint, text.", "Left of the message"),
         GuideStep(SIGN_MIC, "Dictate", "With the message box empty, $SIGN_MIC records you; the Tiiny's speech-to-text (👂 ASR) writes it out into the box. $SIGN_EDIT improves your message before sending.", "Right of the message"),
-        GuideStep(SIGN_HISTORY, "Chats", "$SIGN_HISTORY earlier chats: tap one to open it, $SIGN_EDIT renames, $SIGN_DELETE twice deletes. $SIGN_SAVE green = saved / red = incognito, $SIGN_ADD new chat, $SIGN_REFRESH try the last answer again. The Tiiny keeps its own copy of every chat, by day: $SIGN_HISTORY → \"Copies on the Tiiny\" deletes those.", "Top right"),
+        GuideStep(SIGN_HISTORY, "Chats", "$SIGN_HISTORY earlier chats: tap one to open it, $SIGN_EDIT renames, $SIGN_DELETE deletes (Undo at the bottom brings it back). $SIGN_SAVE green = saved / red = incognito, $SIGN_ADD new chat, $SIGN_REFRESH try the last answer again. The Tiiny keeps its own copy of every chat, by day: $SIGN_HISTORY → \"Copies on the Tiiny\" deletes those.", "Top right"),
         GuideStep("⧉", "Answers", "Copy (⧉) or $SIGN_SHARE share an answer, or $SIGN_TRANSLATE translate it; when you've scrolled up, ↓ jumps back to the newest message.", "Under each answer"),
     )
     3 -> "Activity" to listOf(
@@ -92,8 +92,9 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep(SIGN_SHARE, "Share", "$SIGN_SHARE sends what's shown, without keys, passwords or email addresses. Long-press entries to choose just some. Clear empties the log.", "Above the list"),
     )
     4 -> "Settings" to listOf(
-        GuideStep("🔌", "Connection", "Your Tiiny's address and API key, and the WireGuard tunnel for using it away from home."),
-        GuideStep("🖥", "Display", "Size of everything, labels with words, pictograms or both ($SIGN_INFO beside Labels explains every pictogram), the compact layout for small or square screens."),
+        GuideStep("🔌", "Connection", "Your Tiiny's address and API key (🔎 \"Find on my Wi-Fi\" fills the address in), and the WireGuard tunnel for using it away from home."),
+        GuideStep("🖥", "Display", "Style: colours from your wallpaper or a designed look (A · Ink & Paper, B · Graphite & Brass, C · Alpine Slate), light or dark. Pictograms: colourful emoji or one family of line icons. Typefaces, the quiet one-line status bar, sizes, and labels with words, pictograms or both ($SIGN_INFO beside Labels explains every pictogram)."),
+        GuideStep(SIGN_LOCK, "Privacy and backup", "App lock: fingerprint, face or the screen lock to open the app. Backup: everything of the app's, encrypted on the phone with your backup password, kept by the NAS agent (the newest five); Restore brings one back, also onto a new phone.", "Privacy and backup"),
         GuideStep("⚡", "Fast helper model", "A small second model for quick side jobs (naming chats, follow-up ideas, condensing). The speed test checks whether two models together are worth it; 📊 Statistics shows the results and the speed of your chats.", "Fast helper model"),
         GuideStep("🎯", "Always ready", "Keeps speech-to-text (👂) and/or OCR ($SIGN_OCR) loaded whenever there's room, so they start at once.", "Always ready"),
         GuideStep("📶", "Stay connected", "Keeps the app connected in the background (a silent notification), for results and automations on time.", "Further down"),
@@ -104,10 +105,10 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep(SIGN_AGENT, "Agent or process", "$SIGN_AGENT An agent decides itself what to look up (web, news, calendar, mail) before it writes. $SIGN_PROCESS A process follows fixed steps.", "When you make one"),
         GuideStep(SIGN_ADD, "Make one", "Start from a template or from scratch: name, time, days, model, what it should do, which tools it may use.", "Automate"),
         GuideStep("📬", "Results", "Results lists what came out; \"Continue in chat\" takes one into a chat.", "Results"),
-        GuideStep("🔗", "Connectors", "Your calendar, your email (read-only, via IMAP) and optionally your NAS, which can run automations even with the phone off.", "Connectors"),
+        GuideStep("🔗", "Connectors", "Your calendar, your email (read-only, via IMAP) and optionally your NAS, which can run automations even with the phone off. With agent 1.7 the link to the NAS is encrypted; Test shows it.", "Connectors"),
     )
     6 -> "Gallery" to listOf(
-        GuideStep(SIGN_GALLERY, "Everything you made", "Images, sound, video, 3D and texts from Create, newest first. Images, videos (🎬) and 3D models (🧊) show as tiles: tap one to see it big, play it or turn it."),
+        GuideStep(SIGN_GALLERY, "Everything you made", "Images, sound, video, 3D and texts from Create, newest first. Images, videos (🎬) and 3D models (🧊) show as tiles: tap one to see it big, play it or turn it. Deleted by mistake? Undo at the bottom brings it back for a few seconds."),
         GuideStep("🗂", "Filter and search", "The chips filter by kind and task; search finds words in descriptions.", "Top"),
         GuideStep("📅", "Order", "Newest or oldest first, grouped by day, month, year or not at all.", "Top"),
         GuideStep("↔", "Open and browse", "Tap an item to open it big; swipe left or right for the next or previous one. There: $SIGN_DELETE delete, send to chat, $SIGN_EDIT edit (images), $SIGN_SHARE share.", "Each item"),
@@ -126,6 +127,11 @@ fun pageGuide(tab: Int): Pair<String, List<GuideStep>> = when (tab) {
         GuideStep("📄", "Files", "Files shows the project's files; tap one to read or edit it yourself.", "Top"),
         GuideStep(SIGN_PLAY, "Preview", "Code can't run on the phone, but a web page can: $SIGN_PLAY Preview at the top shows index.html. A good first try: Build \"a simple to-do list as a web page\".", "Top row"),
         GuideStep("🐙", "GitHub", "Copy a repository into a new project, push a project in one commit, or make a new private repository. Needs a GitHub token (the dialog links to where you make one).", "$SIGN_MORE → GitHub"),
+    )
+    9 -> "Start" to listOf(
+        GuideStep("✨", "What would you like to do?", "Tasks instead of models: tap one and the right page opens with the right tool; the model is picked there."),
+        GuideStep("📲", "From outside the app", "Long-press the app's icon (Dictate, Chat, Translate copied text, Gallery), add the widget to the home screen, or the Quick Settings tiles \"Ask Tiiny\" and \"Translate copied\" (pull down twice, then edit the tiles)."),
+        GuideStep(SIGN_MENU, "Open on it", "The sidebar's $SIGN_SETTINGS → Start with: Start.", "Sidebar"),
     )
     else -> "This page" to emptyList()
 }

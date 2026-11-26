@@ -1,5 +1,26 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.3.1 – 4.3.6 (test builds, with NAS agent 1.7.0)
+
+**Look (Settings → Display)**
+- **Style:** colours from your wallpaper (the standard, as before) or a designed look: A · Ink & Paper, B · Graphite & Brass, C · Alpine Slate, each light and dark (Mode).
+- **Pictograms:** colourful emoji (as before) or one family of line icons, drawn for this app.
+- **Typefaces:** the phone's font, or a designed pair: Inter for reading, titles in the style's own face (Newsreader, Inter Tight, Manrope).
+- **Status bar:** standard (the coloured block) or quiet: one thin line with a dot, the model and a slim NPU bar.
+
+**Privacy and backup (Settings)**
+- **App lock:** fingerprint, face or the screen lock to open the app, at once or after 1, 5 or 15 minutes away. Jobs and automations go on while it's locked.
+- **Encrypted link to the NAS agent** (agent 1.7): the agent makes its own certificate; the app pins it the first time and refuses any other after that. Once the app has used it, the agent refuses unencrypted requests. Test in Connectors shows "Encrypted link: on"; "Forget certificate" is there for setting the agent up anew.
+- **Backup to the NAS:** settings, chats, the Gallery, voices, Code projects and automations, encrypted on the phone with your backup password (the NAS can't read it), the newest five kept. Restore brings one back, also onto a new phone.
+
+**Easier**
+- **Start page:** what you can do, as tasks ("Translate", "Make a song", "Read text from a photo"…), each opening the right page and tool. First in the sidebar for new setups.
+- **Find on my Wi-Fi** (Settings → Tiiny): finds the Tiiny's address by itself.
+- **Undo instead of "Are you sure?":** deleting in the Gallery, the full view and the chat list happens at once; Undo at the bottom brings it back for a few seconds.
+- **From outside the app:** long-press the icon (Dictate, Chat, Translate copied text, Gallery), a home-screen widget (Chat, Dictate, Translate), and Quick Settings tiles "Ask Tiiny" and "Translate copied".
+
+**NAS agent 1.7.0:** the encrypted link and the backups. Update it on the NAS: `cd ~/tiiny-agent && sudo docker compose pull && sudo docker compose up -d`.
+
 ## What's new in 4.3.0 (with NAS agent 1.6.0)
 Everything from the 4.2.1–4.2.4 test builds, tested on the phone, plus another review (programmer, white-hat, attacker) of the changes and of updates, page reading, sharing, notifications and unlocking.
 - **Full screens fit the screen:** the full view, the 3D viewer and Code's preview no longer run off the bottom.

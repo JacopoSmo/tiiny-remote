@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +73,16 @@ fun TranslateScreen(s: UiState, st: StudioViewModel) {
     var detected by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val done: (Pair<String, String>) -> Unit = { (src, text) -> detected = src; result = text }
+    // Asked from outside (Quick Settings tile, widget, shortcut): the copied text goes in, ready to translate.
+    val clip by Nav.translateClip.collectAsState()
+    LaunchedEffect(clip) {
+        if (clip) {
+            Nav.translateClip.value = false
+            val t = clipboard.getText()?.text.orEmpty()
+            mode = "text"
+            if (t.isNotBlank()) { input = t; result = null; error = null } else error = "Nothing copied yet: copy a text, then try again."
+        }
+    }
 
     // The camera app saves a full-size photo here; it's read, then deleted.
     val shot = remember { File(ctx.cacheDir, "camera").apply { mkdirs() }.let { File(it, "photo.jpg") } }

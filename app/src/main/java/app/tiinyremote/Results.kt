@@ -104,6 +104,38 @@ class ResultStore(private val ctx: Context) {
         write(all().filter { it.id != e.id })
     }
 
+    // ---- Undo: a deleted result waits in the app's cache for a few seconds before it's gone for good.
+    private val trashDir get() = File(ctx.cacheDir, "trash").apply { mkdirs() }
+
+    /** Takes [list] out of the Gallery, keeping its files aside so [untrash] can bring it back. */
+    @Synchronized
+    fun trash(list: List<ResultEntry>) {
+        val ids = list.map { it.id }.toSet()
+        for (e in list) {
+            val box = File(trashDir, e.id).apply { mkdirs() }
+            (e.files.map { file(it) } + listOf(renderOf(e), posterOf(e))).filter { it.exists() }.forEach { f ->
+                if (!f.renameTo(File(box, f.name))) { f.copyTo(File(box, f.name), true); f.delete() }
+            }
+        }
+        write(all().filter { it.id !in ids })
+    }
+
+    /** Puts trashed results back, files and all, in their place by date. */
+    @Synchronized
+    fun untrash(list: List<ResultEntry>) {
+        for (e in list) {
+            val box = File(trashDir, e.id)
+            box.listFiles()?.forEach { f -> if (!f.renameTo(File(dir, f.name))) { f.copyTo(File(dir, f.name), true); f.delete() } }
+            box.delete()
+        }
+        write((all() + list).distinctBy { it.id }.sortedByDescending { it.created })
+    }
+
+    /** Deletes what's waiting for good (after the undo time, or when the app starts). */
+    fun emptyTrash(ids: Collection<String>? = null) {
+        trashDir.listFiles()?.filter { ids == null || it.name in ids }?.forEach { it.deleteRecursively() }
+    }
+
     fun uri(name: String): Uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", File(dir, name))
 
     fun mime(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {

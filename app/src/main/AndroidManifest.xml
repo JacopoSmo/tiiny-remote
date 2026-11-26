@@ -36,7 +36,25 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-press the icon: Dictate, Chat, Translate copied text, Gallery. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- Quick Settings tiles (pull down twice, then edit the tiles to add them). -->
+        <service android:name=".AskTile" android:exported="true" android:label="@string/tile_ask"
+            android:icon="@drawable/ic_q_mic" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+        <service android:name=".TranslateTile" android:exported="true" android:label="@string/tile_translate"
+            android:icon="@drawable/ic_q_tr" android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <!-- The home-screen widget. -->
+        <receiver android:name=".QuickWidget" android:exported="true" android:label="@string/widget_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_quick_info" />
+        </receiver>
 
         <!-- Runs only while a job, chat answer or download is going on, and only if you turned it on in Settings. -->
         <service

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sc_chat">Chat</string>
+    <string name="sc_dictate">Dictate a question</string>
+    <string name="sc_dictate_short">Dictate</string>
+    <string name="sc_translate">Translate copied text</string>
+    <string name="sc_translate_short">Translate</string>
+    <string name="sc_gallery">Gallery</string>
+    <string name="tile_ask">Ask Tiiny</string>
+    <string name="tile_translate">Translate copied</string>
+    <string name="widget_name">Tiiny Remote</string>
+</resources>

@@ -1062,7 +1062,6 @@ fun ResultCard(
     onFull: (() -> Unit)? = null, // the Gallery's full view, which swipes through its results
 ) {
     var open by remember(e.id) { mutableStateOf(expanded) }
-    var confirmDelete by remember(e.id) { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     var full by remember(e.id) { mutableStateOf(false) }
     if (full) FullView(e, st, onClose = { full = false })
@@ -1169,8 +1168,7 @@ fun ResultCard(
                 }
                 if (st.canSendToChat(e)) TextButton(onClick = { st.sendToChat(e) }) { BtnLabel("Send to chat", androidx.compose.material.icons.Icons.AutoMirrored.Filled.Send) }
                 TextButton(onClick = { st.share(e) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
-                if (confirmDelete) DangerButton("Really delete", onClick = { st.delete(e) })
-                else DangerButton("Delete", onClick = { confirmDelete = true })
+                DangerButton("Delete", onClick = { st.delete(e) }) // the Undo bar brings it back
             }
         }
     }
@@ -1844,6 +1842,16 @@ private fun DictateButton(enabled: Boolean, models: List<ModelInfo>, st: StudioV
     }
     val ask = rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok -> if (ok) start() }
     val hasAsr = models.any { it.isAsr }
+    // Asked from outside (Quick Settings tile, widget, shortcut): start recording right away.
+    val quick by Nav.dictate.collectAsState()
+    LaunchedEffect(quick, hasAsr) {
+        if (quick && hasAsr && !recording) {
+            Nav.dictate.value = false
+            if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.RECORD_AUDIO) ==
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) start() else ask.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
     if (recording) {
         Button(
             onClick = {
