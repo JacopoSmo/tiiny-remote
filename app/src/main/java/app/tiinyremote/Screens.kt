@@ -109,7 +109,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -1444,7 +1443,18 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // The look: colours, pictograms, typefaces and status bar, each on its own (alphabetical after Mode's light/dark).
+        SettingDropdown("Style", Look.STYLES, cur.style) { vm.setDisplay(cur.copy(style = it)) }
         SettingDropdown("Mode", THEMES, cur.theme) { vm.setDisplay(cur.copy(theme = it)) }
+        SettingDropdown("Pictograms", listOf("emoji" to "Colourful (the phone's emoji)", "lines" to "Line icons (one family)"), if (cur.lineIcons) "lines" else "emoji") {
+            vm.setDisplay(cur.copy(lineIcons = it == "lines"))
+        }
+        SettingDropdown("Status bar", listOf("standard" to "Standard (coloured)", "quiet" to "Quiet (one thin line)"), if (cur.quietStatus) "quiet" else "standard") {
+            vm.setDisplay(cur.copy(quietStatus = it == "quiet"))
+        }
+        SettingDropdown("Typefaces", listOf("system" to "The phone's font", "designed" to "Designed pair (Inter and the style's titles)"), if (cur.designedFonts) "designed" else "system") {
+            vm.setDisplay(cur.copy(designedFonts = it == "designed"))
+        }
         SettingDropdown("Size of everything", UI_SCALES, cur.uiScale) { vm.setDisplay(cur.copy(uiScale = it)) }
         SettingDropdown("Text size", TEXT_SCALES, cur.textScale) { vm.setDisplay(cur.copy(textScale = it)) }
         var legend by remember { mutableStateOf(false) }

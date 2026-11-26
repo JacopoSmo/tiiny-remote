@@ -44,7 +44,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
@@ -191,23 +190,16 @@ fun SignText(
     overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
     fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
 ) {
-    if (SIGN_ICONS.keys.none { it in text }) {
-        Text(text, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight)
+    // The stand-in signs always; colour emoji too when Settings → Display → Pictograms is "Line icons".
+    val annotated = iconized(text, SIGN_ICONS, lines = LocalLineIcons.current)
+    if (annotated == null) {
+        androidx.compose.material3.Text(text, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight)
         return
     }
-    val annotated = androidx.compose.ui.text.buildAnnotatedString {
-        for (ch in text) {
-            val key = ch.toString()
-            if (key in SIGN_ICONS) appendInlineContent(key, key) else append(ch)
-        }
-    }
     val tint = if (color != androidx.compose.ui.graphics.Color.Unspecified) color else androidx.compose.material3.LocalContentColor.current
-    fun box(icon: androidx.compose.ui.graphics.vector.ImageVector, c: androidx.compose.ui.graphics.Color) = androidx.compose.foundation.text.InlineTextContent(
-        androidx.compose.ui.text.Placeholder(1.25.em, 1.25.em, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
-    ) { androidx.compose.material3.Icon(icon, null, tint = c, modifier = Modifier.fillMaxSize()) }
-    Text(
+    androidx.compose.material3.Text(
         annotated, modifier = modifier, style = style, color = color, maxLines = maxLines, overflow = overflow, fontWeight = fontWeight,
-        inlineContent = SIGN_ICONS.filterKeys { it in text }.mapValues { (k, icon) -> box(icon, if (k == SIGN_WEB) WEB_BLUE else tint) },
+        inlineContent = iconContent(annotated, SIGN_ICONS, tint, 1.25f) { k -> if (k == SIGN_WEB) WEB_BLUE else tint },
     )
 }
 

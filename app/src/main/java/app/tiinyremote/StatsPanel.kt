@@ -22,7 +22,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -104,7 +103,53 @@ fun StatsStrip(s: UiState, vm: MainViewModel, studio: StudioViewModel) {
     } else 0f
     val back = if (fault != null) Color(0xFFE53935).copy(alpha = pulse) else hue.copy(alpha = 0.22f)
     Box(Modifier.fillMaxWidth()) {
-        Row(
+        // Settings → Display → Status bar "Quiet": one thin line between hairlines (a dot, the state, the model, a
+        // slim NPU bar) instead of the coloured block; a tap opens the same panel.
+        if (s.settings.quietStatus) Column(
+            Modifier
+                .fillMaxWidth()
+                .onSizeChanged { barHeight = it.height }
+                .clickable { open = true; vm.statsPanel(true); if (fault != null) vm.sawFault(fault) }
+                .padding(horizontal = 16.dp),
+        ) {
+            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Box(Modifier.size(7.dp).background(if (fault != null) Color(0xFFE53935).copy(alpha = 0.25f + pulse) else hue, androidx.compose.foundation.shape.CircleShape))
+                Text(
+                    when (s.device) {
+                        DeviceState.ONLINE -> "Online"
+                        DeviceState.LOCKED -> "Locked"
+                        DeviceState.CHECKING -> "Checking"
+                        else -> "Offline"
+                    },
+                    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium,
+                )
+                val (main, _) = chatRoles(s, studio)
+                Text(
+                    when {
+                        fault != null -> "NPU fault: tap"
+                        !online -> if (s.device == DeviceState.CHECKING) "One moment…" else "Tap for details"
+                        main != null -> main.name + if (loaded > 1) " +${loaded - 1}" else ""
+                        else -> "$loaded loaded"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (fault != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                if (online) {
+                    val npu = (st?.npuUtil ?: 0.0).coerceIn(0.0, 100.0)
+                    Text("NPU ${Math.round(npu)}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.width(48.dp).height(3.dp).background(MaterialTheme.colorScheme.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))) {
+                        Box(Modifier.fillMaxWidth((npu / 100).toFloat()).height(3.dp).background(if (npu < 51) MaterialTheme.colorScheme.primary else loadColor(npu), androidx.compose.foundation.shape.RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+            androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        } else Row(
             Modifier
                 .fillMaxWidth()
                 .onSizeChanged { barHeight = it.height }

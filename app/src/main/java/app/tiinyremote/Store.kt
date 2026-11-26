@@ -65,6 +65,14 @@ data class AppSettings(
     val startScreen: String = "last",
     /** The sidebar's top part, in your order (section numbers, comma-separated); Activity, Models and Settings stay below. */
     val navOrder: String = "",
+    /** Display → Style: "wallpaper" (Android's colours from the wallpaper) or a designed look "a", "b", "c" (Look.kt). */
+    val style: String = "wallpaper",
+    /** Display → Pictograms: one family of line icons instead of the phone's colour emoji. */
+    val lineIcons: Boolean = false,
+    /** Display → Typefaces: the designed pair (Inter and the style's title face) instead of the phone's font. */
+    val designedFonts: Boolean = false,
+    /** Display → Status bar: the quiet single line instead of the coloured block. */
+    val quietStatus: Boolean = false,
 ) {
     val vpnConfigured get() = wgTunnel.isNotBlank()
     val tiinyConfigured get() = tiinyUrl.isNotBlank() && apiKey.isNotBlank()
@@ -95,6 +103,10 @@ class Store(context: Context) {
         tavilyKey = Crypto.decrypt(prefs.getString("tavily_key", null)) ?: "",
         layout = prefs.getString("layout", "auto") ?: "auto",
         theme = prefs.getString("theme", "auto") ?: "auto",
+        style = prefs.getString("style", "wallpaper") ?: "wallpaper",
+        lineIcons = prefs.getBoolean("lineIcons", false),
+        designedFonts = prefs.getBoolean("designedFonts", false),
+        quietStatus = prefs.getBoolean("quietStatus", false),
         uiScale = prefs.getString("ui_scale", "1.0") ?: "1.0",
         textScale = prefs.getString("text_scale", "1.0") ?: "1.0",
         enterSends = prefs.getBoolean("enter_sends", true),
@@ -131,6 +143,10 @@ class Store(context: Context) {
             .putString("tavily_key", Crypto.encrypt(s.tavilyKey.trim()))
             .putString("layout", s.layout)
             .putString("theme", s.theme)
+            .putString("style", s.style)
+            .putBoolean("lineIcons", s.lineIcons)
+            .putBoolean("designedFonts", s.designedFonts)
+            .putBoolean("quietStatus", s.quietStatus)
             .putString("ui_scale", s.uiScale)
             .putString("text_scale", s.textScale)
             .putBoolean("enter_sends", s.enterSends)

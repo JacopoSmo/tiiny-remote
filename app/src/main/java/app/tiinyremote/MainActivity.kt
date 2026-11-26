@@ -59,14 +59,14 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent {
-            val theme = vm.state.collectAsState().value.settings.theme
-            AppTheme(theme) { AppRoot(vm) }
+            val set = vm.state.collectAsState().value.settings
+            AppTheme(set.theme, set.style, set.designedFonts, set.lineIcons) { AppRoot(vm) }
         }
     }
 }
 
 @Composable
-fun AppTheme(theme: String = "auto", content: @Composable () -> Unit) {
+fun AppTheme(theme: String = "auto", style: String = "wallpaper", designedFonts: Boolean = false, lineIcons: Boolean = false, content: @Composable () -> Unit) {
     // Settings → Display → Mode: as the phone is set, or always dark / light.
     val dark = when (theme) {
         "dark" -> true
@@ -74,7 +74,8 @@ fun AppTheme(theme: String = "auto", content: @Composable () -> Unit) {
         else -> isSystemInDarkTheme()
     }
     val ctx = LocalContext.current
-    val scheme = when {
+    // Settings → Display → Style: a designed look (Look.kt), else Android's colours from the wallpaper.
+    val scheme = Look.colors(style, dark) ?: when {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
         dark -> darkColorScheme()
         else -> lightColorScheme()
@@ -90,7 +91,9 @@ fun AppTheme(theme: String = "auto", content: @Composable () -> Unit) {
             }
         }
     }
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = Look.typography(style, designedFonts)) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalLineIcons provides lineIcons, content = content)
+    }
 }
 
 /** A screen to open, asked from outside the UI (a notification): AppRoot goes there and clears it. */
