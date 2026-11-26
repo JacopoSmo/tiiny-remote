@@ -2,7 +2,6 @@ package app.tiinyremote
 
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
@@ -153,8 +152,80 @@ val LINE_ICONS: Map<String, ImageVector> by lazy {
         "🗃" to "M3 4h18v5H3zM4 9v11h16V9M10 13h4",
         "📲" to "M9 3h10v18H9zM13 18h2M2 11h8M7 8l3 3-3 3",
         "✋" to "M12 3v18M3 12h18M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5",
+        // Signs that were the font's own (buttons and notes): drawn in the same family too.
+        "⟳" to "M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5",
+        "✎" to "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
+        "⤓" to "M12 4v11M7 10l5 5 5-5M5 20h14",
+        "⧉" to "M8 8h12v12H8zM4 16V4h12",
+        "▶" to "M7 4l13 8-13 8z",
+        "⏸" to "M8.5 5v14M15.5 5v14",
+        "⛶" to "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5",
+        "↩" to "M9 5L4 10l5 5M4 10h10a5 5 0 0 1 0 10h-3",
+        "☰" to "M4 6h16M4 12h16M4 18h16",
+        "⋮" to "M12 3.7a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM12 18.1a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2z",
+        "＋" to "M12 5v14M5 12h14",
+        "✕" to "M6 6l12 12M18 6L6 18",
+        "✓" to "M5 12.5l4.5 4.5L19 7",
+        "✦" to "M12 4l1.8 6.2L20 12l-6.2 1.8L12 20l-1.8-6.2L4 12l6.2-1.8z",
+        "⇄" to "M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4",
+        "↔" to "M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4",
+        "⤴" to "M5 19v-6a4 4 0 0 1 4-4h10M15 5l4 4-4 4",
+        "ⓘ" to "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.1",
     ).mapValues { (k, d) -> line(k, d) }
 }
+
+/**
+ * Line versions of the app's other pictograms (Material's and the app's own filled ones: bin, share, back, history,
+ * microphone…), by the picture's name. With "Line icons" every pictogram in the app is one family, not a mix of thin
+ * and filled ones.
+ */
+val LINE_SUBST: Map<String, ImageVector> by lazy {
+    mapOf(
+        "Close" to "M6 6l12 12M18 6L6 18",
+        "Clear" to "M6 6l12 12M18 6L6 18",
+        "Share" to "M18 3a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM6 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM18 16a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8.2 10.8l7.6-4.1M8.2 13.2l7.6 4.1",
+        "Send" to "M3 11l18-8-7 18-3-7zM11 14L21 3",
+        "Delete" to "M4 7h16M10 3h4M6 7l1 14h10l1-14M10 11v6M14 11v6",
+        "Refresh" to "M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5",
+        "Edit" to "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
+        "Create" to "M4 20h4L19 9l-4-4L4 16zM13 7l4 4",
+        "PlayArrow" to "M7 4l13 8-13 8z",
+        "Info" to "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.1",
+        "Settings" to "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1",
+        "Lock" to "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4M12 15v2",
+        "Add" to "M12 5v14M5 12h14",
+        "ArrowBack" to "M20 12H4M10 6l-6 6 6 6",
+        "Search" to "M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM15.5 15.5L21 21",
+        "MoreVert" to "M12 3.7a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM12 10.9a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2zM12 18.1a1.1 1.1 0 1 0 0 2.2 1.1 1.1 0 0 0 0-2.2z",
+        "Menu" to "M4 6h16M4 12h16M4 18h16",
+        "Check" to "M5 12.5l4.5 4.5L19 7",
+        "List" to "M9 6h11M9 12h11M9 18h11M4.5 6v.1M4.5 12v.1M4.5 18v.1",
+        "ExitToApp" to "M10 4H5v16h5M14 8l4 4-4 4M18 12H9",
+        "KeyboardArrowDown" to "M6 9l6 6 6-6",
+        "Home" to "M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10",
+        // The app's own filled pictures (Layout.kt), by the names they're built with.
+        "History" to "M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4.5H8M12 7.5V12l3.5 2",
+        "Save" to "M5 3h11l3 3v15H5zM8 3v5h7V3M9 21v-6h6v6",
+        "Mic" to "M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6",
+        "Gallery" to "M7 3h14v14H7zM3 7v14h14M7 14l4-4 3 3 2-2 5 5",
+        "Automate" to "M19.5 10A8 8 0 0 0 5.6 7M4.5 14a8 8 0 0 0 13.9 3M5.5 3v4h4M18.5 21v-4h-4",
+        "Code" to "M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16",
+        "Power" to "M12 3v9M7 6.5a7.5 7.5 0 1 0 10 0",
+        "Translate" to "M3 5h10M8 3v2M10.5 5c-1 4-3.5 7-7 9M5.5 8.5c1.5 2.5 3.5 4.5 6 5.5M12 21l4.5-11 4.5 11M13.6 17h5.8",
+        "Agent" to "M6 8h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM12 8V4.5M12 3.5v.1M9 13v.1M15 13v.1M9.5 16.5h5M2 13v3M22 13v3",
+        "Process" to "M9 6h11M9 12h11M9 18h11M4 5l1-1v4M3.5 11h2l-2 3h2M3.5 17h2l-1 1.5 1 1.5h-2",
+        "Web search" to "M20.5 10A9 9 0 1 0 11 21M3 12h8M12 3c-2.5 2.5-3.5 5.5-3.5 9s1 6.5 3.5 9M12 3c2 2 3.2 4.4 3.5 7M16.5 13a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18.7 18.7L21.5 21.5",
+    ).mapValues { (k, d) -> line(k, d) }
+}
+
+/** [v] in the line family when Settings → Display → Pictograms draws line icons, else [v] itself. */
+fun lineVersion(v: ImageVector, lines: Boolean): ImageVector =
+    if (!lines) v else LINE_SUBST[v.name.substringAfterLast('.')] ?: LINE_SUBST[v.name] ?: v
+
+/** The app's Icon: Material's, drawn in the line family with "Line icons" on (files use this one, not Material's). */
+@Composable
+fun Icon(imageVector: ImageVector, contentDescription: String?, modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) =
+    androidx.compose.material3.Icon(lineVersion(imageVector, LocalLineIcons.current), contentDescription, modifier, tint)
 
 /** The emoji's base character: a following U+FE0F (emoji style) is dropped, so "✉️" finds "✉". */
 private fun emojiAt(s: String, i: Int): Pair<String, Int> {
@@ -198,11 +269,14 @@ fun iconized(text: String, extra: Map<String, ImageVector> = emptyMap(), lines: 
 /** Inline pictograms for the keys used in [text], tinted like the text around them. */
 @Composable
 fun iconContent(text: AnnotatedString, extra: Map<String, ImageVector>, tint: Color, size: Float = 1.2f, tintFor: (String) -> Color = { tint }): Map<String, InlineTextContent> =
-    text.getStringAnnotations("androidx.compose.foundation.text.inlineContent", 0, text.length).map { it.item }.distinct().associateWith { k ->
-        val icon = extra[k] ?: LINE_ICONS[k]
+    text.getStringAnnotations("androidx.compose.foundation.text.inlineContent", 0, text.length).map { it.item }.distinct().let { keys ->
+    val lines = LocalLineIcons.current
+    keys.associateWith { k ->
+        val icon = extra[k]?.let { lineVersion(it, lines) } ?: LINE_ICONS[k]
         InlineTextContent(Placeholder(size.em, size.em, PlaceholderVerticalAlign.TextCenter)) {
-            if (icon != null) Icon(icon, contentDescription = null, tint = tintFor(k), modifier = Modifier)
+            if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, tint = tintFor(k), modifier = Modifier)
         }
+    }
     }
 
 /** [iconContent], each pictogram tinted as Settings → Display → Pictograms says. */

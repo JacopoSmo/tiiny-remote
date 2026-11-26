@@ -35,7 +35,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -384,7 +383,7 @@ private fun WebPreview(file: java.io.File, onClose: () -> Unit) {
     FullScreenDialog(onClose) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Preview: ${file.name}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(8.dp))
+                    Text("Preview: ${file.name}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(8.dp))
                     TextButton(onClick = onClose) { Text("Close") }
                 }
                 AndroidView(

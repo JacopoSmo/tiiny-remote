@@ -267,14 +267,13 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 if (on) "Tiiny online" else if (s.device == DeviceState.LOCKED) "Tiiny locked" else "Tiiny offline",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleSmall,
                 color = if (on) Color(0xFF2E7D32) else Color(0xFFC62828),
                 modifier = Modifier.weight(1f),
             )
             if (on) Text("$loadedN model${if (loadedN == 1) "" else "s"} loaded", style = MaterialTheme.typography.labelLarge, maxLines = 1)
             androidx.compose.material3.IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-                androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Close")
+                Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Close")
             }
         }
             Column(
@@ -438,8 +437,7 @@ private fun Stat(label: String, value: String, modifier: Modifier, hot: Boolean 
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleSmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             color = if (hot) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,

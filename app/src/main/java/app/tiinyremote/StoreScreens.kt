@@ -21,7 +21,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -92,7 +91,7 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
                     Row {
                         if (d.failed) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Retry", Icons.Filled.Refresh) }
                         else if (d.paused) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Resume", Icons.Filled.PlayArrow) }
-                        else TextButton(onClick = { vm.pauseDownload(d) }) { BtnLabel("Pause", symbol = "❚❚") }
+                        else TextButton(onClick = { vm.pauseDownload(d) }) { BtnLabel("Pause", symbol = "⏸") }
                         Spacer(Modifier.weight(1f))
                         DangerButton("Cancel", onClick = { cancel = d }, icon = Icons.Filled.Close)
                     }
@@ -172,7 +171,7 @@ internal fun StoreList(s: UiState, vm: MainViewModel, freeGb: Double?, types: Se
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(start = 14.dp, end = 10.dp, top = 6.dp, bottom = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(m.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+                        Text(m.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
                         IconButton(onClick = { info = m }, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                         }

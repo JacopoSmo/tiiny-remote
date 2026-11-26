@@ -58,7 +58,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Measured in normal chats, no test needed: alone, and beside another model writing.
                 if (chats.isNotEmpty()) {
-                    Text("From your chats (tokens per second)", style = MaterialTheme.typography.titleSmall)
+                    Text("From your chats (tokens per second)", style = MaterialTheme.typography.titleMedium)
                     for ((m, l) in chats.groupBy { it.model }.entries.sortedByDescending { (_, l) -> l.map { it.rate }.average() }) {
                         val alone = l.filter { it.alone }.map { it.rate }
                         val beside = l.filter { !it.alone }.map { it.rate }
@@ -83,7 +83,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                     return@Column
                 }
                 // Best pairs: averaged over all their tests.
-                Text("Pairs, best first", style = MaterialTheme.typography.titleSmall)
+                Text("Pairs, best first", style = MaterialTheme.typography.titleMedium)
                 val pairs = all.groupBy { it.big to it.small }.map { (k, l) ->
                     Triple(k, l.map { it.bothGain }.filter { !it.isNaN() }.average(), l.size)
                 }.sortedByDescending { it.second }
@@ -96,7 +96,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                     )
                 }
                 // Each model's speed alone, whichever role it had.
-                Text("Models, fastest first (alone, tokens per second)", style = MaterialTheme.typography.titleSmall)
+                Text("Models, fastest first (alone, tokens per second)", style = MaterialTheme.typography.titleMedium)
                 val speeds = (all.map { it.big to it.bigRate } + all.map { it.small to it.smallRate })
                     .filter { !it.second.isNaN() }
                     .groupBy({ it.first }, { it.second })
@@ -107,7 +107,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                 }
                 HorizontalDivider()
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("All tests:", style = MaterialTheme.typography.titleSmall)
+                    Text("All tests:", style = MaterialTheme.typography.titleMedium)
                     FilterChip(selected = sort == "new", onClick = { sort = "new" }, label = { Text("Newest") })
                     FilterChip(selected = sort == "pair", onClick = { sort = "pair" }, label = { Text("Best together") })
                     FilterChip(selected = sort == "speed", onClick = { sort = "speed" }, label = { Text("Fastest main") })

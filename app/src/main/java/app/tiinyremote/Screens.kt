@@ -97,7 +97,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Badge
@@ -583,7 +582,7 @@ private fun VpnCard(s: UiState, vm: MainViewModel, onSettings: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (v.active) "VPN on" else if (v.other) "Another VPN is on" else "VPN off",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall,
                         color = if (v.active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                     )
                     val where = when (v.onHome) {
@@ -987,7 +986,7 @@ private fun ModelCard(
         Row(Modifier.height(IntrinsicSize.Min).padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 12.dp)) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(m.name, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                    Text(m.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f, fill = false))
                     if (m.isMoE) MoeBadge()
                     IconButton(onClick = onInfo, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Filled.Info, contentDescription = "About this model", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
@@ -1112,7 +1111,7 @@ private fun UnlockScreen(s: UiState, vm: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Logs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            Text("Logs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = { vm.unlock() }, enabled = !s.unlocking) {
                 BtnLabel(if (s.unlocking) "Unlocking…" else "Unlock Tiiny", androidx.compose.material.icons.Icons.Filled.Lock)
             }
@@ -1279,7 +1278,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         "■" to "Unload a model, stop",
         "⤓" to "Download, save to the phone",
         "⟳" to "Update a model",
-        "❚❚" to "Pause a download",
+        "⏸" to "Pause a download",
         Icons.Filled.Close to "Cancel, remove, close",
         Icons.Filled.Edit to "Edit, rename; in the chat: improve your message",
         Icons.Filled.Check to "Save",
@@ -1319,7 +1318,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         title = { ClosableTitle(onClose) { Text("What the pictograms mean") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Models", style = MaterialTheme.typography.titleSmall)
+                Text("Models", style = MaterialTheme.typography.titleMedium)
                 val meaning = mapOf(
                     "Chat" to "Chat model",
                     "Thinks" to "Can think before answering (can be switched off); in the chat: thinking on (how deep: the Thinking slider)",
@@ -1344,7 +1343,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Text("Buttons", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                Text("Buttons", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
                 for ((sign, what) in signs) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.width(36.dp)) {
@@ -1353,7 +1352,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                         Text(what, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Text("Create and Gallery", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                Text("Create and Gallery", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
                 for (c in CATEGORIES) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(c.icon, modifier = Modifier.width(36.dp))
@@ -1361,7 +1360,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                             style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Text("Model types (Models → Types)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                Text("Model types (Models → Types)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
                 for (t in listOf("ASR", "Image-Text-to-Text", "Image-to-3D", "Image-to-Text", "Image-to-Video", "Music Generation",
                     "Text Classification", "Text Embedding", "Text Generation", "Text Reranking", "Text-to-Image", "Text-to-Speech", "Text-to-Video")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1369,7 +1368,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
                         Text(t, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
-                Text("Pages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+                Text("Pages", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 6.dp))
                 for ((icon, what) in listOf(GalleryIcon to "Gallery: everything made", TranslateIcon to "Translate: text, photos, speech",
                     AutomationIcon to "Automate: $SIGN_AGENT agents, $SIGN_PROCESS processes", CodeIcon to "Code: 💬 ask, 🛠 build, 🎓 learn")) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1398,7 +1397,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
         title = { ClosableTitle(onClose) { Text("Which model for what?") } },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Two kinds of chat models", style = MaterialTheme.typography.titleSmall)
+                Text("Two kinds of chat models", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Dense, like Qwen3.8-27B: uses all its 27 billion parameters for every word. Usually more careful on " +
                         "hard reasoning, but on the Tiiny it writes only about 10 tokens (word pieces) per second.",
@@ -1411,7 +1410,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                         "tricky reasoning. Marked \"MoE\" in Models, with a filter of its own.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text("How to use them", style = MaterialTheme.typography.titleSmall)
+                Text("How to use them", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "• Everyday chat, web search, summaries, quick drafts: an A3B model.\n" +
                         "• Hard problems, careful writing, analysis you want double-checked: the dense 27B.\n" +
@@ -1420,7 +1419,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                         "• Both pairs fit: A3B + gpt-oss about 75%, 27B + gpt-oss about 86% of the NPU.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text("The speed test measures two different things", style = MaterialTheme.typography.titleSmall)
+                Text("The speed test measures two different things", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "1. How fast each model writes alone. This decides who reads web pages. It barely changes " +
                         "between runs (a few percent), and the speeds are remembered.\n\n" +
@@ -1431,7 +1430,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                         "The same model twice brings nothing: the Tiiny takes a model's requests in turn.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text("Web pages: the 25% rule", style = MaterialTheme.typography.titleSmall)
+                Text("Web pages: the 25% rule", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Before answering, the helper shortens each web page it found to the parts that matter, and the " +
                         "chat model reads only those. It does this only when the helper writes at least 25% faster than " +
@@ -1447,7 +1446,7 @@ private fun ModelChoiceInfo(onClose: () -> Unit) {
                         "When details matter, use the chat model alone (helper None) or pair the helper with an A3B model.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Text("Test runs", style = MaterialTheme.typography.titleSmall)
+                Text("Test runs", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Run the test once for each chat model you pair with the helper. With 3–5 runs the results are " +
                         "averaged, the spread is shown, and the rules apply to the average, so one lucky or unlucky run " +
@@ -1584,7 +1583,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                         finding = null
                     }
                 }
-            }) { Text("🔎", fontSize = 22.sp, modifier = Modifier.semantics { contentDescription = "Find the Tiiny on my Wi-Fi" }) }
+            }) { Text("🔎", fontSize = 20.sp, modifier = Modifier.semantics { contentDescription = "Find the Tiiny on my Wi-Fi" }) }
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
@@ -2106,7 +2105,7 @@ private fun AboutDialog(version: String, settings: AppSettings, onClose: () -> U
 }
 
 @Composable
-private fun AboutHead(t: String) = Text(t, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
+private fun AboutHead(t: String) = Text(t, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp))
 
 /** A pictogram for each kind of model the Tiiny lists, the same as Create's; in Models → Types always with the name. */
 internal fun typeIcon(type: String): String = when (type.lowercase()) {
@@ -2298,7 +2297,7 @@ private fun UpdatesDialog(s: UiState, vm: MainViewModel, onClose: () -> Unit) {
                             when {
                                 d == null && m.needUpdate -> TextButton(onClick = { vm.updateModel(m) }) { BtnLabel("Update", symbol = "⟳") }
                                 d != null && (d.paused || d.failed) -> TextButton(onClick = { vm.resumeDownload(d) }) { Text(if (d.failed) "Retry" else "Resume") }
-                                d != null -> TextButton(onClick = { vm.pauseDownload(d) }) { Text("❚❚ Pause") }
+                                d != null -> TextButton(onClick = { vm.pauseDownload(d) }) { Text("⏸ Pause") }
                             }
                         }
                         if (d != null && !d.paused && !d.failed) {
@@ -2365,7 +2364,7 @@ private fun NavSettingsDialog(s: UiState, vm: MainViewModel, onClose: () -> Unit
                     listOf("last" to "Where you left off") + (order + listOf(3, 0, 4)).map { it.toString() to navEntry(it).first },
                     cur.startScreen,
                 ) { vm.setDisplay(cur.copy(startScreen = it)) }
-                Text("Order", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+                Text("Order", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
                 for ((i, t) in order.withIndex()) {
                     val (label, icon, _) = navEntry(t)
                     Row(verticalAlignment = Alignment.CenterVertically) {

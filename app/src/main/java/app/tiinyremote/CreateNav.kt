@@ -222,7 +222,7 @@ fun CreationsScreen(st: StudioViewModel, start: String?, openTool: (String) -> U
         }
         for ((title, list) in sections) {
             if (title.isNotEmpty()) item(key = "h-$title") {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
             }
             // Images, videos and 3D models as a grid of three; everything else as cards.
             val pics = list.filter { it.kind in TILE_KINDS && it.mainFile != null }

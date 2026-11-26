@@ -118,8 +118,8 @@ fun LockScreen(ask: () -> Unit) {
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp, androidx.compose.ui.Alignment.CenterVertically),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         ) {
-            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Lock, contentDescription = null, modifier = androidx.compose.ui.Modifier.size(48.dp))
-            Text("Tiiny Remote is locked", style = MaterialTheme.typography.titleMedium)
+            Icon(androidx.compose.material.icons.Icons.Filled.Lock, contentDescription = null, modifier = androidx.compose.ui.Modifier.size(48.dp))
+            Text("Tiiny Remote is locked", style = MaterialTheme.typography.titleLarge)
             androidx.compose.material3.Button(onClick = ask) { Text("Unlock") }
         }
     }

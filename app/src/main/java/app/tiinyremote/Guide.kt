@@ -183,7 +183,7 @@ fun GuideOverlay(title: String, steps: List<GuideStep>, onClose: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     SignText(step.icon, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 30.sp), modifier = Modifier.padding(end = 12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(step.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(step.title, style = MaterialTheme.typography.titleMedium)
                         if (step.where.isNotBlank()) SignText("📍 ${step.where}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
                 }

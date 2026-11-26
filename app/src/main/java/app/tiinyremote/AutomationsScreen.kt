@@ -690,7 +690,7 @@ private fun AutomationEditor(
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(a.name, { a = a.copy(name = it.take(60)) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 // 1. When
-                Text("When", style = MaterialTheme.typography.titleSmall)
+                Text("When", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = timed, onCheckedChange = { timed = it; a = a.copy(time = if (it) a.time.ifBlank { "07:00" } else "") })
                     Spacer(Modifier.width(8.dp))
@@ -714,7 +714,7 @@ private fun AutomationEditor(
                 if (a.where == "nas" && !conn.nasReady) Text("Set up the NAS agent under Connectors first.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 // 2. Input or tools
                 if (a.kind == "process") {
-                    Text("Input", style = MaterialTheme.typography.titleSmall)
+                    Text("Input", style = MaterialTheme.typography.titleMedium)
                     SettingDropdown(
                         "Get",
                         listOf("none" to "Nothing", "news" to "News", "web" to "Web search", "calendar" to "Calendar", "email" to "Email"),
@@ -735,7 +735,7 @@ private fun AutomationEditor(
                         }
                     }
                 } else {
-                    Text("Tools the agent may use", style = MaterialTheme.typography.titleSmall)
+                    Text("Tools the agent may use", style = MaterialTheme.typography.titleMedium)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         for ((k, label) in AGENT_TOOLS.map { (k, sign, name) -> k to "$sign $name" }) {
                             FilterChip(selected = k in a.tools, onClick = { a = a.copy(tools = if (k in a.tools) a.tools - k else a.tools + k) }, label = { SignText(label) })
@@ -752,7 +752,7 @@ private fun AutomationEditor(
                     SettingDropdown("Most steps", listOf("3", "6", "9", "12").map { it to it }, a.maxSteps.toString()) { a = a.copy(maxSteps = it.toInt()) }
                 }
                 // 3. Model
-                Text("Model", style = MaterialTheme.typography.titleSmall)
+                Text("Model", style = MaterialTheme.typography.titleMedium)
                 SettingDropdown(
                     "Use",
                     listOf("" to "Whichever chat model is loaded") + chatModels.map { it.id to ((if (it.running) "● " else "") + it.name) },
@@ -764,7 +764,7 @@ private fun AutomationEditor(
                     Text("Load it if needed (never unloads another model)", style = MaterialTheme.typography.bodyMedium)
                 }
                 // 4. Task
-                Text(if (a.kind == "agent") "Goal" else "What to do with it", style = MaterialTheme.typography.titleSmall)
+                Text(if (a.kind == "agent") "Goal" else "What to do with it", style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(a.instruction, { a = a.copy(instruction = it.take(2000)) }, minLines = 3, modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text(if (a.kind == "agent") "e.g. Find this week's best offers for a wing foil board under 900 CHF" else "e.g. Summarise in 5 bullet points") })
                 // 5. Result

@@ -34,7 +34,7 @@ fun MeshViewer(title: String, glb: File, render: File, onClose: () -> Unit) {
     FullScreenDialog(onClose) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).padding(8.dp))
+                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(8.dp))
                     TextButton(onClick = onClose) { Text("Close") }
                 }
                 Text(

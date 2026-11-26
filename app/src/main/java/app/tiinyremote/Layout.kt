@@ -535,7 +535,7 @@ fun BtnLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector
         modifier = if (showWord) Modifier else Modifier.semantics(mergeDescendants = true) { contentDescription = text },
     ) {
         if (showSign) {
-            if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, modifier = gap.size(18.dp))
+            if (icon != null) Icon(icon, contentDescription = null, modifier = gap.size(18.dp))
             else SignText(symbol!!, modifier = gap) // SignText draws the SIGN_* pictograms; plain Text showed them as a stray glyph
         }
         if (showWord) Text(text, maxLines = 1)
@@ -565,7 +565,7 @@ fun ClosableTitle(onClose: () -> Unit, content: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.Top) {
         Box(Modifier.weight(1f)) { content() }
         androidx.compose.material3.IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-            androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Close")
+            Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Close")
         }
     }
 }
