@@ -59,14 +59,6 @@ val LINE_COLOURS: Map<String, Color> by lazy {
     )
 }
 
-/** The tint of pictogram [k] in a text of colour [text]: its own (colourful), the style's accent, or the text's. */
-@Composable
-fun pictoTint(k: String, text: Color, accent: Color = androidx.compose.material3.MaterialTheme.colorScheme.primary): Color = when {
-    !LocalLineIcons.current -> text
-    LocalLineColour.current -> LINE_COLOURS[k] ?: text
-    else -> accent
-}
-
 /** A thin, round-capped line pictogram on a 24-unit grid, from SVG path data. */
 private fun line(name: String, d: String): ImageVector = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
     addPath(
@@ -238,17 +230,6 @@ private fun emojiAt(s: String, i: Int): Pair<String, Int> {
     val key = String(Character.toChars(cp))
     val skip = if (i + n < s.length && s[i + n] == '️') n + 1 else n
     return key to skip
-}
-
-/** True when [text] holds a pictogram this setting would draw. */
-fun hasLineIcons(text: String): Boolean {
-    var i = 0
-    while (i < text.length) {
-        val (k, n) = emojiAt(text, i)
-        if (k in LINE_ICONS) return true
-        i += n
-    }
-    return false
 }
 
 /** [text] with every known emoji (and the stand-in signs in [extra]) as inline icons; null when there are none. */

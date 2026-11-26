@@ -75,6 +75,17 @@ object Tools {
         return if (freed >= need) out else emptyList()
     }
 
+    /** Asks the Tiiny to load [id] (after any answer being written); [wait]: until it's loaded. */
+    fun launch(c: DeviceClient, id: String, p: Progress, wait: Boolean = true) {
+        NpuGate.awaitQuiet(id)
+        val r = c.request("POST", "/api/v1/models/${c.quote(id)}/launch", JSONObject().put("model_id", id), 120)
+        if (!r.ok) throw MediaException("${short(id)}: ${r.error()}")
+        if (wait) waitLoaded(c, id, p)
+    }
+
+    /** Asks the Tiiny to unload [id]; returns whether it agreed. */
+    fun stop(c: DeviceClient, id: String): Boolean = c.request("POST", "/api/v1/models/${c.quote(id)}/stop", null, 120).ok
+
     /** Loads `target`, unloading what must go to make room (as little as possible). Returns what it unloaded. */
     fun makeRoom(c: DeviceClient, target: String, p: Progress): List<String> {
         if (target in runningIds(c)) return emptyList()
@@ -100,16 +111,12 @@ object Tools {
             }
             for (v in victims.filter { it.isNotBlank() }) {
                 p.update("Unloading ${short(v)} to make room", null)
-                val r = c.request("POST", "/api/v1/models/${c.quote(v)}/stop", null, 120)
-                if (!r.ok) throw MediaException(r.error())
+                if (!stop(c, v)) throw MediaException("Couldn't unload ${short(v)}")
                 unloaded.add(v)
             }
         }
         p.update("Loading ${short(target)}", null)
-        NpuGate.awaitQuiet(target)
-        val r = c.request("POST", "/api/v1/models/${c.quote(target)}/launch", JSONObject().put("model_id", target), 120)
-        if (!r.ok) throw MediaException(r.error())
-        waitLoaded(c, target, p)
+        launch(c, target, p)
         return unloaded
     }
 
@@ -117,12 +124,10 @@ object Tools {
     fun putBack(c: DeviceClient, target: String, unloaded: List<String>, p: Progress) {
         if (unloaded.isEmpty()) return
         p.update("Unloading ${short(target)}", null)
-        c.request("POST", "/api/v1/models/${c.quote(target)}/stop", null, 120)
+        stop(c, target)
         for (m in unloaded) {
             p.update("Loading ${short(m)} back", null)
-            NpuGate.awaitQuiet(m)
-            val r = c.request("POST", "/api/v1/models/${c.quote(m)}/launch", JSONObject().put("model_id", m), 120)
-            if (!r.ok) throw MediaException("Couldn't load ${short(m)} back: ${r.error()}")
+            try { launch(c, m, p, wait = false) } catch (e: MediaException) { throw MediaException("Couldn't load back ${e.message}") }
         }
         for (m in unloaded) waitLoaded(c, m, p)
     }

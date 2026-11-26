@@ -279,8 +279,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _currentProjectMap.value = HashMap(chatProject)
     }
 
-    fun projectOf(chatId: String): String? = chatProject[chatId]
-
     fun createProject(name: String): Project = projects.create(name).also { _projectList.value = projects.list() }
     fun renameProject(id: String, name: String) { projects.rename(id, name); _projectList.value = projects.list() }
 
@@ -1610,14 +1608,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val c = client()
                     val before = Tools.runningIds(c)
                     val p = Progress({ msg, _ -> _speed.value = "Testing: $msg…" }, { speedStop })
-                    fun stop(id: String) { c.request("POST", "/api/v1/models/${c.quote(id)}/stop", null, 120) }
                     fun launch(m: ModelInfo) {
                         if (m.id in Tools.runningIds(c, log = false)) return
                         p.update("loading ${m.name}", null)
-                        NpuGate.awaitQuiet(m.id)
-                        val r = c.request("POST", "/api/v1/models/${c.quote(m.id)}/launch", JSONObject().put("model_id", m.id), 120)
-                        if (!r.ok) throw MediaException("${m.name}: ${r.error()}")
-                        Tools.waitLoaded(c, m.id, p)
+                        Tools.launch(c, m.id, p)
                     }
                     try {
                         for ((i, pair) in pairs.withIndex()) {
@@ -1633,7 +1627,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 // Only this pair on the NPU, so every pair is measured alike.
                                 for (id in Tools.runningIds(c) - setOf(big.id, small.id)) {
                                     p.update("unloading ${id.substringAfterLast('/')}", null)
-                                    stop(id)
+                                    Tools.stop(c, id)
                                 }
                                 launch(big)
                                 launch(small)
@@ -1650,13 +1644,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                         // What was loaded before comes back (best effort; a failure is only logged).
                         try {
                             val now = Tools.runningIds(c, log = false)
-                            for (id in now - before) { _speed.value = "Testing: unloading ${id.substringAfterLast('/')}…"; stop(id) }
+                            for (id in now - before) { _speed.value = "Testing: unloading ${id.substringAfterLast('/')}…"; Tools.stop(c, id) }
+                            val quiet = Progress({ _, _ -> }, { false })
                             for (id in before - now) {
                                 _speed.value = "Testing: loading ${id.substringAfterLast('/')} back…"
-                                NpuGate.awaitQuiet(id)
-                                c.request("POST", "/api/v1/models/${c.quote(id)}/launch", JSONObject().put("model_id", id), 120)
+                                Tools.launch(c, id, quiet, wait = false)
                             }
-                            for (id in before - now) Tools.waitLoaded(c, id, Progress({ _, _ -> }, { false }))
+                            for (id in before - now) Tools.waitLoaded(c, id, quiet)
                         } catch (e: Exception) {
                             ApiLog.add("Speed test: couldn't load the earlier models back: ${e.message}", "Chat", isProblem = true)
                         }

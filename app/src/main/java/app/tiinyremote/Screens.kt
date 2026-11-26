@@ -1284,6 +1284,9 @@ internal fun SettingDropdown(label: String, options: List<Pair<String, String>>,
     }
 }
 
+/** Four values in one, for a list of rows. */
+private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
 /** The ⓘ beside Labels: what each pictogram means. */
 @Composable
 private fun PictogramLegend(onClose: () -> Unit) {
@@ -2005,25 +2008,21 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     text = { Text("Only the loaded pair") },
                     onClick = { testHelpers = emptyList(); testMains = emptyList(); st.setSpeedSet("helpers", testHelpers); st.setSpeedSet("mains", testMains); pick = false },
                 )
-                HorizontalDivider()
-                DropdownMenuItem(text = { Text("Helpers (up to 3)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
-                for (m in byName) {
-                    val on = m.id in testHelpers
-                    DropdownMenuItem(
-                        text = { Text((if (on) "☑ " else "☐ ") + m.name) },
-                        enabled = on || testHelpers.size < 3,
-                        onClick = { testHelpers = if (on) testHelpers - m.id else testHelpers + m.id; st.setSpeedSet("helpers", testHelpers) },
-                    )
-                }
-                HorizontalDivider()
-                DropdownMenuItem(text = { Text("Main models (up to 6)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
-                for (m in byName) {
-                    val on = m.id in testMains
-                    DropdownMenuItem(
-                        text = { Text((if (on) "☑ " else "☐ ") + m.name) },
-                        enabled = on || testMains.size < 6,
-                        onClick = { testMains = if (on) testMains - m.id else testMains + m.id; st.setSpeedSet("mains", testMains) },
-                    )
+                // Two lists of checkboxes: (title, the chosen, how many at most, save).
+                for ((title, chosen, most, put) in listOf(
+                    Quad("Helpers (up to 3)", testHelpers, 3) { l: List<String> -> testHelpers = l; st.setSpeedSet("helpers", l) },
+                    Quad("Main models (up to 6)", testMains, 6) { l: List<String> -> testMains = l; st.setSpeedSet("mains", l) },
+                )) {
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
+                    for (m in byName) {
+                        val on = m.id in chosen
+                        DropdownMenuItem(
+                            text = { Text((if (on) "☑ " else "☐ ") + m.name) },
+                            enabled = on || chosen.size < most,
+                            onClick = { put(if (on) chosen - m.id else chosen + m.id) },
+                        )
+                    }
                 }
             }
         }
