@@ -952,13 +952,13 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun helperRun(label: String, tool: String, models: List<ModelInfo>, fits: (ModelInfo) -> Boolean, block: (DeviceClient, String) -> String, onDone: (String) -> Unit) {
         if (_helper.value != null) return
-        val ok = models.filter(fits)
+        val fitting = models.filter(fits)
         // Writing helpers use the fast helper model when it's loaded.
         val cfgNow = settingsStore.load()
         val fast = if (tool == "chat") cfgNow.activeHelper.ifBlank { null } else null
         // Switched off in the chat menu: the helper isn't used even if it's loaded (unless it's the only model there is).
         val off = cfgNow.helperModel.takeIf { !cfgNow.helperOn && it.isNotBlank() }
-        val ok = if (off != null && ok.any { it.id != off }) ok.filter { it.id != off } else ok
+        val ok = if (off != null && fitting.any { it.id != off }) fitting.filter { it.id != off } else fitting
         val model = ok.firstOrNull { it.running && it.id == fast } ?: ok.firstOrNull { it.running && it.id == pick(tool) } ?: ok.firstOrNull { it.running }
             ?: ok.firstOrNull { it.id == pick(tool) } ?: ok.firstOrNull()
         if (model == null) {
