@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.collectAsState
 import java.util.Locale
 
 internal fun gbSize(bytes: Long): String = if (bytes <= 0) "?" else String.format(Locale.ROOT, "%.1f GB", bytes / 1e9)
@@ -49,8 +50,21 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
     if (s.downloads.isEmpty()) return
     // Cancelling deletes what's downloaded so far on the Tiiny: asked first, never on one tap.
     var cancel by remember { mutableStateOf<Download?>(null) }
+    val updates by vm.updates.collectAsState()
     cancel?.let { d ->
-        ScaledAlertDialog(
+        if (d.id in updates) ScaledAlertDialog(
+            // An update: the Tiiny removed the old copy when it began, so stopping leaves none. Pause is the safe way.
+            onDismissRequest = { cancel = null },
+            title = { Text("Stop updating ${d.name}?") },
+            text = { Text("The Tiiny removed the old copy when the update began. Stopping deletes the new one too, so ${d.name} is gone until you download it again. Pause keeps what's downloaded.") },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { if (!d.paused) vm.pauseDownload(d); cancel = null }) { Text("Pause") }
+                    TextButton(onClick = { vm.cancelDownload(d); cancel = null }) { Text("Stop and delete", color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            dismissButton = { TextButton(onClick = { cancel = null }) { Text("Keep updating") } },
+        ) else ScaledAlertDialog(
             onDismissRequest = { cancel = null },
             title = { Text("Cancel downloading ${d.name}?") },
             text = { Text("The Tiiny deletes what it has downloaded of this model so far.") },

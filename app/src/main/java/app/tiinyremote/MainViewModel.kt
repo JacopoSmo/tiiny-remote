@@ -714,8 +714,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var watchDownloadsUntil = 0L
 
-    /** Downloads you cancelled: when they leave the list, that's not "downloaded" (an update cancelled keeps its old copy). */
+    /** Downloads you cancelled: when they leave the list, that's not "downloaded". */
     private val cancelledDownloads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /**
+     * Models being updated. The Tiiny's /update removes the installed copy first and then downloads the new one, so
+     * cancelling an update leaves no copy at all: the Downloads card asks differently for these. Kept across restarts.
+     */
+    private val updatePrefs by lazy { getApplication<Application>().getSharedPreferences("model_updates", 0) }
+    private val _updates = MutableStateFlow<Set<String>>(emptySet())
+    val updates: StateFlow<Set<String>> = _updates
+    private fun setUpdates(ids: Set<String>) {
+        _updates.value = ids
+        updatePrefs.edit().putStringSet("ids", ids).apply()
+    }
 
     private suspend fun readDownloads() {
         val before = _state.value.downloads.map { it.id }.toSet()
@@ -728,6 +740,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val active = now.count { !it.paused }
         Background.set(getApplication(), "downloads", if (active > 0) "Downloading ${if (active == 1) "a model" else "$active models"}" else null)
         val gone = before - now.map { it.id }.toSet()
+        if (_updates.value.isEmpty()) _updates.value = updatePrefs.getStringSet("ids", null)?.toSet() ?: emptySet()
+        if (gone.isNotEmpty() && _updates.value.any { it in gone }) setUpdates(_updates.value - gone)
         if (gone.isNotEmpty()) {
             refresh()
             // Gone from the list means finished only if it's now installed: a cancelled download is gone too.
@@ -764,7 +778,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateModel(m: ModelInfo) {
         cancelledDownloads.remove(m.id)
-        modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.update(m.id) }
+        modelAction("Update", m.id, "Updating ${m.name} on the Tiiny…") { this.update(m.id); setUpdates(_updates.value + m.id) }
     }
     fun pauseDownload(d: Download) = modelAction("Pause download", d.id, "Paused ${d.name}") { this.pauseDownload(d.id) }
     fun resumeDownload(d: Download) {

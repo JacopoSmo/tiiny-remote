@@ -536,7 +536,7 @@ fun BtnLabel(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector
     ) {
         if (showSign) {
             if (icon != null) androidx.compose.material3.Icon(icon, contentDescription = null, modifier = gap.size(18.dp))
-            else Text(symbol!!, modifier = gap)
+            else SignText(symbol!!, modifier = gap) // SignText draws the SIGN_* pictograms; plain Text showed them as a stray glyph
         }
         if (showWord) Text(text, maxLines = 1)
     }
