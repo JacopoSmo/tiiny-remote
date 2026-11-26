@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -90,6 +93,7 @@ internal fun DownloadAsk(ids: List<String>, why: String?, onClose: () -> Unit) {
  * The recommended set as a table: one row per task, the model, why, and ✓ (on the Tiiny), ⤓ (downloadable) or …
  * (downloading). Download all missing; and Update with the Tiiny's AI, which reviews the Store anew in the background.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RecsDialog(st: StudioViewModel, models: List<ModelInfo>, focus: List<String> = emptyList(), onClose: () -> Unit) {
     val shop = LocalModelShop.current
@@ -102,11 +106,13 @@ internal fun RecsDialog(st: StudioViewModel, models: List<ModelInfo>, focus: Lis
     ask?.let { DownloadAsk(it, null) { ask = null } }
     val missing = set.recs.map { it.id }.distinct().filter { shop != null && it !in shop.installed && it !in shop.downloading && shop.storeModel(it) != null }
     val reviewer = Recs.reviewer(models)
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("👍 Recommended models") },
-        text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+    // Built by hand rather than AlertDialog: its button area (24 dp + button + 24 dp) is too tall under a long list.
+    BasicAlertDialog(onDismissRequest = onClose) {
+      Surface(shape = AlertDialogDefaults.shape, color = AlertDialogDefaults.containerColor, tonalElevation = AlertDialogDefaults.TonalElevation) {
+       Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 6.dp)) {
+        Text("👍 Recommended models", style = MaterialTheme.typography.headlineSmall, color = AlertDialogDefaults.titleContentColor)
+        Spacer(Modifier.size(12.dp))
+            Column(Modifier.weight(1f, fill = false).heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
                 Text(
                     "As of ${set.asOf} · by ${set.by}. ✓ on your Tiiny · ⤓ tap to download · … downloading.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -166,7 +172,10 @@ internal fun RecsDialog(st: StudioViewModel, models: List<ModelInfo>, focus: Lis
                 result?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                 if (set.by != "public benchmarks") TextButton(onClick = { Recs.reset(ctx) }) { Text("Back to the built-in set") }
             }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
-    )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onClose) { Text("Close") }
+        }
+       }
+      }
+    }
 }
