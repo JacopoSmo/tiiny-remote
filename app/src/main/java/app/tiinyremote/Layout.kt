@@ -631,6 +631,22 @@ fun StopAsk(
     )
 }
 
+/** The red Stop with its question (StopAsk) in one: tap, then confirm. */
+@Composable
+fun StopAsking(
+    what: String,
+    detail: String,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+    text: String = "Stop",
+    stopText: String = "Stop",
+    extra: Pair<String, () -> Unit>? = null,
+) {
+    var ask by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    StopButton(onClick = { ask = true }, modifier = modifier, text = text)
+    if (ask) StopAsk(what, detail, onStop, onClose = { ask = false }, stopText = stopText, extra = extra)
+}
+
 /** A Material-style icon from SVG path data (24×24), for pictograms the core icon set doesn't have. */
 private fun pathIcon(name: String, path: String): androidx.compose.ui.graphics.vector.ImageVector =
     androidx.compose.ui.graphics.vector.ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)

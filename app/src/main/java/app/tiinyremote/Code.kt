@@ -247,11 +247,9 @@ fun CodeScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             )
             Spacer(Modifier.width(6.dp))
             if (busy != null) {
-                var ask by remember { mutableStateOf(false) }
-                StopButton(onClick = { ask = true })
-                if (ask) StopAsk(
+                StopAsking(
                     "the coding work", "Files already changed stay as they are; the step under way is left unfinished.",
-                    onStop = { cv.stopNow() }, onClose = { ask = false },
+                    onStop = { cv.stopNow() },
                 )
             } else {
                 Button(

@@ -2054,16 +2054,16 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Red: the first tap stops after this step, the second cancels at once.
+            // The red Stop asks: after this step, or now.
             if (testing) {
                 val stopping by st.speedStopping.collectAsState()
-                var ask by remember { mutableStateOf(false) }
-                StopButton(onClick = { ask = true }, modifier = Modifier.weight(1f), text = if (stopping) "Stopping after this step…" else "Stop the speed test")
-                if (ask) StopAsk(
+                StopAsking(
                     "the speed test",
                     "After this step: the current measurement ends first (it isn't saved). Now: breaks off at once. " +
                         "Finished pairs stay in 📊 Statistics; models loaded before are loaded back.",
-                    onStop = { st.stopSpeedTest(now = true) }, onClose = { ask = false },
+                    onStop = { st.stopSpeedTest(now = true) },
+                    modifier = Modifier.weight(1f),
+                    text = if (stopping) "Stopping after this step…" else "Stop the speed test",
                     stopText = "Stop now",
                     extra = if (stopping) null else ("After this step" to { st.stopSpeedTest(now = false) }),
                 )

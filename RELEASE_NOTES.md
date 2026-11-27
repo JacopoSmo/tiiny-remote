@@ -1,5 +1,18 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 4.7.0 (NAS agent 1.7.0, unchanged)
+Everything from the 4.6.1–4.6.10 test builds, plus another review (programmer, white-hat, attacker), fonts, pictograms and wording included, and a pass for leaner code.
+
+**One way to stop**
+- Everything that makes something (a chat answer, an image, music, a video, a 3D model, code, a speed test, the recommendation review, a download) has the same red **■ Stop**. It asks first and says what stays and what is lost. The recommendation review can now be stopped too.
+
+**Speed tests**
+- **Helper job time:** each run also times a real helper job (condensing a chat, thinking included), for the helper and the main model. Shown in the results and in 📊 Statistics ("Helper job, quickest first", and two new columns).
+- **👍 earned by measurement:** a model the tests find about as quick at the helper job as the recommended helpers (within 15%, and not heavier on the NPU) gets 👍 in the helper menus.
+- **Up to 9 main models** (still up to 3 helpers). 👍 marks the recommended ones; a chosen helper is greyed among the main models. "Only the loaded pair · clear the lists" resets both.
+- **Sturdier:** a run with an error is left out instead of the whole pair; on a lost connection the test waits up to 3 minutes for the Tiiny and goes on; an HTTP 500 is tried twice more; a summary that comes back far too short doesn't count as a quick job.
+- **Stop:** after this step, or now.
+
 ## What's new in 4.6.0 (NAS agent 1.7.0, unchanged)
 Everything from the 4.5.1–4.5.13 test builds, plus another review (programmer, white-hat, attacker), fonts, pictograms and wording included, and a pass for leaner code.
 

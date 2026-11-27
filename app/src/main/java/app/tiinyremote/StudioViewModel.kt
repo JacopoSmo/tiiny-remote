@@ -417,15 +417,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     /** How the last review ended (what changed, or why it failed). */
     val recResult: StateFlow<String?> = _recResult.asStateFlow()
 
-    /**
-     * The Store reviewed by the most capable chat model on the Tiiny (loaded for it, others put back afterwards), in
-     * the background: it goes on when you leave the page, and a notice says when it's done.
-     */
     /** Set by Stop in the recommendations table: the review ends where it is, nothing changes. */
     @Volatile
     private var recStop = false
     fun stopReview() { recStop = true }
 
+    /**
+     * The Store reviewed by the most capable chat model on the Tiiny (loaded for it, others put back afterwards), in
+     * the background: it goes on when you leave the page, and a notice says when it's done.
+     */
     fun reviewRecommendations(store: List<StoreModel>, models: List<ModelInfo>) {
         if (_recBusy.value != null) return
         val m = Recs.reviewer(models) ?: run { _recResult.value = "No chat model on the Tiiny to do the review."; return }
@@ -1798,16 +1798,21 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
         /** Seconds until a typical helper job is done: condensing an earlier chat, asked exactly as the app asks it. */
         fun job(model: String): Double {
-            var t0 = System.nanoTime()
-            try {
-                Tools.chatOnce(c, model, CONDENSE_SYSTEM, JOB_TEXT, 700, timeoutSec = 600)
-            } catch (e: MediaException) {
-                if (e.message?.startsWith("Lost the connection") == true) throw e
-                Thread.sleep(5000) // a 500 now and then under load: once more
-                t0 = System.nanoTime()
-                Tools.chatOnce(c, model, CONDENSE_SYSTEM, JOB_TEXT, 700, timeoutSec = 600)
+            // A real summary of this chat is a few hundred characters; a much shorter answer (seen: 1.6 s right
+            // after an NPU restart) isn't the job done and would count as a very quick helper.
+            fun once(): Double {
+                val t0 = System.nanoTime()
+                val out = Tools.chatOnce(c, model, CONDENSE_SYSTEM, JOB_TEXT, 700, timeoutSec = 600)
+                if (out.length < 150) throw MediaException("${model.substringAfterLast('/')}: a summary of ${out.length} characters")
+                return (System.nanoTime() - t0) / 1e9
             }
-            return (System.nanoTime() - t0) / 1e9
+            return try {
+                once()
+            } catch (e: MediaException) {
+                if (e.message?.startsWith("Lost the connection") == true || speedStop) throw e
+                Thread.sleep(5000) // a 500 now and then under load: once more
+                once()
+            }
         }
         fun rate(r: Pair<Int, Double>) = r.first / r.second
         val smallJobs = mutableListOf<Double>()

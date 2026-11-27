@@ -168,11 +168,9 @@ internal fun RecsDialog(st: StudioViewModel, models: List<ModelInfo>, focus: Lis
                         Spacer(Modifier.width(8.dp))
                         CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(8.dp))
-                        var ask by remember { mutableStateOf(false) }
-                        StopButton(onClick = { ask = true })
-                        if (ask) StopAsk(
+                        StopAsking(
                             "the review", "The recommendations stay as they are; models unloaded for it are loaded back.",
-                            onStop = { st.stopReview() }, onClose = { ask = false },
+                            onStop = { st.stopReview() },
                         )
                     }
                 }
