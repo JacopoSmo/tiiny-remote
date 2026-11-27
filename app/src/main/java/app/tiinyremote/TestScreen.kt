@@ -226,6 +226,13 @@ internal fun TestScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val pairs = testMains.sumOf { m -> testHelpers.count { it != m } }
         val batch = testHelpers.isNotEmpty() && testMains.isNotEmpty()
         val testing = speed?.startsWith("Testing") == true
+        val ctx = LocalContext.current
+        // On the NAS when it's set up (the phone can sleep meanwhile); 🌙 Tonight with the night shift on.
+        val nas = remember(cur) { NightShift.ready(ctx) }
+        val tonight = remember(cur) { NightShift.tonight(ctx, cur) }
+        fun mainList() = testMains.mapNotNull { id -> chatModels.firstOrNull { it.id == id } }
+        fun helperList() = testHelpers.mapNotNull { id -> chatModels.firstOrNull { it.id == id } }
+        fun pairList() = mainList().flatMap { m -> helperList().filter { it.id != m.id }.map { m to it } }
         Box {
             var pick by remember { mutableStateOf(false) }
             OutlinedButton(onClick = { pick = true }, modifier = Modifier.fillMaxWidth(), enabled = !testing) {
@@ -296,18 +303,16 @@ internal fun TestScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 )
             }
             else if (batch) OutlinedButton(
-                onClick = {
-                    st.tests.speedTestAll(
-                        testMains.mapNotNull { id -> chatModels.firstOrNull { it.id == id } },
-                        testHelpers.mapNotNull { id -> chatModels.firstOrNull { it.id == id } },
-                        cur.speedRuns,
-                    )
-                },
+                onClick = { if (nas) st.tests.speedOnNas(pairList(), cur.speedRuns, night = false) else st.tests.speedTestAll(mainList(), helperList(), cur.speedRuns) },
                 enabled = pairs > 0 && !testing,
                 modifier = Modifier.weight(1f),
             ) { Text("Speed tests: $pairs pair${if (pairs != 1) "s" else ""}, one after the other") }
             else OutlinedButton(
-                onClick = { if (big != null && small != null) st.tests.speedTest(big, small, cur.speedRuns) },
+                onClick = {
+                    if (big != null && small != null) {
+                        if (nas) st.tests.speedOnNas(listOf(big to small), cur.speedRuns, night = false) else st.tests.speedTest(big, small, cur.speedRuns)
+                    }
+                },
                 enabled = big != null && small != null && !testing,
                 modifier = Modifier.weight(1f),
             ) { Text("Speed test: one at a time or both at once?") }
@@ -316,16 +321,24 @@ internal fun TestScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
         }
         if (speedInfo) ModelChoiceInfo { speedInfo = false }
+        // 🌙 Tonight: the same test in the night shift's queue on the NAS.
+        if (tonight && !testing) TextButton(
+            onClick = {
+                val l = if (batch) pairList() else listOfNotNull(if (big != null && small != null) big to small else null)
+                st.tests.speedOnNas(l, cur.speedRuns, night = true)
+            },
+            enabled = if (batch) pairs > 0 else big != null && small != null,
+        ) { BtnLabel("Tonight", symbol = "🌙") }
         Text(
             when {
                 batch && pairs == 0 -> "Choose at least one helper and one other main model."
-                batch -> "Tests $pairs pair${if (pairs != 1) "s" else ""} one after the other, ${if (cur.speedRuns == 1) "once" else "${cur.speedRuns} times"} each: " +
+                batch -> (if (nas) "On the NAS: " else "") + "Tests $pairs pair${if (pairs != 1) "s" else ""} one after the other, ${if (cur.speedRuns == 1) "once" else "${cur.speedRuns} times"} each: " +
                     "only that pair is loaded for its test, your models are loaded back at the end. " +
                     "About ${Tools.fmtDuration(pairs * (cur.speedRuns * 3L + 2) * 60)}; it keeps going in the background. Each pair goes to 📊 Statistics."
                 helper.isBlank() -> "Choose a helper first."
                 small == null -> "Load the helper and your chat model to run the speed test."
                 big == null -> "Load your chat model too to run the speed test."
-                else -> "Tests ${big.name} and ${small.name}, alone and at the same time, " +
+                else -> (if (nas) "On the NAS: " else "") + "Tests ${big.name} and ${small.name}, alone and at the same time, " +
                     (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary from run to run: 3–5 runs give a steadier average."
                     else "${cur.speedRuns} times with short pauses between, and averages the results (about ${cur.speedRuns * 2} minutes).")
             },
@@ -336,6 +349,8 @@ internal fun TestScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         QualitySection(s, st)
+        HorizontalDivider(Modifier.padding(vertical = 6.dp))
+        FaultSection()
     }
 }
 
@@ -429,6 +444,9 @@ internal fun QualitySection(s: UiState, st: StudioViewModel) {
     var info by remember { mutableStateOf(false) }
     val testing = quality?.startsWith("Testing") == true
     val judge = Recs.reviewer(s.models)
+    val ctx = LocalContext.current
+    val nas = remember(s.settings) { NightShift.ready(ctx) }
+    val tonight = remember(s.settings) { NightShift.tonight(ctx, s.settings) }
     val recMains = if (s.settings.showRecs) Recs.forTasks(Recs.tasksFor("chat")).map { it.id }.toSet() else emptySet()
     Text("Quality test", style = MaterialTheme.typography.titleMedium)
     Box {
@@ -460,7 +478,10 @@ internal fun QualitySection(s: UiState, st: StudioViewModel) {
             modifier = Modifier.weight(1f),
             text = "Stop the quality test",
         ) else OutlinedButton(
-            onClick = { if (judge != null) t.qualityTest(chosen.mapNotNull { id -> chatModels.firstOrNull { it.id == id } }, judge) },
+            onClick = {
+                val models = chosen.mapNotNull { id -> chatModels.firstOrNull { it.id == id } }
+                if (judge != null) { if (nas) t.qualityOnNas(models, judge, night = false) else t.qualityTest(models, judge) }
+            },
             enabled = chosen.isNotEmpty() && judge != null,
             modifier = Modifier.weight(1f),
         ) { Text("Quality test: ${chosen.size} model${if (chosen.size != 1) "s" else ""}") }
@@ -473,13 +494,17 @@ internal fun QualitySection(s: UiState, st: StudioViewModel) {
         when {
             judge == null -> "No chat model on the Tiiny to grade the answers."
             chosen.isEmpty() -> "Choose the models to compare. Each answers the same ${QualityMath.TASKS.size} tasks; then ${judge.name} grades them."
-            else -> "Each model answers the same ${QualityMath.TASKS.size} tasks, alone on the Tiiny; then ${judge.name} grades each task's " +
+            else -> (if (nas) "On the NAS: " else "") + "Each model answers the same ${QualityMath.TASKS.size} tasks, alone on the Tiiny; then ${judge.name} grades each task's " +
                 "answers side by side, without knowing who wrote which. About ${Tools.fmtDuration((chosen.size * QualityMath.TASKS.size * 60L) + QualityMath.TASKS.size * 120L + chosen.size * 60L)}; " +
                 "it keeps going in the background, and your models are loaded back at the end."
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    if (tonight && !testing && judge != null) TextButton(
+        onClick = { t.qualityOnNas(chosen.mapNotNull { id -> chatModels.firstOrNull { it.id == id } }, judge, night = true) },
+        enabled = chosen.isNotEmpty(),
+    ) { BtnLabel("Tonight", symbol = "🌙") }
     quality?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     if (results) QualityResultsDialog(st) { results = false }
     if (info) QualityTasksInfo { info = false }
@@ -569,8 +594,10 @@ private fun QualityTasksInfo(onClose: () -> Unit) {
 
 /** Settings → Background efficiency tools: the night shift (the NAS agent works the night queue) and loading ahead. */
 @Composable
-internal fun BackgroundTools(s: UiState, vm: MainViewModel) {
+internal fun BackgroundTools(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
+    val ctx = LocalContext.current
+    val nas = remember(cur) { NightShift.ready(ctx) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Night shift", style = MaterialTheme.typography.bodyLarge)
@@ -583,10 +610,18 @@ internal fun BackgroundTools(s: UiState, vm: MainViewModel) {
         }
         Switch(checked = cur.nightShift, onCheckedChange = { vm.setDisplay(cur.copy(nightShift = it)) })
     }
-    if (cur.nightShift) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        val hours = (0..23).map { it.toString() to "%02d:00".format(it) }
-        Box(Modifier.weight(1f)) { SettingDropdown("From", hours, cur.nightFrom.toString()) { vm.setDisplay(cur.copy(nightFrom = it.toInt())) } }
-        Box(Modifier.weight(1f)) { SettingDropdown("To", hours, cur.nightTo.toString()) { vm.setDisplay(cur.copy(nightTo = it.toInt())) } }
+    if (cur.nightShift) {
+        if (!nas) Text(
+            "It needs the NAS agent (1.8 or newer): Automate → Connectors → NAS agent.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val hours = (0..23).map { it.toString() to "%02d:00".format(it) }
+            Box(Modifier.weight(1f)) { SettingDropdown("From", hours, cur.nightFrom.toString()) { vm.setDisplay(cur.copy(nightFrom = it.toInt())) } }
+            Box(Modifier.weight(1f)) { SettingDropdown("To", hours, cur.nightTo.toString()) { vm.setDisplay(cur.copy(nightTo = it.toInt())) } }
+        }
+        if (nas) NightQueue(st)
     }
     SettingDropdown(
         "Load ahead",
@@ -599,4 +634,102 @@ internal fun BackgroundTools(s: UiState, vm: MainViewModel) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/**
+ * Load ahead's Suggest line (Chat and Start): a model you usually use in the coming hour, not loaded yet, offered
+ * with ▶ Load; ✕ hides it for this hour.
+ */
+@Composable
+internal fun LoadAheadLine(s: UiState, vm: MainViewModel) {
+    if (s.settings.loadAhead != "suggest" || s.device != DeviceState.ONLINE) return
+    val ctx = LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); tick++ } }
+    val due = remember(tick, s.models) {
+        LoadAhead.dueNow(ctx).mapNotNull { slot -> s.models.firstOrNull { it.id == slot.model && it.status != "running" && it.status != "loading" && it.id !in s.working } }
+    }
+    val m = due.firstOrNull() ?: return
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SignText(
+            "🕘 You usually use ${m.name} around now",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TextButton(onClick = { vm.load(m) }) { BtnLabel("Load", symbol = "▶") }
+        IconButton(onClick = { LoadAhead.dismiss(ctx, m.id); tick++ }) {
+            Icon(Icons.Filled.Close, contentDescription = "Not now", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** The NPU faults seen, per pair of models (Test page), and the warnings silenced. */
+@Composable
+internal fun FaultSection() {
+    val ctx = LocalContext.current
+    var tick by remember { mutableStateOf(0) }
+    val faults = remember(tick) { FaultLog.all(ctx) }
+    val silenced = remember(tick) { FaultLog.silenced(ctx) }
+    val pairs = FaultMath.pairs(faults).entries.sortedByDescending { it.value.first }
+    Text("NPU faults", style = MaterialTheme.typography.titleMedium)
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.ENGLISH)
+    if (faults.isEmpty()) Text(
+        "None seen. When the Tiiny reports one (the NPU then restarts), the models on the NPU at that moment are noted here.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    for ((pair, v) in pairs) {
+        val (n, last) = v
+        Text(
+            "$pair: $n fault${if (n != 1) "s" else ""}, last ${java.time.Instant.ofEpochMilli(last).atZone(java.time.ZoneId.systemDefault()).format(fmt)}" +
+                if (pair in silenced) " · not warned" else "",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+    val alone = faults.count { it.models.size < 2 }
+    if (alone > 0) Text("$alone fault${if (alone != 1) "s" else ""} with one or no big model on the NPU.", style = MaterialTheme.typography.bodySmall)
+    if (faults.isNotEmpty()) Text(
+        "From two faults on, loading such a pair asks first: unload one first (they then work one after the other), load anyway, or don't warn again.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (silenced.isNotEmpty() || faults.isNotEmpty()) Row {
+        if (silenced.isNotEmpty()) TextButton(onClick = { FaultLog.unsilenceAll(ctx); tick++ }) { Text("Warn again for every pair") }
+        if (faults.isNotEmpty()) TextButton(onClick = { FaultLog.clear(ctx); tick++ }) { Text("Forget the faults") }
+    }
+}
+
+/** The NAS agent's queue: what waits for the night (or runs), each with ✕ to take it out. */
+@Composable
+private fun NightQueue(st: StudioViewModel) {
+    val queue by st.nasQueue.collectAsState()
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { st.syncNas() }
+    Text(
+        if (queue.isEmpty()) "Queue on the NAS: empty." else "Queue on the NAS: ${queue.size} job${if (queue.size != 1) "s" else ""}",
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    for (j in queue) Row(verticalAlignment = Alignment.CenterVertically) {
+        SignText(
+            (if (j.whenToRun == "night") "🌙 " else "") + j.title +
+                if (j.status == "running") " · running${j.progress.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""}" else "",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        IconButton(onClick = {
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    NasAgent.deleteJob(NightShift.connectors(ctx), j.id)
+                } catch (e: Exception) {
+                    ApiLog.add("Couldn't take \"${j.title}\" out of the NAS queue: ${e.message}", "Automate", isProblem = true)
+                }
+                st.syncNas()
+            }
+        }) { Icon(Icons.Filled.Close, contentDescription = "Take it out", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
 }

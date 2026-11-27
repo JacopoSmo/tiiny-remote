@@ -71,4 +71,10 @@ class QualityMathTest {
         assertEquals(ids.size, ids.toSet().size)
         assertTrue(QualityMath.TASKS.all { it.rubric.length > 40 && it.prompt.length > 40 })
     }
+
+    @Test fun gradePromptShape() {
+        // The same example as the NAS agent's GradePrompt test: both must build exactly this.
+        val got = QualityMath.gradePrompt(QualityTask("t", "T", "P", "R"), listOf("A" to "one", "B" to "  "), "INTRO\n\n", "OUTRO")
+        assertEquals("INTRO\n\nTASK:\nP\n\nWHAT A GOOD ANSWER DOES:\nR\n\n=== ANSWER A ===\none\n\n=== ANSWER B ===\n(no answer)\n\nOUTRO", got)
+    }
 }

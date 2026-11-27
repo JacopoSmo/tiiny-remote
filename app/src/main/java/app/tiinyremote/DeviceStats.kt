@@ -42,6 +42,14 @@ object Stats {
     @Volatile
     var onNpu: String = ""
 
+    /** The models on the NPU big enough to count for faults (FaultMath.MIN_SHARE), by name. */
+    @Volatile
+    var onNpuBig: List<String> = emptyList()
+
+    /** Told of each new fault: (when, the models on the NPU then). */
+    @Volatile
+    var faultSeen: ((Long, List<String>) -> Unit)? = null
+
     /** A fault seen happening, kept until the NPU restarts cleanly, so the status bar keeps blinking until it's looked at. */
     @Volatile
     private var newFault: String? = null
@@ -148,7 +156,11 @@ object Stats {
                     val ageMin = npu?.num("started_at")?.let { (System.currentTimeMillis() / 1000.0 - it) / 60 }
                     val code = reason?.optString("code")?.takeIf { it.isNotBlank() }?.let { " [$it]" } ?: ""
                     val old = ageMin != null && ageMin > 10
-                    if (!old) newFault = issue
+                    if (!old) {
+                        newFault = issue
+                        val at = npu?.num("started_at")?.let { (it * 1000).toLong() } ?: System.currentTimeMillis()
+                        faultSeen?.invoke(at, onNpuBig)
+                    }
                     ApiLog.add(
                         if (old) "Earlier NPU fault, still in the Tiiny's status (${Math.round(ageMin!!)} min ago, nothing new): $issue$code"
                         else "NPU fault reported by the Tiiny: $issue$code. On the NPU at the time: ${onNpu.ifBlank { "no model" }}.",

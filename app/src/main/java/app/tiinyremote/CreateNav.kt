@@ -80,7 +80,7 @@ internal fun choiceLabel(icon: String, word: String): String {
 /** Which Create choice made a result: its place in the Gallery, and where "Create more" goes. */
 internal fun toolOf(e: ResultEntry): String = when (e.kind) {
     "image" -> if (e.title.startsWith("Edited")) "edit" else "image"
-    "description" -> "describe"
+    "description", "answer" -> "describe"
     "ocr" -> "ocr"
     "speech" -> "speech"
     "loop" -> "loop"

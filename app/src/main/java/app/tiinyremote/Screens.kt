@@ -471,6 +471,7 @@ fun AppRoot(vm: MainViewModel) {
                         .fillMaxSize()
                 ) {
                     if (s.settings.tiinyConfigured) StatsStrip(s, vm, st)
+                    if (tab == 2 || tab == 9) LoadAheadLine(s, vm)
                     Box(Modifier.weight(1f).fillMaxWidth()) { when (tab) {
                         0 -> ModelsScreen(s, vm, st, onOpenSettings = { goTab(4) })
                         1 -> CreateScreen(s, vm, st, toolId, { openToolNav(it) }, openGallery = { galleryStart = it; goTab(6) })
@@ -517,6 +518,32 @@ fun AppRoot(vm: MainViewModel) {
             text = { OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true) },
             confirmButton = { TextButton(onClick = { st.renameChat(c.id, name); renaming = null }) { Text("Save") } },
             dismissButton = { TextButton(onClick = { renaming = null }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) } },
+        )
+    }
+
+    s.faultWarn?.let { w ->
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.ENGLISH)
+        val last = java.time.Instant.ofEpochMilli(w.last).atZone(java.time.ZoneId.systemDefault()).format(fmt)
+        val isHelper = s.settings.helperModel == w.other.id
+        ScaledAlertDialog(
+            onDismissRequest = { vm.answerFaultWarn("cancel") },
+            title = { Text("This pair upset the NPU before") },
+            text = {
+                Text(
+                    "With ${w.model.name} and ${w.other.name} on the NPU together, the Tiiny reported an NPU fault " +
+                        "${w.count} times (the last on $last); each time the NPU restarted. " +
+                        "Unloading ${w.other.name} first makes them work one after the other instead." +
+                        if (isHelper) " It's your helper: it gets switched off in the chat's options." else "",
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { vm.answerFaultWarn("first") }) { Text("Unload ${w.other.name} first") }
+                    TextButton(onClick = { vm.answerFaultWarn("anyway") }) { Text("Load anyway") }
+                    TextButton(onClick = { vm.answerFaultWarn("silence") }) { Text("Don't warn again for this pair") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { vm.answerFaultWarn("cancel") }) { BtnLabel("Cancel", androidx.compose.material.icons.Icons.Filled.Close) } },
         )
     }
 
@@ -1848,7 +1875,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
         Text("Background efficiency tools", style = MaterialTheme.typography.titleMedium)
-        BackgroundTools(s, vm)
+        BackgroundTools(s, vm, st)
 
         Text(
             "The log (with Share) is in the Activity tab.",

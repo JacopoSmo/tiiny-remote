@@ -17,6 +17,9 @@ enum class DeviceState { NOT_CONFIGURED, CHECKING, ONLINE, LOCKED, UNAUTHORIZED,
 /** A load that needs room: [victims] are the models to unload (chosen by the app; empty: the Tiiny's own suggestion). */
 data class PendingSwap(val targetId: String, val targetName: String, val plan: Plan, val victims: List<ModelInfo> = emptyList())
 
+/** [model] would join [other], with which the NPU faulted [count] times (the last at [last]). */
+data class FaultWarn(val model: ModelInfo, val other: ModelInfo, val count: Int, val last: Long)
+
 data class UiState(
     val settings: AppSettings,
     val device: DeviceState = DeviceState.CHECKING,
@@ -26,6 +29,8 @@ data class UiState(
     /** Models with a load or unload request in flight. */
     val working: Set<String> = emptySet(),
     val swap: PendingSwap? = null,
+    /** Loading this model beside one it faulted the NPU with before: asked first (FaultLog). */
+    val faultWarn: FaultWarn? = null,
     /** Models the Tiiny lists but refuses to load ("not found"), remembered across app starts. */
     val unavailable: Set<String> = emptySet(),
     val unlocking: Boolean = false,
@@ -222,6 +227,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             m.name + (m.npuUsage?.let { " ${Math.round(it)}%" } ?: "") + if (m.status == "loading") " (loading)" else ""
         }
         Stats.onNpu = text
+        Stats.onNpuBig = on.filter { it.status == "running" && (it.npuUsage ?: 0.0) >= FaultMath.MIN_SHARE }.map { it.name }
         if (text == lastOccupants) return
         lastOccupants = text
         val total = on.sumOf { it.npuUsage ?: 0.0 }
@@ -261,7 +267,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------- models ----------
 
-    fun load(model: ModelInfo) {
+    fun load(model: ModelInfo, force: Boolean = false) {
+        if (!force) {
+            // This model beside one it has faulted the NPU with at least twice: asked first.
+            val app = getApplication<Application>()
+            val loaded = _state.value.models.filter { it.status == "running" && (it.npuUsage ?: 0.0) >= FaultMath.MIN_SHARE }.map { it.name }
+            FaultMath.warn(FaultLog.all(app), model.name, loaded, FaultLog.silenced(app))?.let { (other, n, last) ->
+                _state.update { it.copy(faultWarn = FaultWarn(model, _state.value.models.first { m -> m.name == other }, n, last)) }
+                return
+            }
+        }
         viewModelScope.launch {
             setWorking(model.id, true)
             try {
@@ -271,6 +286,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     return@launch
                 }
                 if (NpuGate.busy) toast("${model.name} loads once the answer being written is finished")
+                LoadAhead.note(getApplication(), model.id, model.name)
                 withContext(Dispatchers.IO) { api().launch(model.id) }
                 toast("Loading ${model.name}…")
             } catch (e: TiinyException) {
@@ -298,6 +314,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val loaded = _state.value.models.filter { it.status == "running" && it.id != targetId && it.npuUsage != null }
         val ids = Tools.pickRoom(loaded.associate { it.id to it.npuUsage!! }, need)
         return ids.mapNotNull { id -> loaded.firstOrNull { it.id == id } }
+    }
+
+    /** The fault warning's answers: load anyway, unload the other model first, or never ask for this pair again. */
+    fun answerFaultWarn(choice: String) {
+        val w = _state.value.faultWarn ?: return
+        _state.update { it.copy(faultWarn = null) }
+        when (choice) {
+            "anyway" -> load(w.model, force = true)
+            "silence" -> {
+                FaultLog.silence(getApplication(), FaultMath.key(w.model.name, w.other.name))
+                load(w.model, force = true)
+            }
+            "first" -> viewModelScope.launch {
+                // The other one out first (the helper switched off, if it was the helper), then this one in.
+                if (settings.helperModel == w.other.id) setDisplay(settings.copy(helperOn = false))
+                setWorking(w.other.id, true)
+                try {
+                    withContext(Dispatchers.IO) { api().stop(w.other.id) }
+                } catch (e: Exception) {
+                    toast(e.message ?: "Unloading failed")
+                } finally {
+                    setWorking(w.other.id, false)
+                }
+                load(w.model, force = true)
+            }
+        }
     }
 
     /** Unloads the models chosen (or the one the Tiiny suggested), then tries the load again (re-asks if still short). */
@@ -816,6 +858,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteModel(m: ModelInfo) = modelAction("Delete", m.id, "Deleted ${m.name} from the Tiiny") { this.delete(m.id) }
 
     init {
+        // An NPU fault seen in the status: remembered with the models on the NPU then (Test → NPU faults).
+        val app = getApplication<Application>()
+        Stats.faultSeen = { at, models -> FaultLog.record(app, at, models) }
+    }
+
+    init {
+        // Load ahead (Automatic) checks once a minute; the plan goes to the NAS agent now and then (it learns daily).
+        viewModelScope.launch {
+            var pushed = 0L
+            while (true) {
+                delay(60_000)
+                autoLoadAhead()
+                if (settings.loadAhead == "auto" && System.currentTimeMillis() - pushed > 6 * 3_600_000L) {
+                    pushed = System.currentTimeMillis()
+                    pushToNas()
+                }
+            }
+        }
+    }
+
+    init {
         // "Stay connected": while the app is away, the Tiiny is still checked every minute (status, auto-unlock).
         viewModelScope.launch {
             while (true) {
@@ -865,8 +928,47 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Display settings apply at once, without re-checking the Tiiny. */
     fun setDisplay(s: AppSettings) {
+        val old = settings
         store.save(s)
         _state.update { it.copy(settings = s) }
+        // The night shift's hours and load ahead are the NAS agent's to act on: it gets them at once.
+        if (s.nightShift != old.nightShift || s.nightFrom != old.nightFrom || s.nightTo != old.nightTo || s.loadAhead != old.loadAhead) pushToNas()
+    }
+
+    /** Sends the NAS agent the current setup (when it's set up); a failure is only logged. */
+    fun pushToNas() {
+        if (!AutoStore(app).connectors().nasReady) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                NasAgent.push(app)
+            } catch (e: Exception) {
+                ApiLog.add("Couldn't update the NAS agent: ${e.message}", "Automate")
+            }
+        }
+    }
+
+    /**
+     * Load ahead on the phone (Automatic, when no NAS agent does it): a model usually used in the coming hour is
+     * loaded if it fits beside what's loaded; nothing is unloaded for it. Tried once per hour and model.
+     */
+    private suspend fun autoLoadAhead() {
+        val s = _state.value
+        if (s.settings.loadAhead != "auto" || s.device != DeviceState.ONLINE) return
+        if (AutoStore(app).connectors().nasReady) return
+        if (NpuGate.busy || NpuGate.testing || s.working.isNotEmpty()) return
+        for (slot in LoadAhead.dueNow(app)) {
+            LoadAhead.dismiss(app, slot.model)
+            val m = s.models.firstOrNull { it.id == slot.model } ?: continue
+            if (m.status == "running" || m.status == "loading") continue
+            try {
+                val plan = withContext(Dispatchers.IO) { api().plan(m.id) }
+                if (plan.unloadRequired) continue
+                withContext(Dispatchers.IO) { api().launch(m.id) }
+                ApiLog.add("Load ahead: loading ${m.name}, usually used now", "Models")
+            } catch (e: Exception) {
+                ApiLog.add("Load ahead: ${m.name} not loaded (${e.message})", "Models")
+            }
+        }
     }
 
     /**

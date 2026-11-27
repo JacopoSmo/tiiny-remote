@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The automated checks first: an agent that fails them is never published.
+      - name: Automated checks
+        run: python3 -m unittest discover -s nas-agent -p "test_*.py" -v
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3

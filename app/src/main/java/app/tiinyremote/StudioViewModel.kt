@@ -239,6 +239,12 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     private val _results = MutableStateFlow(store.all())
     val results: StateFlow<List<ResultEntry>> = _results.asStateFlow()
 
+    /** A result made elsewhere (by the NAS agent's night shift): kept and shown in the Gallery. */
+    fun addResult(e: ResultEntry) {
+        store.add(e)
+        _results.value = store.all()
+    }
+
     // ---------- chats: several, each saved on the phone, able to run side by side ----------
 
     private val chatsDir = java.io.File(app.filesDir, "chats").apply { mkdirs() }
@@ -475,6 +481,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 // The result is stored right where it's made, so it's kept even if the screen goes away meanwhile.
                 val entry = withContext(Dispatchers.IO) { block(client(), store, progress, rj).also { store.add(it) } }
+                LoadAhead.note(getApplication(), entry.model, entry.model.substringAfterLast('/'))
                 _results.value = store.all()
                 _job.value = JobUi(tool, false, "Done", 100, null, entry)
                 Notifier.done(getApplication(), "${toolTitle(tool)} is ready", "It's in the Gallery in Tiiny Remote.")
@@ -1472,7 +1479,32 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     // ---------- speed and quality tests: in Tests (TestRunner.kt) ----------
 
     /** The speed and quality tests (the Test page), sharing this model's guard on the Tiiny's models. */
-    val tests = Tests(app, viewModelScope, prefs, { client() }, deviceBusy, { note(it) }, { clearChatSpeeds() })
+    val tests = Tests(
+        app, viewModelScope, prefs, { client() }, deviceBusy, { note(it) }, { clearChatSpeeds() },
+        importJob = { j -> NightShift.import(app, this, j) },
+    )
+
+    private val _nasQueue = MutableStateFlow<List<NasAgent.NasJob>>(emptyList())
+    /** The jobs waiting or running on the NAS agent (night shift and tests), as last seen. */
+    val nasQueue: StateFlow<List<NasAgent.NasJob>> = _nasQueue.asStateFlow()
+
+    /** Brings in what the NAS agent finished (the night's work, tests that ran on while the app was away). */
+    fun syncNas() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val (_, active) = NightShift.sync(getApplication(), this@StudioViewModel, skip = setOfNotNull(tests.followedJob))
+            _nasQueue.value = active
+        }
+    }
+
+    init {
+        // Now and then while the app is open (and when it opens): the NAS agent's finished jobs come in.
+        viewModelScope.launch {
+            while (true) {
+                if (Background.visible) syncNas()
+                delay(120_000)
+            }
+        }
+    }
 
 
     /**
@@ -1794,6 +1826,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             c.streamChat(body(), onText, { chatStop.get() })
                         }
                         recordChatSpeed(model, done, body().toString().length)
+                        LoadAhead.note(getApplication(), model, model.substringAfterLast('/'))
                         if (chatStop.get() || done.calls.isEmpty()) {
                             if (done.calls.isEmpty() && done.finish == "length" && (_all.value[id]?.lastOrNull()?.text ?: "").isBlank()) {
                                 throw MediaException("The model reasoned until it ran out of room and gave no answer. Try again, or ask for less.")

@@ -139,18 +139,24 @@ object QualityMath {
     fun order(models: List<String>, task: String, seed: Long): List<String> =
         models.shuffled(java.util.Random(seed xor task.hashCode().toLong()))
 
-    /** The grader's prompt for one task: the rubric, then each answer under its label. */
-    fun gradePrompt(task: QualityTask, answers: List<Pair<String, String>>): String = buildString {
-        append("You are grading answers to the same task, without knowing who wrote them. Be strict and fair; judge only ")
-        append("what is written. Score each answer from 1 (useless or wrong) to 10 (excellent, fully correct).\n\n")
+    const val GRADE_INTRO = "You are grading answers to the same task, without knowing who wrote them. Be strict and fair; judge only " +
+        "what is written. Score each answer from 1 (useless or wrong) to 10 (excellent, fully correct).\n\n"
+    const val GRADE_OUTRO = "Reply with JSON only, one entry per answer, like " +
+        "{\"A\": {\"score\": 7, \"why\": \"one short reason\"}, \"B\": {\"score\": 3, \"why\": \"...\"}}"
+
+    /**
+     * The grader's prompt for one task: the rubric, then each answer under its label. The NAS agent builds the same
+     * from [GRADE_INTRO] and [GRADE_OUTRO] (sent with the test): both are checked against one example.
+     */
+    fun gradePrompt(task: QualityTask, answers: List<Pair<String, String>>, intro: String = GRADE_INTRO, outro: String = GRADE_OUTRO): String = buildString {
+        append(intro)
         append("TASK:\n").append(task.prompt).append("\n\n")
         append("WHAT A GOOD ANSWER DOES:\n").append(task.rubric).append("\n\n")
         for ((label, text) in answers) {
             append("=== ANSWER ").append(label).append(" ===\n")
             append(text.ifBlank { "(no answer)" }.take(6000)).append("\n\n")
         }
-        append("Reply with JSON only, one entry per answer, like ")
-        append("{\"A\": {\"score\": 7, \"why\": \"one short reason\"}, \"B\": {\"score\": 3, \"why\": \"...\"}}")
+        append(outro)
     }
 
     /**

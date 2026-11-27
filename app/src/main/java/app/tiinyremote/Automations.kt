@@ -765,16 +765,16 @@ object NasAgent {
         return tls
     }
 
-    private fun call(c: Connectors, method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15): Pair<Int, String> =
+    private fun call(c: Connectors, method: String, path: String, body: JSONObject? = null, timeoutSec: Int = 15, log: Boolean = true): Pair<Int, String> =
         try {
-            call1(c, method, path, body, timeoutSec)
+            call1(c, method, path, body, timeoutSec, log)
         } catch (e: TlsRetry) {
-            call1(c, method, path, body, timeoutSec)
+            call1(c, method, path, body, timeoutSec, log)
         }
 
     private class TlsRetry : Exception()
 
-    private fun call1(c: Connectors, method: String, path: String, body: JSONObject?, timeoutSec: Int): Pair<Int, String> {
+    private fun call1(c: Connectors, method: String, path: String, body: JSONObject?, timeoutSec: Int, log: Boolean = true): Pair<Int, String> {
         val base = c.nasUrl.trim().trimEnd('/')
         val conn = open(c, method, path, timeoutSec)
         try {
@@ -785,7 +785,7 @@ object NasAgent {
             }
             val code = conn.responseCode
             val text = (if (code >= 400) conn.errorStream else conn.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-            ApiLog.add("NAS agent: $method $path -> HTTP $code", "Automate", isProblem = code >= 400)
+            if (log || code >= 400) ApiLog.add("NAS agent: $method $path -> HTTP $code", "Automate", isProblem = code >= 400)
             if (code == 401) throw MediaException(REFUSED)
             if (code == 426) throw MediaException("The NAS agent only takes the encrypted link, and this connection wasn't encrypted. Tap Test again; if it stays, tap \"Forget certificate\" in Connectors → NAS agent.")
             if (code >= 400) throw MediaException("The NAS agent answered HTTP $code.")
@@ -845,6 +845,7 @@ object NasAgent {
     // ---- Backups (agent 1.7+), each already encrypted on the phone (Backup.kt).
 
     private const val OLD_AGENT = "Backups need NAS agent 1.7 or newer: update it (Automate → Connectors → Set up NAS, step 5)."
+    private const val OLD_JOBS = "Tests and the night shift on the NAS need NAS agent 1.8 or newer: update it (Automate → Connectors → Set up NAS, step 5)."
 
     fun backups(c: Connectors): List<Backup.Entry> = try {
         Backup.parseList(call(c, "GET", "/backups").second)
@@ -938,7 +939,76 @@ object NasAgent {
             // The phone's time zone: "every day at 07:00" means 07:00 where you are, wherever the NAS's clock is set.
             .put("time_zone", java.time.ZoneId.systemDefault().id)
             .put("automations", JSONArray(store.automations().filter { it.where == "nas" }.map { it.json() }))
+            // The night shift's hours, and the models to load ahead (Settings → Background efficiency tools).
+            .put("night", JSONObject().put("on", s.nightShift).put("from", s.nightFrom).put("to", s.nightTo))
+            .put("preload", JSONObject().put("on", s.loadAhead == "auto").put("plan", LoadAhead.plan(ctx)))
         call(c, "PUT", "/config", cfg, 20)
+    }
+
+    // ---------- jobs: tests and the night shift (agent 1.8) ----------
+
+    /** A job on the NAS as it reports it (without what it was sent). */
+    data class NasJob(
+        val id: String, val kind: String, val whenToRun: String, val title: String, val status: String,
+        val created: Long, val started: Long, val finished: Long, val progress: String, val summary: String,
+        val files: List<String>, val fault: Boolean,
+    ) {
+        val active get() = status == "queued" || status == "running"
+
+        companion object {
+            fun from(o: JSONObject) = NasJob(
+                o.optString("id"), o.optString("kind"), o.optString("when"), o.optString("title"), o.optString("status"),
+                o.optLong("created"), o.optLong("started"), o.optLong("finished"), o.optString("progress"), o.optString("summary"),
+                o.optJSONArray("files")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                o.optBoolean("fault"),
+            )
+        }
+    }
+
+    /** Sends a job; [whenToRun] "now" or "night". An agent older than 1.8 has no jobs: said so. */
+    fun addJob(c: Connectors, kind: String, whenToRun: String, title: String, spec: JSONObject): NasJob = try {
+        NasJob.from(JSONObject(call(c, "POST", "/jobs", JSONObject().put("kind", kind).put("when", whenToRun).put("title", title).put("spec", spec), 60).second))
+    } catch (e: MediaException) {
+        throw if (e.message?.contains("HTTP 404") == true) MediaException(OLD_JOBS) else e
+    }
+
+    fun jobs(c: Connectors, log: Boolean = true): List<NasJob> {
+        val a = JSONObject(call(c, "GET", "/jobs", log = log).second).optJSONArray("jobs") ?: JSONArray()
+        return (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> NasJob.from(o) } }
+    }
+
+    fun jobResult(c: Connectors, id: String): JSONObject = JSONObject(call(c, "GET", "/jobs/$id/result", timeoutSec = 60).second)
+
+    fun stopJob(c: Connectors, id: String, now: Boolean) {
+        call(c, "POST", "/jobs/$id/stop", JSONObject().put("now", now))
+    }
+
+    fun deleteJob(c: Connectors, id: String) {
+        call(c, "DELETE", "/jobs/$id")
+    }
+
+    /** Fetches a made file of a finished job into [to]. */
+    fun jobFile(c: Connectors, id: String, name: String, to: java.io.File) {
+        val conn = open(c, "GET", "/jobs/$id/files/" + java.net.URLEncoder.encode(name, "UTF-8"), 300)
+        try {
+            val code = conn.responseCode
+            if (code >= 400) throw MediaException("The NAS didn't hand out $name (HTTP $code).")
+            conn.inputStream.use { inp -> to.outputStream().use { inp.copyTo(it) } }
+        } catch (e: java.io.IOException) {
+            throw MediaException("$name couldn't be fetched from the NAS: ${e.message ?: e.javaClass.simpleName}")
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    /** Results deleted in the app go on the NAS too (agent 1.8; older ones keep them, harmlessly). */
+    fun deleteRuns(c: Connectors, ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        try {
+            call(c, "DELETE", "/runs?id=" + java.net.URLEncoder.encode(ids.joinToString(","), "UTF-8"))
+        } catch (e: MediaException) {
+            if (e.message?.contains("HTTP 404") != true) throw e
+        }
     }
 
     fun runNow(c: Connectors, id: String) {

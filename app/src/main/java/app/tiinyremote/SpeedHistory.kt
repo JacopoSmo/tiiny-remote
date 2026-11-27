@@ -106,6 +106,17 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                     )
                     HorizontalDivider()
                 }
+                // What load ahead has learned (Settings → Background efficiency tools).
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val learned = remember { LoadAheadMath.describe(LoadAhead.slots(ctx)) }
+                Text("Load ahead has learned", style = MaterialTheme.typography.titleMedium)
+                if (learned.isEmpty()) Text(
+                    "Nothing yet: a model counts for a weekday and hour once you've used it then on two different days in the last four weeks.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                for (line in learned) Text(line, style = MaterialTheme.typography.bodyMedium)
+                HorizontalDivider()
                 if (all.isEmpty()) {
                     Text("No speed tests yet. Run one in Settings → Fast helper model.")
                     return@Column

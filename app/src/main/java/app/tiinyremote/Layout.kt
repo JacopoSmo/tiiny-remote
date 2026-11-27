@@ -510,7 +510,7 @@ fun FullView(e: ResultEntry, st: StudioViewModel, onClose: () -> Unit, position:
                     }
                     else -> SelectionContainer(Modifier.weight(1f).then(if (swipe != null) Modifier.swipeBetween(e.id, swipe) else Modifier)) {
                         Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-                            if (e.kind == "description" || e.kind == "ocr") MarkdownText(e.text) else Text(e.text)
+                            if (e.kind == "description" || e.kind == "ocr" || e.kind == "answer") MarkdownText(e.text) else Text(e.text)
                         }
                     }
                 }

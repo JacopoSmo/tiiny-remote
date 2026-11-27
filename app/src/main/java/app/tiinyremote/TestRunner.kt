@@ -26,7 +26,119 @@ class Tests(
     private val deviceBusy: AtomicBoolean,
     private val note: (String) -> Unit,
     private val clearChatSpeeds: () -> Unit,
+    /** Brings a finished NAS job into the app (NightShift.import); its text. */
+    private val importJob: (NasAgent.NasJob) -> String,
 ) {
+    // ---------- on the NAS agent: run now (followed here) or tonight ----------
+
+    /** The NAS job this page follows right now (a test running on the NAS), so the general sync leaves it alone. */
+    @Volatile
+    var followedJob: String? = null
+        private set
+
+    /**
+     * Sends a test to the NAS agent. [night]: queued for the night shift. Else it runs now on the NAS, followed here
+     * in [flow] like a phone test (and Stop reaches it); the models stay untouched by the phone meanwhile. When the
+     * NAS can't take it (unreachable, older than 1.8), [fallback] runs it on the phone.
+     */
+    private fun onNas(flow: MutableStateFlow<String?>, kind: String, title: String, spec: JSONObject, night: Boolean, fallback: () -> Unit) {
+        if (night) {
+            scope.launch {
+                flow.value = try {
+                    withContext(Dispatchers.IO) { NightShift.submit(app, kind, "night", title, spec) }
+                    "🌙 Added to tonight's queue on the NAS: $title. The results come into the app in the morning."
+                } catch (e: Exception) {
+                    "Couldn't send it to the NAS: ${e.message}"
+                }
+            }
+            return
+        }
+        if (flow.value?.startsWith("Testing") == true) return
+        if (!deviceBusy.compareAndSet(false, true)) {
+            note("The Tiiny is busy with a job: run the test when it's done.")
+            return
+        }
+        NpuGate.testing = true
+        flow.value = "Testing on the NAS…"
+        Background.set(app, kind, "$title on the NAS")
+        scope.launch {
+            var sent = false
+            try {
+                val job = withContext(Dispatchers.IO) { NightShift.submit(app, kind, "now", title, spec) }
+                sent = true
+                followedJob = job.id
+                var misses = 0
+                while (true) {
+                    kotlinx.coroutines.delay(5_000)
+                    val j = try {
+                        withContext(Dispatchers.IO) { NasAgent.jobs(NightShift.connectors(app), log = false) }.firstOrNull { it.id == job.id }
+                            ?: throw MediaException("The NAS no longer has this test.")
+                    } catch (e: MediaException) {
+                        if (++misses < 12) continue
+                        // A minute without the NAS: the test goes on there; its result comes in when the app reaches it.
+                        throw MediaException("The NAS doesn't answer: the test goes on there, and its result comes in when the app reaches it again.")
+                    }
+                    misses = 0
+                    if (j.active) {
+                        flow.value = "Testing on the NAS: ${j.progress.ifBlank { "waiting for its turn" }}…"
+                        continue
+                    }
+                    val out = withContext(Dispatchers.IO) {
+                        importJob(j).also { NasAgent.deleteJob(NightShift.connectors(app), j.id) }
+                    }
+                    flow.value = out
+                    ApiLog.add("$title on the NAS: " + out.replace("\n", " | "), "Chat")
+                    Notifier.done(app, "$title finished", out)
+                    break
+                }
+            } catch (e: Exception) {
+                flow.value = if (sent) e.message ?: "The NAS test stopped." else "The NAS couldn't take the test (${e.message}): it runs on the phone instead."
+                if (!sent) ApiLog.add("$title: the NAS couldn't take it (${e.message}); running on the phone", "Chat", isProblem = true)
+            } finally {
+                followedJob = null
+                speedStop = false
+                _speedStopping.value = false
+                qualityStop = false
+                NpuGate.testing = false
+                deviceBusy.set(false)
+                Background.set(app, kind, null)
+            }
+            if (!sent) fallback()
+        }
+    }
+
+    /** Stop for a test on the NAS: after its current step, or at once. */
+    private fun stopOnNas(now: Boolean) {
+        val id = followedJob ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                NasAgent.stopJob(NightShift.connectors(app), id, now)
+            } catch (e: Exception) {
+                ApiLog.add("Couldn't stop the test on the NAS: ${e.message}", "Chat", isProblem = true)
+            }
+        }
+    }
+
+    /**
+     * The speed test of [pairs] (main model, helper) on the NAS: now ([night] false) or tonight. Without the NAS,
+     * the phone runs it.
+     */
+    fun speedOnNas(pairs: List<Pair<ModelInfo, ModelInfo>>, runs: Int, night: Boolean) {
+        if (pairs.isEmpty()) return
+        val title = if (pairs.size == 1) "Speed test ${pairs[0].first.name} + ${pairs[0].second.name}" else "Speed test of ${pairs.size} pairs"
+        onNas(_speed, "speed", title, NightShift.speedSpec(pairs, runs), night) {
+            if (pairs.size == 1) speedTest(pairs[0].first, pairs[0].second, runs)
+            else speedTestAll(pairs.map { it.first }.distinct(), pairs.map { it.second }.distinct(), runs)
+        }
+    }
+
+    fun qualityOnNas(models: List<ModelInfo>, judge: ModelInfo, night: Boolean) {
+        if (models.isEmpty()) return
+        onNas(_quality, "quality", "Quality test of ${models.size} model${if (models.size != 1) "s" else ""}", NightShift.qualitySpec(models, judge), night) {
+            qualityTest(models, judge)
+        }
+    }
+
     // ---------- speed test: one model at a time, or two at once ----------
 
     private val _speed = MutableStateFlow<String?>(null)
@@ -124,6 +236,7 @@ class Tests(
     fun stopSpeedTest(now: Boolean) {
         speedStop = true
         _speedStopping.value = true
+        stopOnNas(now)
         if (now) {
             ApiLog.add("Speed test: stopped at once", "Chat")
             speedClient?.abortAll()
@@ -307,6 +420,7 @@ class Tests(
     /** [now] false: stops after the current answer; true: breaks off the waiting request at once. */
     fun stopQualityTest(now: Boolean) {
         qualityStop = true
+        stopOnNas(now)
         if (now) qualityClient?.abortAll()
     }
 
