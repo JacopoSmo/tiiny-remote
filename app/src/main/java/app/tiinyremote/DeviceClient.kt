@@ -184,6 +184,10 @@ class DeviceClient(url: String, private val key: String) {
         val tokens: Int = 0, val seconds: Double = 0.0, val alone: Boolean = false,
         /** The Tiiny said it was done ([DONE] or a finish reason); false when the stream just stopped. */
         val ended: Boolean = true,
+        /** Seconds from sending until the first piece of any kind (thinking included); 0 if none came. */
+        val firstAfter: Double = 0.0,
+        /** Seconds from sending until the first piece of the answer itself (after any thinking); 0 if none came. */
+        val answerAfter: Double = 0.0,
     )
 
     /**
@@ -264,6 +268,8 @@ class DeviceClient(url: String, private val key: String) {
 
     private fun stream(body: JSONObject, onDelta: (String, String) -> Unit, stop: () -> Boolean): Completion {
         val conn = open("POST", "/v1/chat/completions", 900)
+        val sent = System.nanoTime()
+        var firstAnswer = 0L
         var first = 0L
         var last = 0L
         var pieces = 0
@@ -331,6 +337,7 @@ class DeviceClient(url: String, private val key: String) {
                     if (c.isNotEmpty() || r.isNotEmpty() || delta.has("tool_calls")) {
                         val now = System.nanoTime()
                         if (first == 0L) first = now
+                        if (firstAnswer == 0L && c.isNotEmpty()) firstAnswer = now
                         last = now
                         pieces++
                         if (NpuGate.count > 1) alone = false
@@ -352,6 +359,10 @@ class DeviceClient(url: String, private val key: String) {
         }
         // The first piece isn't timed (it's the wait before writing), so it's left out of the count too.
         val tokens = (if (usage > 0) usage else pieces) - 1
-        return Completion(content.toString(), reasoning.toString(), calls.values.toList(), finish, tokens.coerceAtLeast(0), (last - first) / 1e9, alone, sawDone || finish.isNotBlank() || stop())
+        fun after(t: Long) = if (t == 0L) 0.0 else (t - sent) / 1e9
+        return Completion(
+            content.toString(), reasoning.toString(), calls.values.toList(), finish, tokens.coerceAtLeast(0), (last - first) / 1e9, alone,
+            sawDone || finish.isNotBlank() || stop(), after(first), after(firstAnswer),
+        )
     }
 }

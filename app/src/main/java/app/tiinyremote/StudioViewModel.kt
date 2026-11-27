@@ -175,24 +175,7 @@ private const val FILE_SUMMARY_SYSTEM = "Condense this document for later questi
 private const val TITLE_SYSTEM = "Give this conversation a short title of 3 to 6 words in the user's language. " +
     "Reply with the title only: no quotes, no final period."
 
-/** A made-up earlier chat for the speed test's helper job: the same text every time, so tests compare. */
-private val JOB_TEXT = buildString {
-    val turns = listOf(
-        "User: I'm planning a four-day trip to Lisbon in March with my sister. We like food, old neighbourhoods and views, not museums.",
-        "Assistant: Base yourselves in Baixa or Chiado: flat streets, the tram 28 stop and the river close by. Day 1 Alfama and the castle, day 2 Belém for pastries and the river walk, day 3 a day trip to Sintra, day 4 LX Factory and the Bairro Alto viewpoints.",
-        "User: Sintra sounds crowded. Is Cascais better? And how do we get there?",
-        "Assistant: Cascais is calmer: a beach town 40 minutes by train from Cais do Sodré, trains every 20 minutes, about 2.30 euros each way. Sintra is busiest from 10 to 4; go early or skip it.",
-        "User: We'll do Cascais. Budget is about 120 euros a day for both of us, rooms not included. Where should we eat on day 1?",
-        "Assistant: In Alfama, try a tasca for grilled sardines and vinho verde, around 30 euros for two. In the evening a fado house; book ahead, the better ones fill up by 8.",
-        "User: My sister doesn't eat fish. Also we land at 11 on Thursday and fly back Sunday at 18.",
-        "Assistant: Then day 1 starts after lunch: Alfama and the castle in the afternoon, dinner at a place with grilled chicken or bifana. Sunday you have the morning: LX Factory opens at 10, the airport is 25 minutes by metro, leave by 15.",
-        "User: Good. Can we fit a cooking class somewhere? And is the Lisboa Card worth it for us?",
-        "Assistant: A pastel de nata class takes 2 hours, about 40 euros each; Saturday morning fits. The Lisboa Card pays off with many museums; for you, a Viva Viagem card with zapping credit is cheaper.",
-    )
-    turns.forEach { append(it).append("\n\n") }
-}
-
-private const val CONDENSE_SYSTEM = "Summarise this earlier part of a conversation so the assistant can continue it: " +
+internal const val CONDENSE_SYSTEM = "Summarise this earlier part of a conversation so the assistant can continue it: " +
     "what the user wants, facts and decisions so far, names, numbers and open questions. Keep it under 300 words, " +
     "as plain notes. Reply with the summary only."
 
@@ -1517,8 +1500,15 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** One chat answer's writing speed, from the Tiiny's own count (or the pieces streamed). */
-    data class ChatSpeed(val at: Long, val model: String, val rate: Double, val alone: Boolean)
+    /**
+     * One chat answer as measured: its writing speed (from the Tiiny's own count, or the pieces streamed; NaN when
+     * the answer was too short to say), and the wait before it: until the first piece (thinking included) and until
+     * the answer itself, in seconds (0: not measured, before 4.8.0). chars: the size of what was sent.
+     */
+    data class ChatSpeed(
+        val at: Long, val model: String, val rate: Double, val alone: Boolean,
+        val wait: Double = 0.0, val answerWait: Double = 0.0, val chars: Int = 0,
+    )
 
     private val _chatSpeeds = MutableStateFlow(loadChatSpeeds())
     /** Writing speeds measured in normal chats, newest first (the last 300): Speed statistics fill up without tests. */
@@ -1526,20 +1516,23 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadChatSpeeds(): List<ChatSpeed> = try {
         val a = JSONArray(prefs.getString("chat_speeds", "[]"))
-        (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> ChatSpeed(o.optLong("at"), o.optString("model"), o.optDouble("rate"), o.optBoolean("alone")) } }
+        (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> ChatSpeed(o.optLong("at"), o.optString("model"), o.optDouble("rate"), o.optBoolean("alone"), o.optDouble("wait", 0.0), o.optDouble("answer", 0.0), o.optInt("chars", 0)) } }
     } catch (e: Exception) {
         emptyList()
     }
 
-    /** Only answers of 50 tokens or more over at least a second: shorter ones say little about the speed. */
-    private fun recordChatSpeed(model: String, done: DeviceClient.Completion) {
-        if (done.tokens < 50 || done.seconds < 1.0) return
-        val r = ChatSpeed(System.currentTimeMillis(), model, done.tokens / done.seconds, done.alone)
+    /** The speed only from answers of 50 tokens or more over at least a second (shorter ones say little); the wait always. */
+    private fun recordChatSpeed(model: String, done: DeviceClient.Completion, chars: Int) {
+        val rate = if (done.tokens < 50 || done.seconds < 1.0) Double.NaN else done.tokens / done.seconds
+        if (rate.isNaN() && done.firstAfter <= 0.0) return
+        val r = ChatSpeed(System.currentTimeMillis(), model, rate, done.alone, done.firstAfter, done.answerAfter, chars)
         val list = synchronized(this) {
             (listOf(r) + _chatSpeeds.value).take(300).also { _chatSpeeds.value = it }
         }
         prefs.edit().putString("chat_speeds", JSONArray(list.map {
-            JSONObject().put("at", it.at).put("model", it.model).put("rate", it.rate).put("alone", it.alone)
+            JSONObject().put("at", it.at).put("model", it.model).put("alone", it.alone)
+                .apply { if (!it.rate.isNaN()) put("rate", it.rate) }
+                .put("wait", it.wait).put("answer", it.answerWait).put("chars", it.chars)
         }).toString()).apply()
     }
 
@@ -1556,12 +1549,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             .filter { !it.second.isNaN() }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, l) -> l.average() }
-        val recs = models.filter { it.id in recIds }
-        val best = recs.mapNotNull { jobs[it.name] }.minOrNull() ?: return emptySet()
-        val heaviest = recs.mapNotNull { it.npuUsage }.maxOrNull() ?: return emptySet()
-        return models.filter { m ->
-            m.id !in recIds && (m.npuUsage ?: 100.0) <= heaviest + 5 && (jobs[m.name] ?: Double.MAX_VALUE) <= best * 1.15
-        }.map { it.id }.toSet()
+        return SpeedMath.measuredHelpers(jobs, models.map { Triple(it.id, it.name, it.npuUsage) }, recIds)
     }
 
     private fun loadSpeedHistory(): List<SpeedRecord> = try {
@@ -1764,194 +1752,34 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * One speed test of a pair: each alone, both at once, the helper twice at once, [n] times; kept for 📊 Statistics.
-     * Both must be loaded. [tag] goes into the progress (the pair, in a test of several). Blocks: call on IO.
+     * One speed test of a loaded pair on the phone ([n] runs, see SpeedMeasure), analysed by SpeedMath and kept for
+     * 📊 Statistics. [tag] goes into the progress (the pair, in a test of several). Blocks: call on IO.
      */
     private suspend fun measurePair(
         c: DeviceClient, big: ModelInfo, small: ModelInfo, n: Int, tag: String, onLost: (() -> Boolean)? = null,
     ): String {
-        /** (tokens written, seconds taken) for one ~300-token answer, thinking off where possible. */
-        fun one(model: String): Pair<Int, Double> {
-            val body = JSONObject().put("model", model).put("stream", false).put("max_tokens", 300).put("temperature", 0.7)
-                .put("messages", JSONArray().put(JSONObject().put("role", "user")
-                    .put("content", "Write a story of about 250 words about a lighthouse keeper and a storm.")))
-            when (Tools.thinkingMode(c, model)) {
-                "switch" -> body.put("chat_template_kwargs", JSONObject().put("enable_thinking", false))
-                "always" -> body.put("reasoning_effort", "low")
-            }
-            var t0 = System.nanoTime()
-            var r = c.request("POST", "/v1/chat/completions", body, 600)
-            // A model that has only just loaded, or two requests at once, can answer 500 (seen with gpt-oss): two retries.
-            for (retry in 1..2) {
-                if (r.ok || r.code < 500) break
-                Thread.sleep(10_000L * retry)
-                t0 = System.nanoTime()
-                r = c.request("POST", "/v1/chat/completions", body, 600)
-            }
-            val secs = (System.nanoTime() - t0) / 1e9
-            if (!r.ok) throw MediaException("${model.substringAfterLast('/')}: ${r.error()}")
-            val o = r.json()
-            val msg = o.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-            val written = (msg?.optString("content").orEmpty() + msg?.optString("reasoning_content").orEmpty()).length
-            val tokens = o.optJSONObject("usage")?.optInt("completion_tokens", 0)?.takeIf { it > 0 } ?: maxOf(1, written / 4)
-            return tokens to secs
-        }
-        /** Seconds until a typical helper job is done: condensing an earlier chat, asked exactly as the app asks it. */
-        fun job(model: String): Double {
-            // A real summary of this chat is a few hundred characters; a much shorter answer (seen: 1.6 s right
-            // after an NPU restart) isn't the job done and would count as a very quick helper.
-            fun once(): Double {
-                val t0 = System.nanoTime()
-                val out = Tools.chatOnce(c, model, CONDENSE_SYSTEM, JOB_TEXT, 700, timeoutSec = 600)
-                if (out.length < 150) throw MediaException("${model.substringAfterLast('/')}: a summary of ${out.length} characters")
-                return (System.nanoTime() - t0) / 1e9
-            }
-            return try {
-                once()
-            } catch (e: MediaException) {
-                if (e.message?.startsWith("Lost the connection") == true || speedStop) throw e
-                Thread.sleep(5000) // a 500 now and then under load: once more
-                once()
-            }
-        }
-        fun rate(r: Pair<Int, Double>) = r.first / r.second
-        val smallJobs = mutableListOf<Double>()
-        val bigJobs = mutableListOf<Double>()
-        val bigRates = mutableListOf<Double>()
-        val smallRates = mutableListOf<Double>()
-        val bothGains = mutableListOf<Double>()
-        val helperGains = mutableListOf<Double>()
-        // Times, not added-up speeds, per run: the same work (what each wrote alone), timed one after the
-        // other and at the same time. When the Tiiny takes requests in turn, two "speeds" would add up to nonsense.
-        fun gain(seqS: Double, parS: Double) = (1 - parS / seqS) * 100
-        // A short pause before every measurement, so one doesn't run into the end of the one before.
-        suspend fun pause() { if (speedStop) throw MediaException("Stopped"); kotlinx.coroutines.delay(PAUSE_MS) }
-        // A run that hits an error (a 500, a lost connection) is left out, not the whole pair: the other runs count.
-        var left = 0
-        var lostInRow = 0
-        for (i in 1..n) {
-            val run = if (n > 1) " (run $i of $n)" else ""
-            try {
-                if (i > 1) pause()
-                _speed.value = "Testing${tag}${run}: ${big.name} alone…"
-                val a = one(big.id)
-                pause()
-                _speed.value = "Testing${tag}${run}: ${small.name} alone…"
-                val b = one(small.id)
-                pause()
-                _speed.value = "Testing${tag}${run}: both at the same time…"
-                val (a2, b2) = coroutineScope {
-                    val x = async { one(big.id) }
-                    val y = async { one(small.id) }
-                    x.await() to y.await()
-                }
-                pause()
-                _speed.value = "Testing${tag}${run}: ${small.name} twice at the same time…"
-                val (h1, h2) = coroutineScope {
-                    val x = async { one(small.id) }
-                    val y = async { one(small.id) }
-                    x.await() to y.await()
-                }
-                pause()
-                _speed.value = "Testing${tag}${run}: a helper job (condensing a chat), ${small.name}…"
-                val sj = job(small.id)
-                pause()
-                _speed.value = "Testing${tag}${run}: the same job, ${big.name}…"
-                val bj = job(big.id)
-                // Only a finished run counts: everything of it at once.
-                smallJobs += sj
-                bigJobs += bj
-                bigRates += rate(a)
-                smallRates += rate(b)
-                bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
-                helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
-                lostInRow = 0
-            } catch (e: Exception) {
-                if (speedStop || e is kotlinx.coroutines.CancellationException) throw e
-                left++
-                ApiLog.add("Speed test$tag: run $i left out (${e.message})", "Chat", isProblem = true)
-                // Lost the Tiiny: wait for it (test of several pairs); twice in a row, or not back, ends the pair.
-                if (e.message?.startsWith("Lost the connection") == true && (++lostInRow >= 2 || onLost?.invoke() != true)) throw e
-            }
-        }
-        if (bigRates.isEmpty()) throw MediaException("no run finished; the last error is in the log")
-        fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
-        fun pct(v: Double) = "${Math.round(v)}%"
-        // From 3 runs on, clear outliers (a hiccup on the Tiiny, say) are left out, one at a time: a value
-        // more than 3 robust standard deviations (MAD) from the median of the rest, and more than `floor`
-        // away. At least 3 values stay: 1 can go of 3 or 4 runs, 2 of 5.
-        fun clean(l: List<Double>, floor: Double): Pair<List<Double>, List<Double>> {
-            fun median(v: List<Double>) = v.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
-            var kept = l
-            val out = ArrayList<Double>()
-            val most = if (l.size < 3) 0 else maxOf(1, l.size - 3)
-            while (out.size < most) {
-                val m = median(kept)
-                val mad = median(kept.map { kotlin.math.abs(it - m) }) * 1.4826
-                val worst = kept.indices.maxByOrNull { kotlin.math.abs(kept[it] - m) } ?: break
-                if (kotlin.math.abs(kept[worst] - m) <= maxOf(3 * mad, floor)) break
-                out += kept[worst]
-                kept = kept.filterIndexed { j, _ -> j != worst }
-            }
-            return kept to out
-        }
-        val (bigOk, bigOut) = clean(bigRates, bigRates.average() * 0.1)
-        val (smallOk, smallOut) = clean(smallRates, smallRates.average() * 0.1)
-        val (bothOk, bothOut) = clean(bothGains, 5.0)
-        val (helperOk, helperOut) = clean(helperGains, 5.0)
-        val bigRate = bigOk.average()
-        val smallRate = smallOk.average()
-        val (smallJobOk, smallJobOut) = clean(smallJobs, 1.0)
-        val (bigJobOk, bigJobOut) = clean(bigJobs, 1.0)
-        val smallJob = smallJobOk.average()
-        val bigJob = bigJobOk.average()
+        val raw = SpeedMeasure(c, { speedStop }, { _speed.value = it }).pair(big, small, n, tag, onLost)
+        return keepSpeed(raw, "phone")
+    }
+
+    /** A pair's raw measurements (from the phone or the NAS) analysed, remembered and kept for History; the text. */
+    fun keepSpeed(raw: SpeedRaw, by: String): String {
+        val res = SpeedMath.analyze(raw, System.currentTimeMillis(), by)
         // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
-        prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
-        fun outText(out: List<Double>, show: (Double) -> String) =
-            if (out.isEmpty()) "" else " [left out as outlier${if (out.size > 1) "s" else ""}: ${out.joinToString(", ") { show(it) }}]"
-        fun spread(l: List<Double>, out: List<Double>) =
-            (if (l.size > 1) " (${f(l.min())}–${f(l.max())})" else "") + outText(out) { f(it) }
-        fun verdict(l: List<Double>, out: List<Double>): String {
-            val p = l.average()
-            val text = when {
-                p >= 10 -> "${pct(p)} sooner: worth it"
-                p >= 3 -> "${pct(p)} sooner: a little faster"
-                p > -3 -> "no gain, the Tiiny takes them in turn"
-                p > -5 -> "about the same"
-                else -> "${pct(-p)} slower: better one after the other"
-            }
-            return text + (if (l.size > 1) ", runs ${l.joinToString(" / ") { pct(it) }}" else "") + outText(out) { pct(it) }
-        }
-        // Kept for History: which pairs work best, and how each model performs over time.
-        addSpeedHistory(
-            SpeedRecord(System.currentTimeMillis(), big.name, small.name, bigRates.size, bigRate, smallRate, bothOk.average(), helperOk.average(),
-                bigOut.size + smallOut.size + bothOut.size + helperOut.size + smallJobOut.size + bigJobOut.size, smallJob, bigJob),
-        )
-        val faster = (smallRate / bigRate - 1) * 100
-        val pages = if (smallRate >= bigRate * PAGE_RULE)
-            "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
-        else
-            "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${if (faster in 24.5..25.0) "24.9%" else pct(faster)}): " +
-                "${big.name} reads web pages itself."
-        val done = bigRates.size
-        return (if (done > 1) "Average of $done runs. " else "") + (if (left > 0) "$left run${if (left > 1) "s" else ""} left out after errors. " else "") +
-            "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigOk, bigOut)}, ${small.name} ${f(smallRate)} tok/s${spread(smallOk, smallOut)}.\n" +
-            "Both models at once: ${verdict(bothOk, bothOut)}.\n" +
-            "${small.name} twice at once: ${verdict(helperOk, helperOut)}.\n" +
-            "A helper job (condensing a chat, thinking as the app asks): ${small.name} ${f(smallJob)} s${spread(smallJobOk, smallJobOut)}, " +
-            "${big.name} ${f(bigJob)} s${spread(bigJobOk, bigJobOut)}.\n" +
-            pages
+        prefs.edit().putFloat("speed_${raw.bigId}", res.bigRate.toFloat()).putFloat("speed_${raw.smallId}", res.smallRate.toFloat()).apply()
+        addSpeedHistory(res.record)
+        return res.text
     }
 
     /**
      * Whether the helper should condense pages for this chat model: only when the speed test measured it clearly
-     * faster (PAGE_RULE, 25%), because condensing can lose details and adds a step. Otherwise the chat model reads the
+     * faster (SpeedMath.PAGE_RULE, 25%), because condensing can lose details and adds a step. Otherwise the chat model reads the
      * pages itself. Before any speed test, pages are condensed.
      */
     private fun helperCondensesPages(helper: String, chatModel: String): Boolean {
         val h = prefs.getFloat("speed_$helper", 0f)
         val m = prefs.getFloat("speed_$chatModel", 0f)
-        return h <= 0f || m <= 0f || h >= m * PAGE_RULE
+        return h <= 0f || m <= 0f || h >= m * SpeedMath.PAGE_RULE
     }
 
     /** The fast helper model chosen in Settings, when it's loaded and isn't the chat model itself (never swapped in for this). */
@@ -2199,7 +2027,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                             maxTokens = 4096
                             c.streamChat(body(), onText, { chatStop.get() })
                         }
-                        recordChatSpeed(model, done)
+                        recordChatSpeed(model, done, body().toString().length)
                         if (chatStop.get() || done.calls.isEmpty()) {
                             if (done.calls.isEmpty() && done.finish == "length" && (_all.value[id]?.lastOrNull()?.text ?: "").isBlank()) {
                                 throw MediaException("The model reasoned until it ran out of room and gave no answer. Try again, or ask for less.")
@@ -2324,28 +2152,3 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
-/** The helper condenses web pages only when it writes at least this many times as fast as the chat model (25% faster). */
-private const val PAGE_RULE = 1.25f
-
-/** The pause before each speed-test measurement (a quarter second), so the Tiiny has finished the previous one. */
-private const val PAUSE_MS = 250L
-
-/** One speed test, for History: the pair, its speeds alone, and how much sooner both (or the helper twice) finished at once. */
-data class SpeedRecord(
-    val at: Long, val big: String, val small: String, val runs: Int,
-    val bigRate: Double, val smallRate: Double, val bothGain: Double, val helperGain: Double, val outliers: Int,
-    /** Seconds for the helper job (condensing a chat): the helper, and the main model; NaN in tests before 4.6.3. */
-    val smallJob: Double = Double.NaN, val bigJob: Double = Double.NaN,
-) {
-    fun json(): JSONObject = JSONObject().put("at", at).put("big", big).put("small", small).put("runs", runs)
-        .put("big_rate", bigRate).put("small_rate", smallRate).put("both", bothGain).put("helper", helperGain).put("outliers", outliers)
-        .apply { if (!smallJob.isNaN()) put("small_job", smallJob); if (!bigJob.isNaN()) put("big_job", bigJob) }
-
-    companion object {
-        fun from(o: JSONObject) = SpeedRecord(
-            o.optLong("at"), o.optString("big"), o.optString("small"), o.optInt("runs", 1),
-            o.optDouble("big_rate"), o.optDouble("small_rate"), o.optDouble("both"), o.optDouble("helper"), o.optInt("outliers"),
-            o.optDouble("small_job"), o.optDouble("big_job"),
-        )
-    }
-}

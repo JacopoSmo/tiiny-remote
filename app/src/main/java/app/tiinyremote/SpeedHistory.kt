@@ -57,9 +57,10 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Measured in normal chats, no test needed: alone, and beside another model writing.
-                if (chats.isNotEmpty()) {
+                val rated = chats.filter { !it.rate.isNaN() }
+                if (rated.isNotEmpty()) {
                     Text("From your chats (tokens per second)", style = MaterialTheme.typography.titleMedium)
-                    for ((m, l) in chats.groupBy { it.model }.entries.sortedByDescending { (_, l) -> l.map { it.rate }.average() }) {
+                    for ((m, l) in rated.groupBy { it.model }.entries.sortedByDescending { (_, l) -> l.map { it.rate }.average() }) {
                         val alone = l.filter { it.alone }.map { it.rate }
                         val beside = l.filter { !it.alone }.map { it.rate }
                         Text(
@@ -73,6 +74,33 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                     Text(
                         "Every chat answer of 50 tokens or more is measured (the middle value is shown, so one odd answer " +
                             "doesn't count much). Thinking counts as writing.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    HorizontalDivider()
+                }
+                // The wait before an answer, as you feel it: until anything appears, and until the answer itself.
+                val waited = chats.filter { it.wait > 0 }
+                if (waited.isNotEmpty()) {
+                    Text("Waiting in your chats (seconds, middle value)", style = MaterialTheme.typography.titleMedium)
+                    for ((m, l) in waited.groupBy { it.model }.entries.sortedBy { (_, l) -> median(l.map { it.wait }) }) {
+                        val answers = l.filter { it.answerWait > 0 }.map { it.answerWait }
+                        Text(
+                            "${short(m)}: first word ${n1(median(l.map { it.wait }))} s" +
+                                (answers.takeIf { it.isNotEmpty() }?.let { " · answer starts ${n1(median(it))} s" } ?: "") + " (${l.size})",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        // How the wait grows with the chat: short, medium and long chats (what was sent).
+                        val bands = ChatWaits.bands(l.map { it.chars to it.wait })
+                        if (bands.size > 1) Text(
+                            bands.joinToString(" · ") { (label, secs, n) -> "$label: ${n1(secs)} s ($n)" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "First word: until anything appears, thinking included. Answer starts: until the answer itself, after any thinking. " +
+                            "Long chats wait longer because the Tiiny reads everything again; when the long-chat wait is much higher, a fresh chat is quicker.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

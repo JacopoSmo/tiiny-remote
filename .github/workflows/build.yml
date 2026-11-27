@@ -35,6 +35,12 @@ jobs:
       - name: Version number
         run: echo "APP_VERSION=4.7.$(( ${{ github.run_number }} - 165 ))" >> "$GITHUB_ENV"
 
+      - name: Automated checks (the NAS agent, then the app); a failing check stops the release
+        run: |
+          python3 -m unittest discover -s nas-agent -p "test_*.py" -v
+          chmod +x gradlew
+          ./gradlew :app:testReleaseUnitTest --no-daemon --stacktrace
+
       - name: Build the APK
         env:
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}

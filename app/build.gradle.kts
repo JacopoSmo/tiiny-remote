@@ -98,4 +98,9 @@ dependencies {
     implementation("com.github.mwiede:jsch:0.2.20")
     // Reading PDFs attached in Chat (text only, on the phone).
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
+    // Automated checks of the app's own calculations (speed and quality tests, sorting, load ahead), run on every
+    // build: a failing check stops the release. org.json for real (Android's own is only a stub off the phone).
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
