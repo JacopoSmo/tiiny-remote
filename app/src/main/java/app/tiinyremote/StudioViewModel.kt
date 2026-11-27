@@ -1608,6 +1608,16 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val c = client()
                     val before = Tools.runningIds(c)
                     val p = Progress({ msg, _ -> _speed.value = "Testing: $msg…" }, { speedStop })
+                    // Asks every 10 s whether the Tiiny answers again, for up to 3 minutes.
+                    fun awaitBack(): Boolean {
+                        val until = System.currentTimeMillis() + 180_000
+                        while (System.currentTimeMillis() < until && !speedStop) {
+                            p.update("the Tiiny doesn't answer, waiting for it", null)
+                            if (runCatching { Tools.runningIds(c, log = false) }.isSuccess) return true
+                            Thread.sleep(10_000)
+                        }
+                        return false
+                    }
                     fun launch(m: ModelInfo) {
                         if (m.id in Tools.runningIds(c, log = false)) return
                         p.update("loading ${m.name}", null)
@@ -1623,26 +1633,44 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                 lines += "${big.name} + ${small.name}: skipped, together ${Math.round(share)}% of the NPU"
                                 continue
                             }
-                            try {
-                                // Only this pair on the NPU, so every pair is measured alike.
-                                for (id in Tools.runningIds(c) - setOf(big.id, small.id)) {
-                                    p.update("unloading ${id.substringAfterLast('/')}", null)
-                                    Tools.stop(c, id)
+                            // A lost connection (the Tiiny restarting, Wi-Fi): wait for it, then try the pair once more.
+                            var gone = false
+                            for (attempt in 1..2) {
+                                try {
+                                    // Only this pair on the NPU, so every pair is measured alike.
+                                    for (id in Tools.runningIds(c) - setOf(big.id, small.id)) {
+                                        p.update("unloading ${id.substringAfterLast('/')}", null)
+                                        Tools.stop(c, id)
+                                    }
+                                    launch(big)
+                                    launch(small)
+                                    val out = measurePair(c, big, small, n, ",$tag")
+                                    lines += "${big.name} + ${small.name}: " + out.replace("\n", " ")
+                                    done++
+                                    break
+                                } catch (e: Exception) {
+                                    if (speedStop) break
+                                    ApiLog.add("Speed test, ${big.name} + ${small.name} failed: ${e.message}", "Chat", isProblem = true)
+                                    val lost = e.message?.startsWith("Lost the connection") == true
+                                    if (lost && !awaitBack()) {
+                                        lines += "${big.name} + ${small.name}: failed, the Tiiny didn't answer for 3 minutes; the test ended here"
+                                        gone = true
+                                        break
+                                    }
+                                    if (lost && attempt == 1) {
+                                        ApiLog.add("Speed test: the Tiiny is back, trying ${big.name} + ${small.name} once more", "Chat")
+                                        continue
+                                    }
+                                    lines += "${big.name} + ${small.name}: failed (${e.message})"
+                                    break
                                 }
-                                launch(big)
-                                launch(small)
-                                val out = measurePair(c, big, small, n, ",$tag")
-                                lines += "${big.name} + ${small.name}: " + out.lines().drop(if (n > 1) 0 else 0).joinToString(" ")
-                                done++
-                            } catch (e: Exception) {
-                                if (speedStop) break
-                                lines += "${big.name} + ${small.name}: failed (${e.message})"
-                                ApiLog.add("Speed test, ${big.name} + ${small.name} failed: ${e.message}", "Chat", isProblem = true)
                             }
+                            if (gone) break
                         }
                     } finally {
                         // What was loaded before comes back (best effort; a failure is only logged).
                         try {
+                            if (runCatching { Tools.runningIds(c, log = false) }.isFailure) awaitBack()
                             val now = Tools.runningIds(c, log = false)
                             for (id in now - before) { _speed.value = "Testing: unloading ${id.substringAfterLast('/')}…"; Tools.stop(c, id) }
                             val quiet = Progress({ _, _ -> }, { false })
