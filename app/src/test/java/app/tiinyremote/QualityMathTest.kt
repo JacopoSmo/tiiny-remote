@@ -77,4 +77,15 @@ class QualityMathTest {
         val got = QualityMath.gradePrompt(QualityTask("t", "T", "P", "R"), listOf("A" to "one", "B" to "  "), "INTRO\n\n", "OUTRO")
         assertEquals("INTRO\n\nTASK:\nP\n\nWHAT A GOOD ANSWER DOES:\nR\n\n=== ANSWER A ===\none\n\n=== ANSWER B ===\n(no answer)\n\nOUTRO", got)
     }
+
+    @Test fun measuredSummaryForTheReview() {
+        assertEquals("", Measured.summary(emptyList(), emptyList()))
+        val speed = listOf(SpeedRecord(1, "Qwen3.8-27B", "Qwen3-4B", 3, 9.5, 17.0, 18.0, 1.0, 0, 19.5, 30.0))
+        val quality = listOf(QualityRecord(2, "Qwen3.8-27B", "Judge", 8.25, 40.0, emptyMap()))
+        val chats = listOf(StudioViewModel.ChatSpeed(3, "Q/gpt-oss-20b", 21.0, true))
+        val s = Measured.summary(speed, quality, chats)
+        assertTrue(s, s.contains("Qwen3-4B: writes 17.0 tok/s alone, helper job 19.5 s"))
+        assertTrue(s, s.contains("Qwen3.8-27B: writes 9.5 tok/s alone, helper job 30.0 s, quality 8.3/10 (graded by Judge)"))
+        assertTrue(s, s.contains("gpt-oss-20b: writes 21.0 tok/s alone"))
+    }
 }

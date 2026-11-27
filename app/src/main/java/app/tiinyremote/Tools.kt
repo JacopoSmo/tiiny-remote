@@ -237,11 +237,8 @@ object Tools {
         return image
     }
 
-    fun image(
-        c: DeviceClient, store: ResultStore, model: String, prompt: String, negative: String,
-        size: String, steps: Int?, seed: Long?, sources: List<String>, p: Progress,
-        count: Int = 1, guidance: Double? = null, previewEvery: Int = 0,
-    ): ResultEntry {
+    /** The image request (one image; the seed is added per image), the same on the phone and for the night shift. */
+    fun imageBody(model: String, prompt: String, negative: String, size: String, steps: Int?, guidance: Double?, sources: List<String>): JSONObject {
         val body = JSONObject().put("model", model).put("prompt", prompt).put("n", 1)
             .put("response_format", "b64_json")
         if (negative.isNotBlank()) body.put("negative_prompt", negative)
@@ -250,6 +247,15 @@ object Tools {
         guidance?.let { body.put("guidance_scale", it) }
         if (sources.size == 1) body.put("image", sources[0])
         else if (sources.size > 1) body.put("images", JSONArray(sources))
+        return body
+    }
+
+    fun image(
+        c: DeviceClient, store: ResultStore, model: String, prompt: String, negative: String,
+        size: String, steps: Int?, seed: Long?, sources: List<String>, p: Progress,
+        count: Int = 1, guidance: Double? = null, previewEvery: Int = 0,
+    ): ResultEntry {
+        val body = imageBody(model, prompt, negative, size, steps, guidance, sources)
         val n = count.coerceIn(1, 4)
         val verb = if (sources.isEmpty()) "Generating" else "Editing"
         val id = store.newId()
@@ -1123,17 +1129,22 @@ object Tools {
     }
 
     /** Starts a clip and returns the device's id for it. */
-    fun videoStart(
-        c: DeviceClient, model: String, prompt: String, size: String, seconds: Int,
-        steps: Int?, seed: Long?, image: String?,
-    ): String {
+    /** The video request, the same on the phone and for the night shift. */
+    fun videoBody(model: String, prompt: String, size: String, seconds: Int, steps: Int?, seed: Long?, image: String?): JSONObject {
         val body = JSONObject().put("model", model)
             .put("prompt", prompt.ifBlank { "Bring this picture to life" })
             .put("size", size).put("seconds", seconds.toString())
         steps?.let { body.put("steps", it) } // none: the model's own default
         seed?.let { body.put("seed", it) }
         if (image != null) body.put("image", image)
-        val r = c.request("POST", "/v1/videos", body, 120)
+        return body
+    }
+
+    fun videoStart(
+        c: DeviceClient, model: String, prompt: String, size: String, seconds: Int,
+        steps: Int?, seed: Long?, image: String?,
+    ): String {
+        val r = c.request("POST", "/v1/videos", videoBody(model, prompt, size, seconds, steps, seed, image), 120)
         if (r.code >= 300) throw MediaException(explainVideo(r.error()))
         return r.json().optString("id").takeIf { it.isNotBlank() } ?: throw MediaException("The Tiiny didn't start the clip.")
     }

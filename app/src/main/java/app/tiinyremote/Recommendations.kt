@@ -134,7 +134,9 @@ object Recs {
         "You get its model store as a list (id · type · size in parameters · share of the NPU it needs · download size · " +
         "context · abilities · version date · description) and a list of tasks. For each task pick the best one or two models " +
         "FROM THE LIST ONLY. Judge by what the list says: model generation and version date (newer families usually beat older " +
-        "ones), size, abilities, description and known model families. A model must fit beside others: prefer under 60% of the " +
+        "ones), size, abilities, description and known model families. When measurements from this very Tiiny are given, they outrank " +
+        "everything else: a model measured slow or weak here isn't recommended for that, one measured quick and good is (for the helper, " +
+        "the measured helper job time decides), and its why says so briefly (\"measured: 19 s per helper job\"). A model must fit beside others: prefer under 60% of the " +
         "NPU unless the task needs more; for tasks marked small, prefer the smallest that does the job well. Where a task states how to rank, follow it. Do not invent ids. " +
         "Answer with JSON only, no prose: {\"recs\":[{\"task\":\"<task key>\",\"id\":\"<exact id>\",\"why\":\"<at most 8 words>\"}]}"
 
@@ -153,11 +155,12 @@ object Recs {
      * checked: only ids in the Store and known tasks are kept, at most two per task; a task it skipped keeps its pick.
      * Returns a short summary of what changed.
      */
-    fun update(ctx: Context, c: DeviceClient, model: ModelInfo, store: List<StoreModel>, p: Progress): String {
+    fun update(ctx: Context, c: DeviceClient, model: ModelInfo, store: List<StoreModel>, p: Progress, measured: String = ""): String {
         val tasks = TASKS.joinToString("\n") { "${it.key}: ${it.label} (${it.what})" }
         val current = _set.value.recs.joinToString("\n") { "${it.task}: ${it.id} (${it.why})" }
         val user = "Tasks:\n$tasks\n\nCurrent recommendations (keep a pick if nothing in the store is clearly better):\n$current\n\n" +
-            "Store (${store.size} models):\n${storeLines(store)}"
+            "Store (${store.size} models):\n${storeLines(store)}" +
+            (if (measured.isNotBlank()) "\n\n$measured" else "")
         p.update("${model.name} is reviewing ${store.size} models", null)
         ApiLog.add("Recommendation review started: ${model.name} reviews ${store.size} Store models for ${TASKS.size} tasks", "Models")
         val mode = Tools.thinkingMode(c, model.id)

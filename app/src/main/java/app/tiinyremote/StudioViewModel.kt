@@ -432,7 +432,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     val p = Progress(update = { msg, _ -> _recBusy.value = msg }, cancelled = { recStop })
                     val unloaded = Tools.makeRoom(c, m.id, p)
                     try {
-                        Recs.update(getApplication(), c, m, store, p)
+                        Recs.update(getApplication(), c, m, store, p, Measured.summary(tests.speedHistory.value, tests.qualityHistory.value, chatSpeeds.value))
                     } finally {
                         Tools.putBack(c, m.id, unloaded, Progress({ msg, _ -> _recBusy.value = msg }, { false }))
                     }

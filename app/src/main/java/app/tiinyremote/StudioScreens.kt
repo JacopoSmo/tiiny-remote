@@ -94,6 +94,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -361,7 +362,11 @@ internal fun Field(value: String, onChange: (String) -> Unit, label: String, lin
 
 /** Progress, error and result of the tool's last job, plus the Run button. */
 @Composable
-internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: String?, st: StudioViewModel, onRun: () -> Unit) {
+internal fun RunPanel(
+    tool: String, label: String, ready: Boolean, whyNot: String?, st: StudioViewModel,
+    tonight: ((DeviceClient) -> NightJob)? = null,
+    onRun: () -> Unit,
+) {
     val job by st.job.collectAsState()
     val mine = job?.takeIf { it.tool == tool }
     val busyElsewhere = job?.running == true && job?.tool != tool
@@ -417,6 +422,32 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
             enabled = ready && !busyElsewhere,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (busyElsewhere) "Busy with another tool…" else label) }
+        // 🌙 Tonight: the same, made by the NAS agent in the night shift (Settings → Background efficiency tools).
+        if (tonight != null) {
+            val ctx = LocalContext.current
+            val night = remember { NightShift.tonight(ctx, Store(ctx).load()) }
+            val scope = rememberCoroutineScope()
+            var sent by remember { mutableStateOf<String?>(null) }
+            if (night) OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        sent = try {
+                            withContext(Dispatchers.IO) {
+                                val j = tonight(st.client())
+                                NightShift.submit(ctx, j.kind, "night", j.title, j.spec)
+                            }
+                            st.syncNas()
+                            "🌙 In tonight's queue on the NAS: it's in the Gallery in the morning."
+                        } catch (e: Exception) {
+                            "Couldn't send it to the NAS: ${e.message}"
+                        }
+                    }
+                },
+                enabled = ready,
+                modifier = Modifier.fillMaxWidth(),
+            ) { BtnLabel("Tonight", symbol = "🌙") }
+            sent?.let { SignText(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
     }
     mine?.error?.let {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer), modifier = Modifier.fillMaxWidth()) {
@@ -836,7 +867,13 @@ private fun VideoTool(model: ModelInfo?, notReady: String?, st: StudioViewModel)
     }
 
     val why = notReady ?: if (prompt.isBlank() && images.isEmpty()) "Describe the clip, or give it an image to start from." else null
-    RunPanel("video", "Make video  (~${Tools.fmtDuration(est.toLong())})", why == null, why, st) {
+    RunPanel(
+        "video", "Make video  (~${Tools.fmtDuration(est.toLong())})", why == null, why, st,
+        tonight = { _ ->
+            NightJob("video", "Video: ${prompt.trim().take(50)}", JSONObject().put("model", model!!.id).put("body",
+                Tools.videoBody(model.id, prompt.trim(), sz, secs, stp.toInt().takeIf { it > 0 }, seed.toLongOrNull(), images.firstOrNull()?.dataUri)))
+        },
+    ) {
         if (over && !longOk) {
             longOk = true
             return@RunPanel

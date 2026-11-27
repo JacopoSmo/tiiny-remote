@@ -4,6 +4,9 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** Something to make tonight: the kind of job, its title, and what the NAS agent needs for it. */
+data class NightJob(val kind: String, val title: String, val spec: JSONObject)
+
 /**
  * The phone's side of the NAS agent's jobs (agent 1.8): tests run on the NAS now or tonight, and things made in the
  * night shift. Sends them, follows them, and brings finished ones into the app (tests into Statistics, files into

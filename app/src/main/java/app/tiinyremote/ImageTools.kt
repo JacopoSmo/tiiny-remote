@@ -60,6 +60,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import kotlin.random.Random
+import org.json.JSONObject
 
 /*
  * The image workspace, laid out like Tiiny Studio's (static/image.js): Create, Edit and Text.
@@ -467,13 +468,12 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         else -> null
     }
     val tool = if (edit) "edit" else "image"
-    RunPanel(tool, (if (edit) "Apply edit" else "Generate") + "  ·  ~" + Tools.fmtDuration(Math.round(est).coerceAtLeast(1L)), why == null, why, st) {
+    // The prompt as sent (transparency and the chosen characters added) and the seed: the same for now and tonight.
+    fun prepared(): Pair<String, Long> {
         var pr = prompt.text.trim()
         if (transparent && transparentOk && !pr.contains("transparent background", true)) {
             pr = pr.trimEnd('.', ' ') + ". The image has an alpha channel and a transparent background."
         }
-        val neg = negative.trim()
-        val size = "${w}x$h"
         val picked = characters.filter { it.name in chosen }
         if (picked.isNotEmpty()) {
             // Word for word, every time: that is what keeps them looking the same.
@@ -481,12 +481,26 @@ internal fun ImageTool(model: ModelInfo?, notReady: String?, st: StudioViewModel
         }
         // A character's own seed, unless one was set here.
         val sd = seed.toLongOrNull() ?: picked.firstOrNull()?.seed ?: Random.nextLong(0, 1L shl 31)
+        return pr to sd
+    }
+    RunPanel(
+        tool, (if (edit) "Apply edit" else "Generate") + "  ·  ~" + Tools.fmtDuration(Math.round(est).coerceAtLeast(1L)), why == null, why, st,
+        tonight = { _ ->
+            val (pr, sd) = prepared()
+            val body = Tools.imageBody(mid, pr, negative.trim(), "${w}x$h", stp, if (cfgAuto) null else cfg.toDouble(), if (edit) images.map { it.dataUri } else emptyList())
+            NightJob("image", (if (edit) "Edit: " else "Image: ") + prompt.text.trim().take(50),
+                JSONObject().put("model", mid).put("body", body).put("count", n).put("seed", sd))
+        },
+    ) {
+        val (pr, sd) = prepared()
+        val neg = negative.trim()
+        val size = "${w}x$h"
         if (!seedLocked) seed = "" else seed = "$sd"
         val g = if (cfgAuto) null else cfg.toDouble()
         val srcs = if (edit) images.map { it.dataUri } else emptyList()
         val count = n
         // Previews come every 4 steps with Live preview on, every 8 with it off (shown only if it's switched on
-        // while the image is being made: the switch beside ✕ on the progress card).
+        // while the image is being made: the switch beside ■ Stop on the progress card).
         val every = if (livePreview) 4 else 8
         Tools.showPreview.value = livePreview
         st.run(tool) { c, store, p, _ -> Tools.image(c, store, mid, pr, neg, size, stp, sd, srcs, p, count, g, every) }

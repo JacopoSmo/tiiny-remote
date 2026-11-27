@@ -251,3 +251,32 @@ object QualityMath {
         JSONObject().put("id", it.id).put("title", it.title).put("prompt", it.prompt).put("rubric", it.rubric).put("max_tokens", it.maxTokens)
     })
 }
+
+/**
+ * What the tests and chats measured on this Tiiny, per model, as lines for the recommendation review (so the Tiiny's
+ * own numbers outrank general benchmarks). Empty when nothing was measured. No Android: checked by the automated tests.
+ */
+object Measured {
+    fun summary(speed: List<SpeedRecord>, quality: List<QualityRecord>, chats: List<StudioViewModel.ChatSpeed> = emptyList()): String {
+        val rates = HashMap<String, MutableList<Double>>()
+        val jobs = HashMap<String, MutableList<Double>>()
+        for (r in speed) {
+            if (!r.bigRate.isNaN()) rates.getOrPut(r.big) { ArrayList() } += r.bigRate
+            if (!r.smallRate.isNaN()) rates.getOrPut(r.small) { ArrayList() } += r.smallRate
+            if (!r.smallJob.isNaN()) jobs.getOrPut(r.small) { ArrayList() } += r.smallJob
+            if (!r.bigJob.isNaN()) jobs.getOrPut(r.big) { ArrayList() } += r.bigJob
+        }
+        for (c in chats) if (!c.rate.isNaN() && c.alone) rates.getOrPut(c.model.substringAfterLast('/')) { ArrayList() } += c.rate
+        val grade = quality.groupBy { it.model }.mapValues { (_, l) -> l.maxBy { it.at } }
+        val models = (rates.keys + jobs.keys + grade.keys).sorted()
+        if (models.isEmpty()) return ""
+        val lines = models.take(40).map { m ->
+            listOfNotNull(
+                rates[m]?.let { "writes ${SpeedMath.f(SpeedMath.median(it))} tok/s alone" },
+                jobs[m]?.let { "helper job ${SpeedMath.f(it.average())} s" },
+                grade[m]?.takeIf { !it.average.isNaN() }?.let { "quality ${SpeedMath.f(it.average)}/10 (graded by ${it.judge})" },
+            ).joinToString(", ").let { "$m: $it" }
+        }
+        return "Measured on this Tiiny (the user's own tests and chats; names as in the model list's last part):\n" + lines.joinToString("\n")
+    }
+}

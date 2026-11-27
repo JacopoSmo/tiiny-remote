@@ -713,7 +713,8 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
         sm.ace && bpm.isNotBlank() && (bpmN == null || bpmN !in 30..300) -> "Tempo is a number of beats per minute (30–300)."
         else -> null
     }
-    RunPanel("song", (if (usePreview) "Compose preview" else "Compose") + "  ·  ${about(est)}", why == null, why, st) {
+    // The song's settings as sent: the same for now and tonight.
+    fun config(): JSONObject {
         val cfg = JSONObject().put("caption", caption.trim()).put("generation_type", t).put("seed", seedOf(seed))
         if (vocals) cfg.put("lyrics", lyrics.text.trim())
         if (sm.styleRef) styleRef?.let { cfg.put("reference_audio_base64", android.util.Base64.encodeToString(it.bytes, android.util.Base64.NO_WRAP)) }
@@ -730,6 +731,18 @@ internal fun SongTool(model: ModelInfo?, notReady: String?, st: StudioViewModel,
             if (avoid.isNotBlank()) ace.put("negative_prompt", avoid.trim())
             if (ace.length() > 0) cfg.put("ace_step", ace)
         }
-        st.song(model!!.id, cfg, secs, usePreview)
+        return cfg
+    }
+    RunPanel(
+        "song", (if (usePreview) "Compose preview" else "Compose") + "  ·  ${about(est)}", why == null, why, st,
+        // Tonight: the whole song (a preview isn't worth a night); separate tracks need the model's own port, so one mix.
+        tonight = if (usePreview) null else { c ->
+            val cfg = config()
+            if (cfg.optString("generation_type") == "separate") cfg.put("generation_type", "mixed")
+            NightJob("music", "Song: ${caption.trim().take(50)}", JSONObject().put("model", model!!.id).put("config", cfg)
+                .put("seconds", secs).put("plain", Tools.songInfo(c, model.id).plain))
+        },
+    ) {
+        st.song(model!!.id, config(), secs, usePreview)
     }
 }
