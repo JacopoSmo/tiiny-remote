@@ -37,7 +37,7 @@ private fun pc(v: Double) = if (v.isNaN()) "—" else "${Math.round(v)}%"
 private fun short(name: String) = name.substringAfterLast('/')
 private fun median(l: List<Double>) = l.sorted().let { s -> if (s.size % 2 == 1) s[s.size / 2] else (s[s.size / 2 - 1] + s[s.size / 2]) / 2 }
 
-/** Settings → History: every speed test in a table, the best pairs, and each model's speed over all tests. */
+/** Test → 📊 Statistics: every speed test in a table, the best pairs, and each model's speed over all tests. */
 @Composable
 fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
     val all by st.tests.speedHistory.collectAsState()
@@ -118,7 +118,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                 for (line in learned) Text(line, style = MaterialTheme.typography.bodyMedium)
                 HorizontalDivider()
                 if (all.isEmpty()) {
-                    Text("No speed tests yet. Run one in Settings → Fast helper model.")
+                    Text("No speed tests yet. Run one in Test → Speed test.")
                     return@Column
                 }
                 // Best pairs: averaged over all their tests.

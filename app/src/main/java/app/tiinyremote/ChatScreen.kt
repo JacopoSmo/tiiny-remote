@@ -214,7 +214,7 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                                 )
                                 DropdownMenuItem(text = { Text((if (suggest) "☑ " else "☐ ") + "Suggestions") }, onClick = { toggleSuggest() })
                                 DropdownMenuItem(
-                                    text = { SignText(if (helperM == null) "☐ Helper: choose one in Settings" else (if (s.settings.helperOn) "☑ " else "☐ ") + "Helper " + sign("Helper")) },
+                                    text = { SignText(if (helperM == null) "☐ Helper: choose one in Test" else (if (s.settings.helperOn) "☑ " else "☐ ") + "Helper " + sign("Helper")) },
                                     enabled = helperM != null,
                                     onClick = { toggleHelper() },
                                 )

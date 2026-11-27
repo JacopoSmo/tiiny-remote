@@ -1,4 +1,4 @@
-# Tiiny Remote 4.0
+# Tiiny Remote 5.0
 
 An Android app to run a Tiiny AI Pocket Lab from your phone, at home or over WireGuard. It talks to the Tiiny
 the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
@@ -11,11 +11,17 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 - **Live strip:** online/offline, models loaded, helper on/off, NPU and CPU load (colour-coded), NPU memory and RAM
   in GB, power and temperature (when the Tiiny reports them); tap it for the full panel (main and helper model,
   what's working).
-- **Fast helper model:** a quick chat model (e.g. gpt-oss-20b) kept loaded beside the main one names new chats after
-  the first answer, suggests follow-ups, condenses long attached files, summarises, translates and rewrites, condenses long chats, runs the
-  writing helpers, and condenses web pages when it's at least 25% faster than the chat model (condensing can lose
-  details). A speed test (Settings, 1 or 3–5 runs, outliers left out) measures one model at a time against two at
-  once; 📊 Statistics shows all tests and the speed of normal chat answers.
+- **Test (5.0):** the fast helper model (a small chat model beside the main one that names chats, suggests follow-ups,
+  condenses long chats, files and, when it's clearly faster, web pages; ⚡ in the chat's options switches it), the
+  **speed test** (alone vs. at once, a real helper job in seconds, the repeated start, up to 3 helpers × 9 main models
+  in one go), the **quality test** (the same 8 tasks for up to 9 models, graded blind by the strongest one) and the
+  **NPU faults** seen per pair of models (loading such a pair asks first). 📊 Statistics keeps every result, the waits
+  in your chats and what load ahead has learned. With the NAS agent, tests run on the NAS, now or tonight.
+- **Background efficiency tools (5.0):** the **night shift** (the NAS agent works through a night queue of tests,
+  images, edits, videos and songs, sent with 🌙 Tonight; results in the app and a report in the morning) and **load
+  ahead** (learns when you use which model; Suggest offers it, Automatic loads it into free room).
+- **Recommended models:** 👍 in every model menu, a table with why, and ✦ a review by the Tiiny's own AI that weighs
+  your own speed and quality measurements.
 - **Chat:** several chats side by side, saved on the phone, with a Thinking slider (Off, Auto, Low, Medium, High,
   Max), "Can make things" (images, voice, music from the chat), images and files attached with ＋ (PDF, Word, Excel,
   PowerPoint, text, read on the phone), 🎤 dictation with the Tiiny's speech-to-text, History with each chat's last
@@ -25,7 +31,8 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 - **Code:** projects on the phone and a coding model on the Tiiny: Ask, Build (it writes the files), Learn; files to
   edit, a web-page preview, Share as .zip and GitHub (import, push, new private repository).
 - **Automate:** agents and processes at set times (news, web, calendar, email via IMAP, read-only), on the phone or
-  around the clock on a NAS with the NAS agent (`nas-agent/`, a small Docker service).
+  around the clock on a NAS with the NAS agent (`nas-agent/`, a small Docker service, 2.0). Results can be sorted,
+  marked, shared and deleted (Undo), on the NAS too.
 - **Translate:** typed text, a photo or speech.
 - **Create:** 3D · Audio · Image · Text · Video, each with its choices: (create, edit, read text), voice (built-in, described or cloned), transcription, loops and
   songs, video, 3D models, text embedding, reranking and classification. Results are kept in the Gallery (search,
@@ -50,8 +57,11 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 
 ## Install
 
+Each build first runs the automated checks (the app's calculations and the NAS agent, end to end against a stand-in
+Tiiny); a failing check stops the release.
+
 Every push to `main` builds the app on GitHub. Open this repository's **Releases** on the phone, download the
-newest `TiinyRemote-4.0.x.apk` (the one marked Latest) and open it. Newer builds install over the old one and keep your settings.
+newest `TiinyRemote-5.0.x.apk` (the one marked Latest) and open it. Newer builds install over the old one and keep your settings.
 
 Pre-releases named "Tiiny Remote Experimental" come from the `experimental` branch and install as a separate app,
 "Tiiny Remote Exp", with its own settings; they're for trying new features and never marked Latest.

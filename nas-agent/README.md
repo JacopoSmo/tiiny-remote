@@ -1,10 +1,20 @@
-# Tiiny Remote NAS agent
+# Tiiny Remote NAS agent 2.0
 
-Runs the automations you mark **"on the NAS"** in Tiiny Remote around the clock, also when your phone is off or away.
-The app sends it those automations and what they need; the agent runs them at their time and keeps the results,
-which the app shows under **Automate → Results** (and, if you like, pushes to your phone via ntfy).
+Works for Tiiny Remote around the clock, also when your phone is off or away:
 
-It's one small Python file using only the standard library, in a Docker container. Automations run one at a time (a second one waits for the first), on your phone's time zone, which the app sends.
+- **Automations** you mark "on the NAS", at their time; the results show under **Automate → Results** (and, if you
+  like, come to your phone via ntfy).
+- **Tests** from the app's **Test** page (speed and quality), run now or tonight; the app turns what the agent measured
+  into results exactly as it does for tests on the phone.
+- **The night shift** (agent 2.0): in the hours set in the app (Settings → Background efficiency tools) it works through
+  the night queue: tests, and images, edits, videos and songs sent with 🌙 Tonight. It loads the models each job needs and
+  puts back the ones that were loaded before; in the morning the app brings the results in (made files into the
+  Gallery) and a report comes as a notice and under Automate → Results.
+- **Load ahead** (Automatic): loads the model you usually use shortly before the hour, into free NPU room only.
+- **Backups**, encrypted on the phone before they arrive.
+
+It's one Python file using only the standard library, in a Docker container. One thing at a time on the Tiiny (an
+automation waits for a night job and the other way round), on your phone's time zone, which the app sends.
 
 ## Set it up (Ugreen NAS, or any Docker host on your home network)
 
@@ -44,7 +54,7 @@ Lost the token? The NAS still has it: `grep AGENT_TOKEN ~/tiiny-agent/docker-com
 The image is built from this folder by GitHub Actions (`ghcr.io/jacoposmo/tiiny-remote-agent`). If you'd rather build it
 yourself, replace the `image:` line with `build: https://github.com/JacopoSmo/tiiny-remote.git#main:nas-agent`.
 
-## Encrypted link and backups (agent 1.7)
+## Encrypted link and backups (agent 1.7 and newer)
 
 - **Encrypted link:** the agent makes its own certificate on first start (kept in the data volume, `/data/tls`). The app
   trusts the one it meets first and from then on only that one, so the token, your Tiiny key and the email password
@@ -56,6 +66,10 @@ yourself, replace the `image:` line with `build: https://github.com/JacopoSmo/ti
   leaves; the agent only stores the files (`/data/backups`, the newest five, at most 20 GB each) and can't read them.
 
 ## What it does and doesn't
+
+- **Jobs** (agent 2.0): at most 50 waiting; one at a time; Stop from the app after the current step or at once. Made
+  files wait in the data volume (`/data/jobs`) until the app has fetched them, at most two weeks. When the Tiiny reports
+  an NPU fault during a job, the app is told which models were on it.
 
 - **Processes:** news or web search (your SearXNG if set in the app, else DuckDuckGo), calendar (iCal link; daily and
   weekly repeats included), email (IMAP, read-only) → the model → the result.

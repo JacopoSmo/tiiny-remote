@@ -8,7 +8,7 @@ import org.json.JSONObject
 data class NightJob(val kind: String, val title: String, val spec: JSONObject)
 
 /**
- * The phone's side of the NAS agent's jobs (agent 1.8): tests run on the NAS now or tonight, and things made in the
+ * The phone's side of the NAS agent's jobs (agent 2.0): tests run on the NAS now or tonight, and things made in the
  * night shift. Sends them, follows them, and brings finished ones into the app (tests into Statistics, files into
  * the Gallery, NPU faults into the fault log), then has the NAS delete its copy.
  */
@@ -99,7 +99,7 @@ object NightShift {
 
     /**
      * Fetches every finished job not yet brought in (and deletes it on the NAS). Quietly does nothing without a NAS
-     * agent, or with one older than 1.8. Returns the texts of what came in, and the jobs still waiting or running.
+     * agent, or with one older than 2.0. Returns the texts of what came in, and the jobs still waiting or running.
      */
     fun sync(ctx: Context, st: StudioViewModel, skip: Set<String> = emptySet()): Pair<List<String>, List<NasAgent.NasJob>> {
         if (!ready(ctx)) return emptyList<String>() to emptyList()

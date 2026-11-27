@@ -785,8 +785,9 @@ object NasAgent {
             }
             val code = conn.responseCode
             val text = (if (code >= 400) conn.errorStream else conn.inputStream)?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
-            if (log || code >= 400) ApiLog.add("NAS agent: $method $path -> HTTP $code", "Automate", isProblem = code >= 400)
+            if (log || (code >= 400 && code != 404)) ApiLog.add("NAS agent: $method $path -> HTTP $code", "Automate", isProblem = code >= 400)
             if (code == 401) throw MediaException(REFUSED)
+            if (code == 404 && !log) throw MediaException("The NAS agent answered HTTP 404.")
             if (code == 426) throw MediaException("The NAS agent only takes the encrypted link, and this connection wasn't encrypted. Tap Test again; if it stays, tap \"Forget certificate\" in Connectors → NAS agent.")
             if (code >= 400) throw MediaException("The NAS agent answered HTTP $code.")
             return code to text
@@ -804,7 +805,8 @@ object NasAgent {
                 ApiLog.add("NAS agent: $method $path -> HTTP 401 (token refused)", "Automate", isProblem = true)
                 throw MediaException(REFUSED)
             }
-            ApiLog.add("NAS agent: $method $path -> ${e.javaClass.simpleName}: ${e.message}", "Automate", isProblem = true)
+            // Quiet checks (the background sync, away from home say) don't fill the log with "not reachable".
+            if (log) ApiLog.add("NAS agent: $method $path -> ${e.javaClass.simpleName}: ${e.message}", "Automate", isProblem = true)
             throw MediaException("The NAS agent isn't reachable at $base (${e.message ?: e.javaClass.simpleName}). Is the address right, and the container running?")
         } finally {
             conn.disconnect()
@@ -845,7 +847,7 @@ object NasAgent {
     // ---- Backups (agent 1.7+), each already encrypted on the phone (Backup.kt).
 
     private const val OLD_AGENT = "Backups need NAS agent 1.7 or newer: update it (Automate → Connectors → Set up NAS, step 5)."
-    private const val OLD_JOBS = "Tests and the night shift on the NAS need NAS agent 1.8 or newer: update it (Automate → Connectors → Set up NAS, step 5)."
+    private const val OLD_JOBS = "Tests and the night shift on the NAS need NAS agent 2.0 or newer: update it (Automate → Connectors → Set up NAS, step 5)."
 
     fun backups(c: Connectors): List<Backup.Entry> = try {
         Backup.parseList(call(c, "GET", "/backups").second)
@@ -945,7 +947,7 @@ object NasAgent {
         call(c, "PUT", "/config", cfg, 20)
     }
 
-    // ---------- jobs: tests and the night shift (agent 1.8) ----------
+    // ---------- jobs: tests and the night shift (agent 2.0) ----------
 
     /** A job on the NAS as it reports it (without what it was sent). */
     data class NasJob(
@@ -965,7 +967,7 @@ object NasAgent {
         }
     }
 
-    /** Sends a job; [whenToRun] "now" or "night". An agent older than 1.8 has no jobs: said so. */
+    /** Sends a job; [whenToRun] "now" or "night". An agent older than 2.0 has no jobs: said so. */
     fun addJob(c: Connectors, kind: String, whenToRun: String, title: String, spec: JSONObject): NasJob = try {
         NasJob.from(JSONObject(call(c, "POST", "/jobs", JSONObject().put("kind", kind).put("when", whenToRun).put("title", title).put("spec", spec), 60).second))
     } catch (e: MediaException) {
@@ -1001,7 +1003,7 @@ object NasAgent {
         }
     }
 
-    /** Results deleted in the app go on the NAS too (agent 1.8; older ones keep them, harmlessly). */
+    /** Results deleted in the app go on the NAS too (agent 2.0; older ones keep them, harmlessly). */
     fun deleteRuns(c: Connectors, ids: Collection<String>) {
         if (ids.isEmpty()) return
         try {

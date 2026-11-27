@@ -1,5 +1,40 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 5.0.0 (NAS agent 2.0.0)
+A big step: a Test page, the night shift on the NAS, load ahead, a quality test, and automated checks on every build.
+Update the NAS agent too (Automate → Connectors → Set up NAS, step 5): tests on the NAS and the night shift need 2.0.
+
+**Test (new in the sidebar, after Automate)**
+- **Fast helper model**, moved here from Settings.
+- **Speed test:** now also times a real helper job and checks the **repeated start** (whether the Tiiny reuses what it
+  has read, which would let long chats start sooner). Up to 3 helpers × 9 main models in one go.
+- **Quality test (new):** up to 9 models answer the same 8 tasks (summary, translation, reasoning, arithmetic, code,
+  data extraction, a German letter, following instructions); the strongest chat model grades each task's answers side
+  by side, blind. 📊 Results keeps every grade.
+- **On the NAS:** with the agent set up, tests run there (the phone can sleep; Stop reaches them); without it, on the phone.
+- **NPU faults per pair:** each fault the Tiiny reports is noted with the models on the NPU. From two faults on, loading
+  that pair asks first: unload one first, load anyway, or don't warn again.
+- **📊 Statistics:** the wait until the first word and until the answer in your chats (by chat length), and what load
+  ahead has learned.
+
+**Settings → Background efficiency tools (new)**
+- **Night shift:** in the hours you set, the NAS agent works through the night queue: tests, and images, edits, videos
+  and songs sent with **🌙 Tonight** (under the start button in Create, and on the Test page). It loads what each job
+  needs and puts your models back; in the morning the results are in the app (files in the Gallery) and a report comes
+  as a notice and under Automate → Results. The queue is shown there, each job with ✕.
+- **Load ahead:** learns when you use which model (from two days in the last four weeks). Suggest: a line in Chat and
+  Start offers it. Automatic: loaded shortly before the hour into free NPU room, never unloading anything (by the NAS
+  agent when it's set up, so also while the phone sleeps).
+
+**More**
+- **Recommendations** weigh your own measurements (speed, helper job, quality) over general benchmarks.
+- **Automate → Results:** sort (newest, oldest, by automation, problems first); long-press to mark, then All, Share or
+  Delete (Undo), as in the Gallery. Deleting a NAS result deletes it on the NAS too.
+- **Start:** Speed test and Quality test tiles, with the latest result.
+- **Automated checks** on every build: the speed and quality numbers, fault pairs, load ahead, and the NAS agent end to
+  end against a stand-in Tiiny. A failing check stops the release, and the agent image too.
+- **Leaner code:** the big screen files split into one per page; the tests have their own part of the app.
+
 ## What's new in 4.7.0 (NAS agent 1.7.0, unchanged)
 Everything from the 4.6.1–4.6.10 test builds, plus another review (programmer, white-hat, attacker), fonts, pictograms and wording included, and a pass for leaner code.
 

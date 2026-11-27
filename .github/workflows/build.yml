@@ -33,7 +33,7 @@ jobs:
           echo "SIGNING_STORE_FILE=$RUNNER_TEMP/signing.keystore" >> "$GITHUB_ENV"
 
       - name: Version number
-        run: echo "APP_VERSION=4.7.$(( ${{ github.run_number }} - 165 ))" >> "$GITHUB_ENV"
+        run: echo "APP_VERSION=5.0.$(( ${{ github.run_number }} - 175 ))" >> "$GITHUB_ENV"
 
       - name: Automated checks (the NAS agent, then the app); a failing check stops the release
         run: |

@@ -61,7 +61,7 @@ fun loadColor(v: Double?): Color = when {
 }
 
 /**
- * Which loaded chat model is the main one and which the fast helper (Settings): the helper is the chosen one when it's
+ * Which loaded chat model is the main one and which the fast helper (Test): the helper is the chosen one when it's
  * loaded beside another chat model; the main one is the chat's pick, else the other loaded chat model.
  */
 internal fun chatRoles(s: UiState, studio: StudioViewModel): Pair<ModelInfo?, ModelInfo?> {
@@ -345,7 +345,7 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                             helper != null -> "Helper active: ${helper.name.substringAfterLast('/')} names chats, suggests follow-ups, condenses long chats (and web pages when it's at least 25% faster)."
                             chosen.isNotBlank() && running.any { it.id == chosen } -> "Helper loaded, but no other chat model: it works as the main model."
                             chosen.isNotBlank() -> "Helper not active: ${s.models.firstOrNull { it.id == chosen }?.name?.substringAfterLast('/') ?: "it"} isn't loaded, so the chat model does everything."
-                            running.count { it.isChat } > 1 -> "Two chat models loaded, but no helper chosen (Settings → Fast helper model)."
+                            running.count { it.isChat } > 1 -> "Two chat models loaded, but no helper chosen (Test → Fast helper model)."
                             else -> null
                         }
                         if (helperLine != null) Text(helperLine, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

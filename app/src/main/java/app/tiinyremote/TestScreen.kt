@@ -604,7 +604,7 @@ internal fun BackgroundTools(s: UiState, vm: MainViewModel, st: StudioViewModel)
         Column(Modifier.weight(1f)) {
             Text("Night shift", style = MaterialTheme.typography.bodyLarge)
             Text(
-                "The NAS agent works through the night queue (🌙 Tonight beside Generate, and the tests) in this window, " +
+                "The NAS agent works through the night queue (🌙 Tonight under a start button in Create, and on the Test page) in these hours, " +
                     "loading the models each job needs; in the morning the results are in the app and a report comes as a notice.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -614,7 +614,7 @@ internal fun BackgroundTools(s: UiState, vm: MainViewModel, st: StudioViewModel)
     }
     if (cur.nightShift) {
         if (!nas) Text(
-            "It needs the NAS agent (1.8 or newer): Automate → Connectors → NAS agent.",
+            "It needs the NAS agent (2.0 or newer): Automate → Connectors → NAS agent.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
         )

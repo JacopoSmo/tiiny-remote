@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "1.8.0"
+VERSION = "2.0.0"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -657,7 +657,7 @@ def run(a, app="normal"):
     try:
         # One at a time: a second automation waits (at most 15 minutes) for the first to finish.
         if not RUN_LOCK.acquire(timeout=DEADLINE_S):
-            raise RuntimeError("Another automation kept the Tiiny busy for 15 minutes; this one didn't run.")
+            raise RuntimeError("Another automation or a night-shift job kept the Tiiny busy for 15 minutes; this one didn't run.")
         try:
             started = time.time()
             model = pick_model(a, started)
@@ -710,7 +710,7 @@ def scheduler():
         time.sleep(20)
 
 
-# ---------- jobs: tests and the night shift (1.8) ----------
+# ---------- jobs: tests and the night shift (2.0) ----------
 #
 # The app sends jobs: a speed or quality test, or something to make (image, video, music, speech, a chat answer).
 # "now" jobs start at once; "night" jobs wait for the night shift's hours (the app's Settings → Background efficiency

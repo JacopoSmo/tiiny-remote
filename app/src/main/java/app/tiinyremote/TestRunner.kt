@@ -39,7 +39,7 @@ class Tests(
     /**
      * Sends a test to the NAS agent. [night]: queued for the night shift. Else it runs now on the NAS, followed here
      * in [flow] like a phone test (and Stop reaches it); the models stay untouched by the phone meanwhile. When the
-     * NAS can't take it (unreachable, older than 1.8), [fallback] runs it on the phone.
+     * NAS can't take it (unreachable, older than 2.0), [fallback] runs it on the phone.
      */
     private fun onNas(flow: MutableStateFlow<String?>, kind: String, title: String, spec: JSONObject, night: Boolean, fallback: () -> Unit) {
         if (night) {
@@ -218,7 +218,7 @@ class Tests(
         }
     }
 
-    /** The models chosen for the speed test of several pairs (Settings → Fast helper model): ids, in order. */
+    /** The models chosen for the speed test of several pairs (Test → Speed test): ids, in order. */
     fun speedSet(key: String): List<String> = prefs.getString("set_speed.$key", null).orEmpty().split('\n').filter { it.isNotBlank() }
     fun setSpeedSet(key: String, ids: List<String>) = prefs.edit().putString("set_speed.$key", ids.joinToString("\n")).apply()
 
