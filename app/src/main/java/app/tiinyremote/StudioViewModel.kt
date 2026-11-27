@@ -1594,14 +1594,17 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         _speed.value = "Testing…"
         viewModelScope.launch {
             try {
-                val out = withContext(Dispatchers.IO) { measurePair(client(), big, small, n, "") }
+                val out = withContext(Dispatchers.IO) { measurePair(client().also { speedClient = it }, big, small, n, "") }
                 _speed.value = out
                 ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
                 Notifier.done(getApplication(), "Speed test finished", out)
             } catch (e: Exception) {
-                _speed.value = "Speed test failed: ${e.message}"
-                ApiLog.add("Speed test failed: ${e.message}", "Chat")
+                _speed.value = if (speedStop) "Speed test stopped." else "Speed test failed: ${e.message}"
+                ApiLog.add(if (speedStop) "Speed test stopped" else "Speed test failed: ${e.message}", "Chat")
             } finally {
+                speedStop = false
+                _speedStopping.value = false
+                speedClient = null
                 NpuGate.testing = false
                 deviceBusy.set(false)
             }
@@ -1612,8 +1615,26 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     fun speedSet(key: String): List<String> = setting("speed.$key", "").split('\n').filter { it.isNotBlank() }
     fun setSpeedSet(key: String, ids: List<String>) = setSetting("speed.$key", ids.joinToString("\n"))
 
-    /** Ends a test of several pairs at its next pause (the pair being measured is left unfinished, not saved). */
-    fun stopSpeedTest() { speedStop = true }
+    /** The client of the running speed test, for Cancel now. */
+    @Volatile
+    private var speedClient: DeviceClient? = null
+    private val _speedStopping = MutableStateFlow(false)
+    /** The first tap asked the test to stop: the button now offers Cancel now. */
+    val speedStopping: StateFlow<Boolean> = _speedStopping.asStateFlow()
+
+    /**
+     * First tap: the test stops after the current step (that step's answer isn't saved). Second tap: Cancel now, the
+     * waiting requests are broken off at once. Models loaded before a test of several pairs are still loaded back.
+     */
+    fun stopSpeedTest() {
+        if (_speedStopping.value) {
+            ApiLog.add("Speed test: cancelled now", "Chat")
+            speedClient?.abortAll()
+        } else {
+            speedStop = true
+            _speedStopping.value = true
+        }
+    }
 
     /**
      * The speed test for every chosen main model with every chosen helper ([runs] times each), one pair after the
@@ -1639,7 +1660,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             var done = 0
             try {
                 withContext(Dispatchers.IO) {
-                    val c = client()
+                    val c = client().also { speedClient = it }
                     val before = Tools.runningIds(c)
                     val p = Progress({ msg, _ -> _speed.value = "Testing: $msg…" }, { speedStop })
                     // Asks every 10 s whether the Tiiny answers again, for up to 3 minutes.
@@ -1728,6 +1749,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 ApiLog.add("Speed test of several pairs failed: ${e.message}", "Chat", isProblem = true)
             } finally {
                 speedStop = false
+                _speedStopping.value = false
+                speedClient = null
                 NpuGate.testing = false
                 deviceBusy.set(false)
                 Background.set(app, "speed", null)

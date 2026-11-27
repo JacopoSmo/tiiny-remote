@@ -2054,7 +2054,21 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
         if (history) SpeedHistoryDialog(st) { history = false }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (testing && batch) OutlinedButton(onClick = { st.stopSpeedTest() }, modifier = Modifier.weight(1f)) { BtnLabel("Stop after this step", symbol = "■") }
+            // Red: the first tap stops after this step, the second cancels at once.
+            if (testing) {
+                val stopping by st.speedStopping.collectAsState()
+                if (stopping) Button(
+                    onClick = { st.stopSpeedTest() },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+                    modifier = Modifier.weight(1f),
+                ) { BtnLabel("Stopping after this step · tap to cancel now", symbol = "✕") }
+                else OutlinedButton(
+                    onClick = { st.stopSpeedTest() },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                    modifier = Modifier.weight(1f),
+                ) { BtnLabel("Stop after this step", symbol = "■") }
+            }
             else if (batch) OutlinedButton(
                 onClick = {
                     st.speedTestAll(

@@ -44,8 +44,18 @@ class DeviceClient(url: String, private val key: String) {
 
     fun quote(s: String) = TiinyApi.quote(s)
 
+    /** Connections this client has open (held weakly: finished ones drop out by themselves). */
+    private val live = java.util.Collections.synchronizedSet(java.util.Collections.newSetFromMap(java.util.WeakHashMap<HttpURLConnection, Boolean>()))
+
+    /** Breaks off every request of this client that is still waiting (Cancel now): each ends with a lost connection. */
+    fun abortAll() {
+        val all = synchronized(live) { live.toList() }
+        all.forEach { runCatching { it.disconnect() } }
+    }
+
     private fun open(method: String, path: String, timeoutSec: Int): HttpURLConnection {
         val conn = URL(base + path).openConnection() as HttpURLConnection
+        live += conn
         conn.requestMethod = method
         conn.connectTimeout = 10_000
         conn.readTimeout = timeoutSec * 1000
