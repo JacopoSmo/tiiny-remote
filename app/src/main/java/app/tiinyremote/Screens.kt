@@ -1926,6 +1926,11 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         val chatModels = s.models.filter { it.isChat }
         // 👍 the recommended helpers (Settings → Display → Recommended models), a missing one offered below.
         val helperRecs = if (s.settings.showRecs) Recs.forTasks(listOf("helper")) else emptyList()
+        // And those the speed tests found about as quick at a helper's job.
+        val speedRecords by st.speedHistory.collectAsState()
+        val measuredOk = remember(speedRecords, chatModels, helperRecs) {
+            if (s.settings.showRecs) st.measuredHelpers(chatModels, helperRecs.map { it.id }.toSet()) else emptySet()
+        }
         val helperM = chatModels.firstOrNull { it.id == helper }
         Row(verticalAlignment = Alignment.CenterVertically) {
           Box(Modifier.weight(1f)) {
@@ -1935,7 +1940,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             listOf("" to "None (the chat model does everything)") + chatModels.map { m ->
                 // No-break spaces: the ● stays in front of its name, even when a long name wraps.
                 m.id to (if (m.running) "●\u00A0" else "") + m.name + (if (m.isMoE) "\u00A0\u00A0" + tag("MoE") else "") +
-                    (helperRecs.firstOrNull { it.id == m.id }?.let { "\u00A0\u00A0👍" } ?: "")
+                    (if (helperRecs.any { it.id == m.id } || m.id in measuredOk) "\u00A0\u00A0👍" else "")
             },
             helper,
         ) {
@@ -2010,7 +2015,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 )
                 // Two lists of checkboxes: (title, the chosen and the recommended, how many at most, save).
                 // 👍: recommended as helper, or as chat model (Settings → Display → Recommended models).
-                val recHelpers = if (s.settings.showRecs) Recs.forTasks(listOf("helper")).map { it.id }.toSet() else emptySet()
+                val recHelpers = if (s.settings.showRecs) Recs.forTasks(listOf("helper")).map { it.id }.toSet() + measuredOk else emptySet()
                 val recMains = if (s.settings.showRecs) Recs.forTasks(Recs.tasksFor("chat")).map { it.id }.toSet() else emptySet()
                 for ((title, lists, most, put) in listOf(
                     Quad("Helpers (up to 3)", testHelpers to recHelpers, 3) { l: List<String> -> testHelpers = l; st.setSpeedSet("helpers", l) },

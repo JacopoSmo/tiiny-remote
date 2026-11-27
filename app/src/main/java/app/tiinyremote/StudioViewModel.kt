@@ -1541,6 +1541,23 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     /** Every speed test, newest first (the last 100). */
     val speedHistory: StateFlow<List<SpeedRecord>> = _speedHistory.asStateFlow()
 
+    /**
+     * Models the speed tests found about as quick at the helper job (within 15%) as the quickest measured
+     * recommended helper, and no heavier on the NPU than the heaviest recommended one (+5 points): 👍 too.
+     */
+    fun measuredHelpers(models: List<ModelInfo>, recIds: Set<String>): Set<String> {
+        val jobs = (_speedHistory.value.map { it.small to it.smallJob } + _speedHistory.value.map { it.big to it.bigJob })
+            .filter { !it.second.isNaN() }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, l) -> l.average() }
+        val recs = models.filter { it.id in recIds }
+        val best = recs.mapNotNull { jobs[it.name] }.minOrNull() ?: return emptySet()
+        val heaviest = recs.mapNotNull { it.npuUsage }.maxOrNull() ?: return emptySet()
+        return models.filter { m ->
+            m.id !in recIds && (m.npuUsage ?: 100.0) <= heaviest + 5 && (jobs[m.name] ?: Double.MAX_VALUE) <= best * 1.15
+        }.map { it.id }.toSet()
+    }
+
     private fun loadSpeedHistory(): List<SpeedRecord> = try {
         val a = JSONArray(prefs.getString("speed_history", "[]"))
         (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SpeedRecord.from(o) } }
