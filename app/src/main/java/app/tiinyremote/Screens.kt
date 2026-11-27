@@ -1987,7 +1987,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             ?: chatModels.firstOrNull { it.running && it.id != helper }
         var speedInfo by remember { mutableStateOf(false) }
         var history by remember { mutableStateOf(false) }
-        // Several pairs at once: up to 3 helpers × up to 6 main models, each pair loaded and tested in turn.
+        // Several pairs at once: up to 3 helpers × up to 9 main models, each pair loaded and tested in turn.
         val byName = chatModels.sortedBy { it.name.lowercase() }
         var testHelpers by remember { mutableStateOf(st.speedSet("helpers").filter { id -> chatModels.any { it.id == id } }) }
         var testMains by remember { mutableStateOf(st.speedSet("mains").filter { id -> chatModels.any { it.id == id } }) }
@@ -2014,7 +2014,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 val recMains = if (s.settings.showRecs) Recs.forTasks(Recs.tasksFor("chat")).map { it.id }.toSet() else emptySet()
                 for ((title, lists, most, put) in listOf(
                     Quad("Helpers (up to 3)", testHelpers to recHelpers, 3) { l: List<String> -> testHelpers = l; st.setSpeedSet("helpers", l) },
-                    Quad("Main models (up to 6)", testMains to recMains, 6) { l: List<String> -> testMains = l; st.setSpeedSet("mains", l) },
+                    Quad("Main models (up to 9)", testMains to recMains, 9) { l: List<String> -> testMains = l; st.setSpeedSet("mains", l) },
                 )) {
                     val (chosen, recd) = lists
                     HorizontalDivider()
@@ -2069,7 +2069,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 batch && pairs == 0 -> "Choose at least one helper and one other main model."
                 batch -> "Tests $pairs pair${if (pairs != 1) "s" else ""} one after the other, ${if (cur.speedRuns == 1) "once" else "${cur.speedRuns} times"} each: " +
                     "only that pair is loaded for its test, your models are loaded back at the end. " +
-                    "About ${Tools.fmtDuration(pairs * (cur.speedRuns * 2L + 2) * 60)}; it keeps going in the background. Each pair goes to 📊 Statistics."
+                    "About ${Tools.fmtDuration(pairs * (cur.speedRuns * 3L + 2) * 60)}; it keeps going in the background. Each pair goes to 📊 Statistics."
                 helper.isBlank() -> "Choose a helper first."
                 small == null -> "Load the helper and your chat model to run the speed test."
                 big == null -> "Load your chat model too to run the speed test."

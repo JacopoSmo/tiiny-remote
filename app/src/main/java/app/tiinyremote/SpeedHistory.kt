@@ -89,11 +89,25 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                 }.sortedByDescending { it.second }
                 for ((k, gain, count) in pairs) {
                     val pagesToo = all.firstOrNull { it.big == k.first && it.small == k.second }?.let { it.smallRate >= it.bigRate * 1.25 } == true
+                    val jobs = all.filter { it.big == k.first && it.small == k.second && !it.smallJob.isNaN() }
                     Text(
                         "${short(k.first)} + ${short(k.second)}: ${pc(gain)} sooner together · $count test${if (count == 1) "" else "s"}" +
+                            (if (jobs.isNotEmpty()) " · helper job ${n1(jobs.map { it.smallJob }.average())} s (main ${n1(jobs.map { it.bigJob }.average())} s)" else "") +
                             if (pagesToo) " · helper condenses pages" else "",
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                }
+                // The helper job: seconds until a condensed chat is done, as the app asks for it (thinking included).
+                val jobTimes = (all.map { it.small to it.smallJob } + all.map { it.big to it.bigJob })
+                    .filter { !it.second.isNaN() }
+                    .groupBy({ it.first }, { it.second })
+                    .map { (m, l) -> Triple(m, l.average(), l.size) }
+                    .sortedBy { it.second }
+                if (jobTimes.isNotEmpty()) {
+                    Text("Helper job, quickest first (seconds to condense a chat)", style = MaterialTheme.typography.titleMedium)
+                    for ((m, secs, count) in jobTimes) {
+                        Text("${short(m)}: ${n1(secs)} s · $count measurement${if (count == 1) "" else "s"}", style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
                 // Each model's speed alone, whichever role it had.
                 Text("Models, fastest first (alone, tokens per second)", style = MaterialTheme.typography.titleMedium)
@@ -115,7 +129,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                 // The table scrolls sideways on narrow screens.
                 Column(Modifier.horizontalScroll(rememberScrollState())) {
                     val cols = listOf("When" to 92.dp, "Main" to 150.dp, "Helper" to 150.dp, "Main t/s" to 64.dp, "Helper t/s" to 72.dp,
-                        "Together" to 70.dp, "Helper ×2" to 70.dp, "Runs" to 44.dp)
+                        "Together" to 70.dp, "Helper ×2" to 70.dp, "Helper job" to 72.dp, "Main job" to 64.dp, "Runs" to 44.dp)
                     Row { for ((h, w) in cols) Cell(h, w, bold = true) }
                     HorizontalDivider()
                     for (r in rows) Row {
@@ -126,12 +140,15 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
                         Cell(n1(r.smallRate), cols[4].second)
                         Cell(pc(r.bothGain), cols[5].second)
                         Cell(pc(r.helperGain), cols[6].second)
-                        Cell(r.runs.toString() + if (r.outliers > 0) "*" else "", cols[7].second)
+                        Cell(if (r.smallJob.isNaN()) "—" else "${n1(r.smallJob)} s", cols[7].second)
+                        Cell(if (r.bigJob.isNaN()) "—" else "${n1(r.bigJob)} s", cols[8].second)
+                        Cell(r.runs.toString() + if (r.outliers > 0) "*" else "", cols[9].second)
                     }
                 }
                 Text(
                     "Together: how much sooner both models finished at once than one after the other. Helper ×2: the same for " +
-                        "the helper twice (usually 0%: the Tiiny takes one model's requests in turn). * outliers were left out.",
+                        "the helper twice (usually 0%: the Tiiny takes one model's requests in turn). Helper job / Main job: seconds until " +
+                        "each condenses the same chat, as the app asks (with any thinking): the real wait for a side job. * outliers were left out.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -175,6 +175,23 @@ private const val FILE_SUMMARY_SYSTEM = "Condense this document for later questi
 private const val TITLE_SYSTEM = "Give this conversation a short title of 3 to 6 words in the user's language. " +
     "Reply with the title only: no quotes, no final period."
 
+/** A made-up earlier chat for the speed test's helper job: the same text every time, so tests compare. */
+private val JOB_TEXT = buildString {
+    val turns = listOf(
+        "User: I'm planning a four-day trip to Lisbon in March with my sister. We like food, old neighbourhoods and views, not museums.",
+        "Assistant: Base yourselves in Baixa or Chiado: flat streets, the tram 28 stop and the river close by. Day 1 Alfama and the castle, day 2 Belém for pastries and the river walk, day 3 a day trip to Sintra, day 4 LX Factory and the Bairro Alto viewpoints.",
+        "User: Sintra sounds crowded. Is Cascais better? And how do we get there?",
+        "Assistant: Cascais is calmer: a beach town 40 minutes by train from Cais do Sodré, trains every 20 minutes, about 2.30 euros each way. Sintra is busiest from 10 to 4; go early or skip it.",
+        "User: We'll do Cascais. Budget is about 120 euros a day for both of us, rooms not included. Where should we eat on day 1?",
+        "Assistant: In Alfama, try a tasca for grilled sardines and vinho verde, around 30 euros for two. In the evening a fado house; book ahead, the better ones fill up by 8.",
+        "User: My sister doesn't eat fish. Also we land at 11 on Thursday and fly back Sunday at 18.",
+        "Assistant: Then day 1 starts after lunch: Alfama and the castle in the afternoon, dinner at a place with grilled chicken or bifana. Sunday you have the morning: LX Factory opens at 10, the airport is 25 minutes by metro, leave by 15.",
+        "User: Good. Can we fit a cooking class somewhere? And is the Lisboa Card worth it for us?",
+        "Assistant: A pastel de nata class takes 2 hours, about 40 euros each; Saturday morning fits. The Lisboa Card pays off with many museums; for you, a Viva Viagem card with zapping credit is cheaper.",
+    )
+    turns.forEach { append(it).append("\n\n") }
+}
+
 private const val CONDENSE_SYSTEM = "Summarise this earlier part of a conversation so the assistant can continue it: " +
     "what the user wants, facts and decisions so far, names, numbers and open questions. Keep it under 300 words, " +
     "as plain notes. Reply with the summary only."
@@ -1731,7 +1748,22 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             val tokens = o.optJSONObject("usage")?.optInt("completion_tokens", 0)?.takeIf { it > 0 } ?: maxOf(1, written / 4)
             return tokens to secs
         }
+        /** Seconds until a typical helper job is done: condensing an earlier chat, asked exactly as the app asks it. */
+        fun job(model: String): Double {
+            var t0 = System.nanoTime()
+            try {
+                Tools.chatOnce(c, model, CONDENSE_SYSTEM, JOB_TEXT, 700, timeoutSec = 600)
+            } catch (e: MediaException) {
+                if (e.message?.startsWith("Lost the connection") == true) throw e
+                Thread.sleep(5000) // a 500 now and then under load: once more
+                t0 = System.nanoTime()
+                Tools.chatOnce(c, model, CONDENSE_SYSTEM, JOB_TEXT, 700, timeoutSec = 600)
+            }
+            return (System.nanoTime() - t0) / 1e9
+        }
         fun rate(r: Pair<Int, Double>) = r.first / r.second
+        val smallJobs = mutableListOf<Double>()
+        val bigJobs = mutableListOf<Double>()
         val bigRates = mutableListOf<Double>()
         val smallRates = mutableListOf<Double>()
         val bothGains = mutableListOf<Double>()
@@ -1763,6 +1795,12 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val y = async { one(small.id) }
                 x.await() to y.await()
             }
+            pause()
+            _speed.value = "Testing${tag}${run}: a helper job (condensing a chat), ${small.name}…"
+            smallJobs += job(small.id)
+            pause()
+            _speed.value = "Testing${tag}${run}: the same job, ${big.name}…"
+            bigJobs += job(big.id)
             bigRates += rate(a)
             smallRates += rate(b)
             bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
@@ -1794,6 +1832,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val (helperOk, helperOut) = clean(helperGains, 5.0)
         val bigRate = bigOk.average()
         val smallRate = smallOk.average()
+        val (smallJobOk, smallJobOut) = clean(smallJobs, 1.0)
+        val (bigJobOk, bigJobOut) = clean(bigJobs, 1.0)
+        val smallJob = smallJobOk.average()
+        val bigJob = bigJobOk.average()
         // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
         prefs.edit().putFloat("speed_${big.id}", bigRate.toFloat()).putFloat("speed_${small.id}", smallRate.toFloat()).apply()
         fun outText(out: List<Double>, show: (Double) -> String) =
@@ -1814,7 +1856,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         // Kept for History: which pairs work best, and how each model performs over time.
         addSpeedHistory(
             SpeedRecord(System.currentTimeMillis(), big.name, small.name, n, bigRate, smallRate, bothOk.average(), helperOk.average(),
-                bigOut.size + smallOut.size + bothOut.size + helperOut.size),
+                bigOut.size + smallOut.size + bothOut.size + helperOut.size + smallJobOut.size + bigJobOut.size, smallJob, bigJob),
         )
         val faster = (smallRate / bigRate - 1) * 100
         val pages = if (smallRate >= bigRate * PAGE_RULE)
@@ -1826,6 +1868,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigOk, bigOut)}, ${small.name} ${f(smallRate)} tok/s${spread(smallOk, smallOut)}.\n" +
             "Both models at once: ${verdict(bothOk, bothOut)}.\n" +
             "${small.name} twice at once: ${verdict(helperOk, helperOut)}.\n" +
+            "A helper job (condensing a chat, thinking as the app asks): ${small.name} ${f(smallJob)} s${spread(smallJobOk, smallJobOut)}, " +
+            "${big.name} ${f(bigJob)} s${spread(bigJobOk, bigJobOut)}.\n" +
             pages
     }
 
@@ -2220,14 +2264,18 @@ private const val PAUSE_MS = 250L
 data class SpeedRecord(
     val at: Long, val big: String, val small: String, val runs: Int,
     val bigRate: Double, val smallRate: Double, val bothGain: Double, val helperGain: Double, val outliers: Int,
+    /** Seconds for the helper job (condensing a chat): the helper, and the main model; NaN in tests before 4.6.3. */
+    val smallJob: Double = Double.NaN, val bigJob: Double = Double.NaN,
 ) {
     fun json(): JSONObject = JSONObject().put("at", at).put("big", big).put("small", small).put("runs", runs)
         .put("big_rate", bigRate).put("small_rate", smallRate).put("both", bothGain).put("helper", helperGain).put("outliers", outliers)
+        .apply { if (!smallJob.isNaN()) put("small_job", smallJob); if (!bigJob.isNaN()) put("big_job", bigJob) }
 
     companion object {
         fun from(o: JSONObject) = SpeedRecord(
             o.optLong("at"), o.optString("big"), o.optString("small"), o.optInt("runs", 1),
             o.optDouble("big_rate"), o.optDouble("small_rate"), o.optDouble("both"), o.optDouble("helper"), o.optInt("outliers"),
+            o.optDouble("small_job"), o.optDouble("big_job"),
         )
     }
 }
