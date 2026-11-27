@@ -1926,7 +1926,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         val pages = if (smallRate >= bigRate * PAGE_RULE)
             "${small.name} is ${pct(faster)} faster than ${big.name}: it condenses web pages."
         else
-            "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
+            "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${if (faster in 24.5..25.0) "24.9%" else pct(faster)}): " +
                 "${big.name} reads web pages itself."
         val done = bigRates.size
         return (if (done > 1) "Average of $done runs. " else "") + (if (left > 0) "$left run${if (left > 1) "s" else ""} left out after errors. " else "") +
