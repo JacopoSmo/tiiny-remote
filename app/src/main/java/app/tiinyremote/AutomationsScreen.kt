@@ -7,6 +7,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.Share
 import android.Manifest
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
