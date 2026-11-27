@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package app.tiinyremote
 
 import androidx.compose.material.icons.automirrored.filled.List
