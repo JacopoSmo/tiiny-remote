@@ -2008,17 +2008,21 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     text = { Text("Only the loaded pair") },
                     onClick = { testHelpers = emptyList(); testMains = emptyList(); st.setSpeedSet("helpers", testHelpers); st.setSpeedSet("mains", testMains); pick = false },
                 )
-                // Two lists of checkboxes: (title, the chosen, how many at most, save).
-                for ((title, chosen, most, put) in listOf(
-                    Quad("Helpers (up to 3)", testHelpers, 3) { l: List<String> -> testHelpers = l; st.setSpeedSet("helpers", l) },
-                    Quad("Main models (up to 6)", testMains, 6) { l: List<String> -> testMains = l; st.setSpeedSet("mains", l) },
+                // Two lists of checkboxes: (title, the chosen and the recommended, how many at most, save).
+                // 👍: recommended as helper, or as chat model (Settings → Display → Recommended models).
+                val recHelpers = if (s.settings.showRecs) Recs.forTasks(listOf("helper")).map { it.id }.toSet() else emptySet()
+                val recMains = if (s.settings.showRecs) Recs.forTasks(Recs.tasksFor("chat")).map { it.id }.toSet() else emptySet()
+                for ((title, lists, most, put) in listOf(
+                    Quad("Helpers (up to 3)", testHelpers to recHelpers, 3) { l: List<String> -> testHelpers = l; st.setSpeedSet("helpers", l) },
+                    Quad("Main models (up to 6)", testMains to recMains, 6) { l: List<String> -> testMains = l; st.setSpeedSet("mains", l) },
                 )) {
+                    val (chosen, recd) = lists
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
                     for (m in byName) {
                         val on = m.id in chosen
                         DropdownMenuItem(
-                            text = { Text((if (on) "☑ " else "☐ ") + m.name) },
+                            text = { Text((if (on) "☑ " else "☐ ") + m.name + (if (m.id in recd) "\u00A0\u00A0👍" else "")) },
                             enabled = on || chosen.size < most,
                             onClick = { put(if (on) chosen - m.id else chosen + m.id) },
                         )
