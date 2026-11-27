@@ -383,7 +383,19 @@ internal fun RunPanel(tool: String, label: String, ready: Boolean, whyNot: Strin
                             modifier = Modifier.padding(horizontal = 6.dp).semantics { contentDescription = "Show the preview" },
                         )
                     }
-                    IconButton(onClick = { st.cancel() }) { Icon(androidx.compose.material.icons.Icons.Filled.Close, contentDescription = "Stop") }
+                    var ask by remember { mutableStateOf(false) }
+                    StopButton(onClick = { ask = true })
+                    if (ask) StopAsk(
+                        what = when (tool) {
+                            "image" -> "making the image"; "edit" -> "the edit"; "video" -> "the video"; "mesh" -> "the 3D model"
+                            "song", "loop" -> "the music"; "speech" -> "the speech"; "transcribe" -> "the transcript"
+                            "ocr" -> "reading the text"; "describe" -> "the description"; else -> "this job"
+                        },
+                        detail = if (tool == "video" || tool == "mesh") "The Tiiny cancels it and the NPU is free again. Nothing is saved."
+                        else "Nothing is saved. The Tiiny may still finish it in the background, so the NPU can stay busy for a while.",
+                        onStop = { st.cancel() },
+                        onClose = { ask = false },
+                    )
                 }
                 // Live preview: the picture as it forms.
                 val live by Tools.livePreview.collectAsState()
@@ -1630,7 +1642,14 @@ fun ChatScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                 }
             }
             when {
-                busy -> OutlinedButton(onClick = { st.stopChat() }) { BtnLabel("Stop", symbol = "■") }
+                busy -> {
+                    var ask by remember { mutableStateOf(false) }
+                    StopButton(onClick = { ask = true })
+                    if (ask) StopAsk(
+                        "this answer", "What's written so far stays in the chat. Say \"go on\" later to continue it.",
+                        onStop = { st.stopChat() }, onClose = { ask = false },
+                    )
+                }
                 // Nothing typed or attached yet: the microphone, to dictate the message instead.
                 input.isBlank() && image.isEmpty() && files.isEmpty() ->
                     DictateButton(enabled = helperBusy == null, models = s.models, st = st) { said -> input = (input + " " + said).trim() }

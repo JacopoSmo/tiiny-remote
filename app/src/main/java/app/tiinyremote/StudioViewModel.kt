@@ -421,6 +421,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * The Store reviewed by the most capable chat model on the Tiiny (loaded for it, others put back afterwards), in
      * the background: it goes on when you leave the page, and a notice says when it's done.
      */
+    /** Set by Stop in the recommendations table: the review ends where it is, nothing changes. */
+    @Volatile
+    private var recStop = false
+    fun stopReview() { recStop = true }
+
     fun reviewRecommendations(store: List<StoreModel>, models: List<ModelInfo>) {
         if (_recBusy.value != null) return
         val m = Recs.reviewer(models) ?: run { _recResult.value = "No chat model on the Tiiny to do the review."; return }
@@ -434,19 +439,20 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val summary = withContext(Dispatchers.IO) {
                     val c = client()
-                    val p = Progress(update = { msg, _ -> _recBusy.value = msg }, cancelled = { false })
+                    recStop = false
+                    val p = Progress(update = { msg, _ -> _recBusy.value = msg }, cancelled = { recStop })
                     val unloaded = Tools.makeRoom(c, m.id, p)
                     try {
                         Recs.update(getApplication(), c, m, store, p)
                     } finally {
-                        Tools.putBack(c, m.id, unloaded, p)
+                        Tools.putBack(c, m.id, unloaded, Progress({ msg, _ -> _recBusy.value = msg }, { false }))
                     }
                 }
                 _recResult.value = summary
                 Notifier.done(getApplication(), "Recommendations updated", summary)
             } catch (e: Exception) {
-                val msg = e.message ?: e.toString()
-                ApiLog.add("Recommendation review failed: $msg", "Models", isProblem = true)
+                val msg = if (recStop) "Stopped: the recommendations are unchanged." else e.message ?: e.toString()
+                ApiLog.add(if (recStop) "Recommendation review stopped" else "Recommendation review failed: $msg", "Models", isProblem = !recStop)
                 _recResult.value = msg
                 Notifier.done(getApplication(), "Recommendations not updated", msg)
             } finally {
@@ -1619,20 +1625,19 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     @Volatile
     private var speedClient: DeviceClient? = null
     private val _speedStopping = MutableStateFlow(false)
-    /** The first tap asked the test to stop: the button now offers Cancel now. */
+    /** Asked to stop after the current step: the button says so. */
     val speedStopping: StateFlow<Boolean> = _speedStopping.asStateFlow()
 
     /**
-     * First tap: the test stops after the current step (that step's answer isn't saved). Second tap: Cancel now, the
-     * waiting requests are broken off at once. Models loaded before a test of several pairs are still loaded back.
+     * [now] false: the test stops after the current step (that step's answer isn't saved). True: the waiting requests
+     * are broken off at once. Models loaded before a test of several pairs are still loaded back.
      */
-    fun stopSpeedTest() {
-        if (_speedStopping.value) {
-            ApiLog.add("Speed test: cancelled now", "Chat")
+    fun stopSpeedTest(now: Boolean) {
+        speedStop = true
+        _speedStopping.value = true
+        if (now) {
+            ApiLog.add("Speed test: stopped at once", "Chat")
             speedClient?.abortAll()
-        } else {
-            speedStop = true
-            _speedStopping.value = true
         }
     }
 

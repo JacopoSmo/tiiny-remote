@@ -181,7 +181,7 @@ object Recs {
                 lastShown = now
                 p.update("${model.name} is thinking it over (${thought / 1000}k characters)", null)
             }
-        }, { false })
+        }, { p.cancelled() })
         val done = try {
             ask().also { if (!it.ended) throw java.io.IOException("the answer stopped before its end") }
         } catch (e: java.io.IOException) {
@@ -189,6 +189,7 @@ object Recs {
             thought = 0
             ask()
         }
+        if (p.cancelled()) throw MediaException("Stopped")
         val text = done.content.replace(Regex("(?s)<think>.*?</think>"), "")
         val start = text.indexOf('{')
         val end = text.lastIndexOf('}')

@@ -590,6 +590,47 @@ fun DangerButton(
     ) { BtnLabel(text, icon) }
 }
 
+/** The one red Stop, for everything that makes or fetches something: chat, results, code, tests, downloads. */
+@Composable
+fun StopButton(onClick: () -> Unit, modifier: Modifier = Modifier, text: String = "Stop") {
+    androidx.compose.material3.TextButton(
+        onClick = onClick,
+        modifier = modifier,
+        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.12f),
+            contentColor = MaterialTheme.colorScheme.error,
+        ),
+    ) { BtnLabel(text, symbol = "■") }
+}
+
+/**
+ * The one question before stopping: "Stop [what]?", what's kept or lost ([detail]), "Keep going" and the red Stop.
+ * [extra]: a gentler way to stop (Pause, Stop after this step), shown before Stop.
+ */
+@Composable
+fun StopAsk(
+    what: String,
+    detail: String,
+    onStop: () -> Unit,
+    onClose: () -> Unit,
+    stopText: String = "Stop",
+    keepText: String = "Keep going",
+    extra: Pair<String, () -> Unit>? = null,
+) {
+    ScaledAlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Stop $what?") },
+        text = { Text(detail) },
+        confirmButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                extra?.let { (label, act) -> androidx.compose.material3.TextButton(onClick = { act(); onClose() }) { Text(label) } }
+                StopButton(onClick = { onStop(); onClose() }, text = stopText)
+            }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onClose) { Text(keepText) } },
+    )
+}
+
 /** A Material-style icon from SVG path data (24×24), for pictograms the core icon set doesn't have. */
 private fun pathIcon(name: String, path: String): androidx.compose.ui.graphics.vector.ImageVector =
     androidx.compose.ui.graphics.vector.ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)

@@ -51,24 +51,17 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
     var cancel by remember { mutableStateOf<Download?>(null) }
     val updates by vm.updates.collectAsState()
     cancel?.let { d ->
-        if (d.id in updates) ScaledAlertDialog(
-            // An update: the Tiiny removed the old copy when it began, so stopping leaves none. Pause is the safe way.
-            onDismissRequest = { cancel = null },
-            title = { Text("Stop updating ${d.name}?") },
-            text = { Text("The Tiiny removed the old copy when the update began. Stopping deletes the new one too, so ${d.name} is gone until you download it again. Pause keeps what's downloaded.") },
-            confirmButton = {
-                Row {
-                    TextButton(onClick = { if (!d.paused) vm.pauseDownload(d); cancel = null }) { Text("Pause") }
-                    TextButton(onClick = { vm.cancelDownload(d); cancel = null }) { Text("Stop and delete", color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            dismissButton = { TextButton(onClick = { cancel = null }) { Text("Keep updating") } },
-        ) else ScaledAlertDialog(
-            onDismissRequest = { cancel = null },
-            title = { Text("Cancel downloading ${d.name}?") },
-            text = { Text("The Tiiny deletes what it has downloaded of this model so far.") },
-            confirmButton = { TextButton(onClick = { vm.cancelDownload(d); cancel = null }) { Text("Cancel download", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { cancel = null }) { Text("Keep downloading") } },
+        // An update: the Tiiny removed the old copy when it began, so stopping leaves none. Pause is the safe way.
+        if (d.id in updates) StopAsk(
+            "updating ${d.name}",
+            "The Tiiny removed the old copy when the update began. Stopping deletes the new one too, so ${d.name} is gone until you download it again. Pause keeps what's downloaded.",
+            onStop = { vm.cancelDownload(d) }, onClose = { cancel = null },
+            stopText = "Stop and delete", keepText = "Keep updating",
+            extra = "Pause" to { if (!d.paused) vm.pauseDownload(d) },
+        ) else StopAsk(
+            "downloading ${d.name}", "The Tiiny deletes what it has downloaded of this model so far.",
+            onStop = { vm.cancelDownload(d) }, onClose = { cancel = null },
+            stopText = "Stop and delete", keepText = "Keep downloading",
         )
     }
     Card(Modifier.fillMaxWidth()) {
@@ -93,7 +86,7 @@ internal fun DownloadsCard(s: UiState, vm: MainViewModel) {
                         else if (d.paused) TextButton(onClick = { vm.resumeDownload(d) }) { BtnLabel("Resume", Icons.Filled.PlayArrow) }
                         else TextButton(onClick = { vm.pauseDownload(d) }) { BtnLabel("Pause", symbol = "⏸") }
                         Spacer(Modifier.weight(1f))
-                        DangerButton("Cancel", onClick = { cancel = d }, icon = Icons.Filled.Close)
+                        StopButton(onClick = { cancel = d })
                     }
                 }
             }

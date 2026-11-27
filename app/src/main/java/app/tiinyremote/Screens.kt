@@ -2057,17 +2057,16 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             // Red: the first tap stops after this step, the second cancels at once.
             if (testing) {
                 val stopping by st.speedStopping.collectAsState()
-                if (stopping) Button(
-                    onClick = { st.stopSpeedTest() },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
-                    modifier = Modifier.weight(1f),
-                ) { BtnLabel("Stopping after this step · tap to cancel now", symbol = "✕") }
-                else OutlinedButton(
-                    onClick = { st.stopSpeedTest() },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error),
-                    modifier = Modifier.weight(1f),
-                ) { BtnLabel("Stop after this step", symbol = "■") }
+                var ask by remember { mutableStateOf(false) }
+                StopButton(onClick = { ask = true }, modifier = Modifier.weight(1f), text = if (stopping) "Stopping after this step…" else "Stop the speed test")
+                if (ask) StopAsk(
+                    "the speed test",
+                    "After this step: the current measurement ends first (it isn't saved). Now: breaks off at once. " +
+                        "Finished pairs stay in 📊 Statistics; models loaded before are loaded back.",
+                    onStop = { st.stopSpeedTest(now = true) }, onClose = { ask = false },
+                    stopText = "Stop now",
+                    extra = if (stopping) null else ("After this step" to { st.stopSpeedTest(now = false) }),
+                )
             }
             else if (batch) OutlinedButton(
                 onClick = {
