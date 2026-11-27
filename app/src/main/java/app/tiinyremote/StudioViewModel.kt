@@ -1704,7 +1704,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                                     }
                                     launch(big)
                                     launch(small)
-                                    val out = measurePair(c, big, small, n, ",$tag")
+                                    val out = measurePair(c, big, small, n, ",$tag") { awaitBack() }
                                     lines += "${big.name} + ${small.name}: " + out.replace("\n", " ")
                                     done++
                                     break
@@ -1767,7 +1767,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
      * One speed test of a pair: each alone, both at once, the helper twice at once, [n] times; kept for 📊 Statistics.
      * Both must be loaded. [tag] goes into the progress (the pair, in a test of several). Blocks: call on IO.
      */
-    private suspend fun measurePair(c: DeviceClient, big: ModelInfo, small: ModelInfo, n: Int, tag: String): String {
+    private suspend fun measurePair(
+        c: DeviceClient, big: ModelInfo, small: ModelInfo, n: Int, tag: String, onLost: (() -> Boolean)? = null,
+    ): String {
         /** (tokens written, seconds taken) for one ~300-token answer, thinking off where possible. */
         fun one(model: String): Pair<Int, Double> {
             val body = JSONObject().put("model", model).put("stream", false).put("max_tokens", 300).put("temperature", 0.7)
@@ -1779,9 +1781,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             }
             var t0 = System.nanoTime()
             var r = c.request("POST", "/v1/chat/completions", body, 600)
-            if (!r.ok && r.code >= 500) {
-                // A model that has only just loaded can answer 500 once (seen with gpt-oss): one retry.
-                Thread.sleep(5000)
+            // A model that has only just loaded, or two requests at once, can answer 500 (seen with gpt-oss): two retries.
+            for (retry in 1..2) {
+                if (r.ok || r.code < 500) break
+                Thread.sleep(10_000L * retry)
                 t0 = System.nanoTime()
                 r = c.request("POST", "/v1/chat/completions", body, 600)
             }
@@ -1818,39 +1821,55 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         fun gain(seqS: Double, parS: Double) = (1 - parS / seqS) * 100
         // A short pause before every measurement, so one doesn't run into the end of the one before.
         suspend fun pause() { if (speedStop) throw MediaException("Stopped"); kotlinx.coroutines.delay(PAUSE_MS) }
+        // A run that hits an error (a 500, a lost connection) is left out, not the whole pair: the other runs count.
+        var left = 0
+        var lostInRow = 0
         for (i in 1..n) {
             val run = if (n > 1) " (run $i of $n)" else ""
-            if (i > 1) pause()
-            _speed.value = "Testing${tag}${run}: ${big.name} alone…"
-            val a = one(big.id)
-            pause()
-            _speed.value = "Testing${tag}${run}: ${small.name} alone…"
-            val b = one(small.id)
-            pause()
-            _speed.value = "Testing${tag}${run}: both at the same time…"
-            val (a2, b2) = coroutineScope {
-                val x = async { one(big.id) }
-                val y = async { one(small.id) }
-                x.await() to y.await()
+            try {
+                if (i > 1) pause()
+                _speed.value = "Testing${tag}${run}: ${big.name} alone…"
+                val a = one(big.id)
+                pause()
+                _speed.value = "Testing${tag}${run}: ${small.name} alone…"
+                val b = one(small.id)
+                pause()
+                _speed.value = "Testing${tag}${run}: both at the same time…"
+                val (a2, b2) = coroutineScope {
+                    val x = async { one(big.id) }
+                    val y = async { one(small.id) }
+                    x.await() to y.await()
+                }
+                pause()
+                _speed.value = "Testing${tag}${run}: ${small.name} twice at the same time…"
+                val (h1, h2) = coroutineScope {
+                    val x = async { one(small.id) }
+                    val y = async { one(small.id) }
+                    x.await() to y.await()
+                }
+                pause()
+                _speed.value = "Testing${tag}${run}: a helper job (condensing a chat), ${small.name}…"
+                val sj = job(small.id)
+                pause()
+                _speed.value = "Testing${tag}${run}: the same job, ${big.name}…"
+                val bj = job(big.id)
+                // Only a finished run counts: everything of it at once.
+                smallJobs += sj
+                bigJobs += bj
+                bigRates += rate(a)
+                smallRates += rate(b)
+                bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
+                helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
+                lostInRow = 0
+            } catch (e: Exception) {
+                if (speedStop || e is kotlinx.coroutines.CancellationException) throw e
+                left++
+                ApiLog.add("Speed test$tag: run $i left out (${e.message})", "Chat", isProblem = true)
+                // Lost the Tiiny: wait for it (test of several pairs); twice in a row, or not back, ends the pair.
+                if (e.message?.startsWith("Lost the connection") == true && (++lostInRow >= 2 || onLost?.invoke() != true)) throw e
             }
-            pause()
-            _speed.value = "Testing${tag}${run}: ${small.name} twice at the same time…"
-            val (h1, h2) = coroutineScope {
-                val x = async { one(small.id) }
-                val y = async { one(small.id) }
-                x.await() to y.await()
-            }
-            pause()
-            _speed.value = "Testing${tag}${run}: a helper job (condensing a chat), ${small.name}…"
-            smallJobs += job(small.id)
-            pause()
-            _speed.value = "Testing${tag}${run}: the same job, ${big.name}…"
-            bigJobs += job(big.id)
-            bigRates += rate(a)
-            smallRates += rate(b)
-            bothGains += gain(a.first / rate(a) + b.first / rate(b), maxOf(a.first / rate(a2), b.first / rate(b2)))
-            helperGains += gain(2 * b.first / rate(b), maxOf(b.first / rate(h1), b.first / rate(h2)))
         }
+        if (bigRates.isEmpty()) throw MediaException("no run finished; the last error is in the log")
         fun f(v: Double) = String.format(java.util.Locale.ROOT, "%.1f", v)
         fun pct(v: Double) = "${Math.round(v)}%"
         // From 3 runs on, clear outliers (a hiccup on the Tiiny, say) are left out, one at a time: a value
@@ -1900,7 +1919,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         }
         // Kept for History: which pairs work best, and how each model performs over time.
         addSpeedHistory(
-            SpeedRecord(System.currentTimeMillis(), big.name, small.name, n, bigRate, smallRate, bothOk.average(), helperOk.average(),
+            SpeedRecord(System.currentTimeMillis(), big.name, small.name, bigRates.size, bigRate, smallRate, bothOk.average(), helperOk.average(),
                 bigOut.size + smallOut.size + bothOut.size + helperOut.size + smallJobOut.size + bigJobOut.size, smallJob, bigJob),
         )
         val faster = (smallRate / bigRate - 1) * 100
@@ -1909,7 +1928,8 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         else
             "${small.name} isn't at least 25% faster than ${big.name} (${if (faster >= 0) "+" else ""}${pct(faster)}): " +
                 "${big.name} reads web pages itself."
-        return (if (n > 1) "Average of $n runs. " else "") +
+        val done = bigRates.size
+        return (if (done > 1) "Average of $done runs. " else "") + (if (left > 0) "$left run${if (left > 1) "s" else ""} left out after errors. " else "") +
             "Alone: ${big.name} ${f(bigRate)} tok/s${spread(bigOk, bigOut)}, ${small.name} ${f(smallRate)} tok/s${spread(smallOk, smallOut)}.\n" +
             "Both models at once: ${verdict(bothOk, bothOut)}.\n" +
             "${small.name} twice at once: ${verdict(helperOk, helperOut)}.\n" +
