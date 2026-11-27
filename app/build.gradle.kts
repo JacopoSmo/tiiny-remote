@@ -104,3 +104,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }
+
+// Each automated check by name in the build log, and the full reason when one fails.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("passed", "failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}

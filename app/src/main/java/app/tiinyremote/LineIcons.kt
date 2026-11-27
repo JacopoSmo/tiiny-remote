@@ -205,6 +205,7 @@ val LINE_SUBST: Map<String, ImageVector> by lazy {
         "Mic" to "M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M9 21h6",
         "Gallery" to "M7 3h14v14H7zM3 7v14h14M7 14l4-4 3 3 2-2 5 5",
         "Automate" to "M19.5 10A8 8 0 0 0 5.6 7M4.5 14a8 8 0 0 0 13.9 3M5.5 3v4h4M18.5 21v-4h-4",
+        "Test" to "M9 3h6M10 3v7l-5.5 9.2A1.2 1.2 0 0 0 5.5 21h13a1.2 1.2 0 0 0 1-1.8L14 10V3M7.2 15h9.6",
         "Code" to "M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16",
         "Power" to "M12 3v9M7 6.5a7.5 7.5 0 1 0 10 0",
         "Translate" to "M3 5h10M8 3v2M10.5 5c-1 4-3.5 7-7 9M5.5 8.5c1.5 2.5 3.5 4.5 6 5.5M12 21l4.5-11 4.5 11M13.6 17h5.8",

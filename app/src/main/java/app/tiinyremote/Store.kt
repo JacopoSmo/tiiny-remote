@@ -58,6 +58,12 @@ data class AppSettings(
     val autoAsksHelper: Boolean = false,
     /** The chat menu's Helper switch: off, the helper isn't used even when it's loaded. */
     val helperOn: Boolean = true,
+    /** Night shift: the NAS agent works through the night queue between [nightFrom] and [nightTo] o'clock. */
+    val nightShift: Boolean = false,
+    val nightFrom: Int = 1,
+    val nightTo: Int = 6,
+    /** Load ahead: "off", "suggest" (a line offers to load) or "auto" (loads by itself, never unloading a model in use). */
+    val loadAhead: String = "suggest",
     /** Stay connected in the background (a silent notification): status, auto-unlock and the Tiiny checked every minute. */
     val stayConnected: Boolean = false,
     /** Always ready: speech-to-text and OCR models kept loaded whenever there's room, so dictation, Translate and OCR start at once. */
@@ -142,6 +148,10 @@ class Store(context: Context) {
         speedRuns = prefs.getInt("speed_runs", 3).coerceIn(1, 5),
         autoAsksHelper = prefs.getBoolean("auto_asks_helper", false),
         helperOn = prefs.getBoolean("helper_on", true),
+        nightShift = prefs.getBoolean("night_shift", false),
+        nightFrom = prefs.getInt("night_from", 1),
+        nightTo = prefs.getInt("night_to", 6),
+        loadAhead = prefs.getString("load_ahead", "suggest") ?: "suggest",
         stayConnected = prefs.getBoolean("stay_connected", false),
         keepAsr = prefs.getBoolean("keep_asr", false),
         keepOcr = prefs.getBoolean("keep_ocr", false),
@@ -191,6 +201,10 @@ class Store(context: Context) {
             .putInt("speed_runs", s.speedRuns.coerceIn(1, 5))
             .putBoolean("auto_asks_helper", s.autoAsksHelper)
             .putBoolean("helper_on", s.helperOn)
+            .putBoolean("night_shift", s.nightShift)
+            .putInt("night_from", s.nightFrom)
+            .putInt("night_to", s.nightTo)
+            .putString("load_ahead", s.loadAhead)
             .putBoolean("stay_connected", s.stayConnected)
             .putBoolean("keep_asr", s.keepAsr)
             .putBoolean("keep_ocr", s.keepOcr)

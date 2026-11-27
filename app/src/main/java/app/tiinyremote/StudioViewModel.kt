@@ -1469,15 +1469,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         return result to "Done: the $what is shown to the user and saved in the app's results (made with ${model.substringAfterLast('/')})."
     }
 
-    // ---------- speed test: one model at a time, or two at once ----------
+    // ---------- speed and quality tests: in Tests (TestRunner.kt) ----------
 
-    private val _speed = MutableStateFlow<String?>(null)
+    /** The speed and quality tests (the Test page), sharing this model's guard on the Tiiny's models. */
+    val tests = Tests(app, viewModelScope, prefs, { client() }, deviceBusy, { note(it) }, { clearChatSpeeds() })
 
-    /** Set by Stop: a test of several pairs ends at the next pause. */
-    @Volatile
-    private var speedStop = false
-    /** The speed test's progress, then its result. */
-    val speed: StateFlow<String?> = _speed.asStateFlow()
 
     /**
      * A long attached file, condensed once after its first answer: later questions in the chat send this instead of
@@ -1511,6 +1507,11 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     private val _chatSpeeds = MutableStateFlow(loadChatSpeeds())
+
+    private fun clearChatSpeeds() {
+        prefs.edit().remove("chat_speeds").apply()
+        _chatSpeeds.value = emptyList()
+    }
     /** Writing speeds measured in normal chats, newest first (the last 300): Speed statistics fill up without tests. */
     val chatSpeeds: StateFlow<List<ChatSpeed>> = _chatSpeeds.asStateFlow()
 
@@ -1534,241 +1535,6 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 .apply { if (!it.rate.isNaN()) put("rate", it.rate) }
                 .put("wait", it.wait).put("answer", it.answerWait).put("chars", it.chars)
         }).toString()).apply()
-    }
-
-    private val _speedHistory = MutableStateFlow(loadSpeedHistory())
-    /** Every speed test, newest first (the last 100). */
-    val speedHistory: StateFlow<List<SpeedRecord>> = _speedHistory.asStateFlow()
-
-    /**
-     * Models the speed tests found about as quick at the helper job (within 15%) as the quickest measured
-     * recommended helper, and no heavier on the NPU than the heaviest recommended one (+5 points): 👍 too.
-     */
-    fun measuredHelpers(models: List<ModelInfo>, recIds: Set<String>): Set<String> {
-        val jobs = (_speedHistory.value.map { it.small to it.smallJob } + _speedHistory.value.map { it.big to it.bigJob })
-            .filter { !it.second.isNaN() }
-            .groupBy({ it.first }, { it.second })
-            .mapValues { (_, l) -> l.average() }
-        return SpeedMath.measuredHelpers(jobs, models.map { Triple(it.id, it.name, it.npuUsage) }, recIds)
-    }
-
-    private fun loadSpeedHistory(): List<SpeedRecord> = try {
-        val a = JSONArray(prefs.getString("speed_history", "[]"))
-        (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let { o -> SpeedRecord.from(o) } }
-    } catch (e: Exception) {
-        emptyList()
-    }
-
-    private fun addSpeedHistory(r: SpeedRecord) {
-        val list = (listOf(r) + _speedHistory.value).take(100)
-        prefs.edit().putString("speed_history", JSONArray(list.map { it.json() }).toString()).apply()
-        _speedHistory.value = list
-    }
-
-    fun clearSpeedHistory() {
-        prefs.edit().remove("speed_history").remove("chat_speeds").apply()
-        _speedHistory.value = emptyList()
-        _chatSpeeds.value = emptyList()
-    }
-
-    /**
-     * Measures how fast the chat model and the helper write alone, then at the same time, and the helper twice at
-     * once (how pages are condensed), [runs] times (1–4), and averages: one run can be off by several percent. Both
-     * must be loaded; nothing is swapped. Tells whether parallel work pays off.
-     */
-    fun speedTest(big: ModelInfo, small: ModelInfo, runs: Int = 1) {
-        if (_speed.value?.startsWith("Testing") == true) return
-        if (!deviceBusy.compareAndSet(false, true)) {
-            note("The Tiiny is busy with a job: run the test when it's done.")
-            return
-        }
-        val n = runs.coerceIn(1, 5)
-        speedStop = false
-        NpuGate.testing = true
-        _speed.value = "Testing…"
-        viewModelScope.launch {
-            try {
-                val out = withContext(Dispatchers.IO) { measurePair(client().also { speedClient = it }, big, small, n, "") }
-                _speed.value = out
-                ApiLog.add("Speed test: " + out.replace("\n", " "), "Chat")
-                Notifier.done(getApplication(), "Speed test finished", out)
-            } catch (e: Exception) {
-                _speed.value = if (speedStop) "Speed test stopped." else "Speed test failed: ${e.message}"
-                ApiLog.add(if (speedStop) "Speed test stopped" else "Speed test failed: ${e.message}", "Chat")
-            } finally {
-                speedStop = false
-                _speedStopping.value = false
-                speedClient = null
-                NpuGate.testing = false
-                deviceBusy.set(false)
-            }
-        }
-    }
-
-    /** The models chosen for the speed test of several pairs (Settings → Fast helper model): ids, in order. */
-    fun speedSet(key: String): List<String> = setting("speed.$key", "").split('\n').filter { it.isNotBlank() }
-    fun setSpeedSet(key: String, ids: List<String>) = setSetting("speed.$key", ids.joinToString("\n"))
-
-    /** The client of the running speed test, for Cancel now. */
-    @Volatile
-    private var speedClient: DeviceClient? = null
-    private val _speedStopping = MutableStateFlow(false)
-    /** Asked to stop after the current step: the button says so. */
-    val speedStopping: StateFlow<Boolean> = _speedStopping.asStateFlow()
-
-    /**
-     * [now] false: the test stops after the current step (that step's answer isn't saved). True: the waiting requests
-     * are broken off at once. Models loaded before a test of several pairs are still loaded back.
-     */
-    fun stopSpeedTest(now: Boolean) {
-        speedStop = true
-        _speedStopping.value = true
-        if (now) {
-            ApiLog.add("Speed test: stopped at once", "Chat")
-            speedClient?.abortAll()
-        }
-    }
-
-    /**
-     * The speed test for every chosen main model with every chosen helper ([runs] times each), one pair after the
-     * other, loading each pair by itself (other models are unloaded for it) so you needn't change models. Each pair is
-     * saved to 📊 Statistics as it finishes. Afterwards the models loaded before are loaded again.
-     */
-    fun speedTestAll(mains: List<ModelInfo>, helpers: List<ModelInfo>, runs: Int) {
-        if (_speed.value?.startsWith("Testing") == true) return
-        val pairs = mains.flatMap { m -> helpers.filter { it.id != m.id }.map { m to it } }
-        if (pairs.isEmpty()) return
-        if (!deviceBusy.compareAndSet(false, true)) {
-            note("The Tiiny is busy with a job: run the test when it's done.")
-            return
-        }
-        val n = runs.coerceIn(1, 5)
-        speedStop = false
-        NpuGate.testing = true
-        _speed.value = "Testing…"
-        val app = getApplication<Application>()
-        Background.set(app, "speed", "Speed test of ${pairs.size} pairs")
-        viewModelScope.launch {
-            val lines = ArrayList<String>()
-            var done = 0
-            try {
-                withContext(Dispatchers.IO) {
-                    val c = client().also { speedClient = it }
-                    val before = Tools.runningIds(c)
-                    val p = Progress({ msg, _ -> _speed.value = "Testing: $msg…" }, { speedStop })
-                    // Asks every 10 s whether the Tiiny answers again, for up to 3 minutes.
-                    fun awaitBack(): Boolean {
-                        val until = System.currentTimeMillis() + 180_000
-                        while (System.currentTimeMillis() < until && !speedStop) {
-                            p.update("the Tiiny doesn't answer, waiting for it", null)
-                            if (runCatching { Tools.runningIds(c, log = false) }.isSuccess) return true
-                            Thread.sleep(10_000)
-                        }
-                        return false
-                    }
-                    fun launch(m: ModelInfo) {
-                        if (m.id in Tools.runningIds(c, log = false)) return
-                        p.update("loading ${m.name}", null)
-                        Tools.launch(c, m.id, p)
-                    }
-                    try {
-                        for ((i, pair) in pairs.withIndex()) {
-                            if (speedStop) break
-                            val (big, small) = pair
-                            val tag = " pair ${i + 1} of ${pairs.size}, ${big.name} + ${small.name}"
-                            val share = (big.npuUsage ?: 0.0) + (small.npuUsage ?: 0.0)
-                            if (share > 100) {
-                                lines += "${big.name} + ${small.name}: skipped, together ${Math.round(share)}% of the NPU"
-                                continue
-                            }
-                            // A lost connection (the Tiiny restarting, Wi-Fi): wait for it, then try the pair once more.
-                            var gone = false
-                            for (attempt in 1..2) {
-                                try {
-                                    // Only this pair on the NPU, so every pair is measured alike.
-                                    for (id in Tools.runningIds(c) - setOf(big.id, small.id)) {
-                                        p.update("unloading ${id.substringAfterLast('/')}", null)
-                                        Tools.stop(c, id)
-                                    }
-                                    launch(big)
-                                    launch(small)
-                                    val out = measurePair(c, big, small, n, ",$tag") { awaitBack() }
-                                    lines += "${big.name} + ${small.name}: " + out.replace("\n", " ")
-                                    done++
-                                    break
-                                } catch (e: Exception) {
-                                    if (speedStop) break
-                                    ApiLog.add("Speed test, ${big.name} + ${small.name} failed: ${e.message}", "Chat", isProblem = true)
-                                    val lost = e.message?.startsWith("Lost the connection") == true
-                                    if (lost && !awaitBack()) {
-                                        lines += "${big.name} + ${small.name}: failed, the Tiiny didn't answer for 3 minutes; the test ended here"
-                                        gone = true
-                                        break
-                                    }
-                                    if (lost && attempt == 1) {
-                                        ApiLog.add("Speed test: the Tiiny is back, trying ${big.name} + ${small.name} once more", "Chat")
-                                        continue
-                                    }
-                                    lines += "${big.name} + ${small.name}: failed (${e.message})"
-                                    break
-                                }
-                            }
-                            if (gone) break
-                        }
-                    } finally {
-                        // What was loaded before comes back (best effort; a failure is only logged).
-                        try {
-                            if (runCatching { Tools.runningIds(c, log = false) }.isFailure) awaitBack()
-                            val now = Tools.runningIds(c, log = false)
-                            for (id in now - before) { _speed.value = "Testing: unloading ${id.substringAfterLast('/')}…"; Tools.stop(c, id) }
-                            val quiet = Progress({ _, _ -> }, { false })
-                            for (id in before - now) {
-                                _speed.value = "Testing: loading ${id.substringAfterLast('/')} back…"
-                                Tools.launch(c, id, quiet, wait = false)
-                            }
-                            for (id in before - now) Tools.waitLoaded(c, id, quiet)
-                        } catch (e: Exception) {
-                            ApiLog.add("Speed test: couldn't load the earlier models back: ${e.message}", "Chat", isProblem = true)
-                        }
-                    }
-                }
-                val head = (if (speedStop) "Stopped after $done of ${pairs.size} pairs" else "$done of ${pairs.size} pairs tested") +
-                    (if (n > 1) ", $n runs each" else "") + ". Results in 📊 Statistics."
-                _speed.value = head + "\n" + lines.joinToString("\n")
-                ApiLog.add("Speed test of several pairs: $head " + lines.joinToString(" | "), "Chat")
-                Notifier.done(app, "Speed test finished", head)
-            } catch (e: Exception) {
-                _speed.value = "Speed test failed: ${e.message}"
-                ApiLog.add("Speed test of several pairs failed: ${e.message}", "Chat", isProblem = true)
-            } finally {
-                speedStop = false
-                _speedStopping.value = false
-                speedClient = null
-                NpuGate.testing = false
-                deviceBusy.set(false)
-                Background.set(app, "speed", null)
-            }
-        }
-    }
-
-    /**
-     * One speed test of a loaded pair on the phone ([n] runs, see SpeedMeasure), analysed by SpeedMath and kept for
-     * 📊 Statistics. [tag] goes into the progress (the pair, in a test of several). Blocks: call on IO.
-     */
-    private suspend fun measurePair(
-        c: DeviceClient, big: ModelInfo, small: ModelInfo, n: Int, tag: String, onLost: (() -> Boolean)? = null,
-    ): String {
-        val raw = SpeedMeasure(c, { speedStop }, { _speed.value = it }).pair(big, small, n, tag, onLost)
-        return keepSpeed(raw, "phone")
-    }
-
-    /** A pair's raw measurements (from the phone or the NAS) analysed, remembered and kept for History; the text. */
-    fun keepSpeed(raw: SpeedRaw, by: String): String {
-        val res = SpeedMath.analyze(raw, System.currentTimeMillis(), by)
-        // Remembered per model (the average): the chat uses them to decide whether the helper condenses pages.
-        prefs.edit().putFloat("speed_${raw.bigId}", res.bigRate.toFloat()).putFloat("speed_${raw.smallId}", res.smallRate.toFloat()).apply()
-        addSpeedHistory(res.record)
-        return res.text
     }
 
     /**
@@ -2139,7 +1905,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     /** Tells Background what's going on here, so it can keep the app working while it's in the background. */
     init {
         viewModelScope.launch {
-            combine(_job, _busyChats, _speed, _helper) { job, chats, speed, helper ->
+            combine(_job, _busyChats, tests.speed, _helper) { job, chats, speed, helper ->
                 when {
                     job?.running == true -> "${toolTitle(job.tool)} on the Tiiny"
                     speed?.startsWith("Testing") == true -> "Speed test"

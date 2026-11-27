@@ -486,6 +486,7 @@ fun AppRoot(vm: MainViewModel) {
                         })
                         8 -> CodeScreen(s, vm, st)
                         9 -> StartScreen(st, { goTab(it) }, { openCreate(it) })
+                        10 -> TestScreen(s, vm, st)
                         else -> SettingsScreen(s, vm, st)
                     } }
                 }
@@ -1284,8 +1285,6 @@ internal fun SettingDropdown(label: String, options: List<Pair<String, String>>,
     }
 }
 
-/** Four values in one, for a list of rows. */
-private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 /** The ⓘ beside Labels: what each pictogram means. */
 @Composable
@@ -1316,7 +1315,7 @@ private fun PictogramLegend(onClose: () -> Unit) {
         "▶" to "Run an automation now; Code: preview a web page",
         "🔌" to "Test a connection (email, NAS agent)",
         Icons.Filled.Delete to "Delete",
-        "📊" to "Statistics: the Tiiny's own request counts (Activity), speed tests and chat speeds (Settings → Fast helper model)",
+        "📊" to "Statistics: the Tiiny's own request counts (Activity), speed and quality tests, chat speeds and waits (Test)",
         HistoryIcon to "History: earlier chats, past speed tests",
         Icons.Filled.Add to "New chat; beside the message: attach an image or a file",
         MicIcon to "Dictate a message (needs a speech-to-text model)",
@@ -1409,85 +1408,12 @@ private fun PictogramLegend(onClose: () -> Unit) {
     )
 }
 
-/** The ⓘ beside the speed test: dense vs. mixture-of-experts models, and which to use for what. */
-@Composable
-private fun ModelChoiceInfo(onClose: () -> Unit) {
-    ScaledAlertDialog(
-        onDismissRequest = onClose,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth(0.92f).widthIn(max = 640.dp),
-        title = { ClosableTitle(onClose) { Text("Which model for what?") } },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Two kinds of chat models", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Dense, like Qwen3.8-27B: uses all its 27 billion parameters for every word. Usually more careful on " +
-                        "hard reasoning, but on the Tiiny it writes only about 10 tokens (word pieces) per second.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "Mixture of experts (MoE), like the 35B-A3B models or gpt-oss-20b: holds 20–35 billion parameters " +
-                        "but uses only about 3–4 billion per word (\"A3B\" = 3 billion active). It knows about as much, " +
-                        "writes 2–2.5× faster (about 23 tokens per second on your Tiiny), but can be less thorough on long, " +
-                        "tricky reasoning. Marked \"MoE\" in Models, with a filter of its own.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text("How to use them", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "• Everyday chat, web search, summaries, quick drafts: an A3B model.\n" +
-                        "• Hard problems, careful writing, analysis you want double-checked: the dense 27B.\n" +
-                        "• Helper: a fast, small MoE like gpt-oss-20b (27% NPU). It names chats and condenses long ones. " +
-                        "It also condenses web pages, but only when it's clearly faster than the chat model (see below).\n" +
-                        "• Both pairs fit: A3B + gpt-oss about 75%, 27B + gpt-oss about 86% of the NPU.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text("The speed test measures two different things", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "1. How fast each model writes alone. This decides who reads web pages. It barely changes " +
-                        "between runs (a few percent), and the speeds are remembered.\n\n" +
-                        "2. How much sooner two jobs finish when both models work at the same time instead of one after " +
-                        "the other. It varies a lot between runs (the same pair measured 7% and 18%). It shows that the " +
-                        "helper can name a chat and suggest follow-ups beside the chat model at no cost: so far every pair " +
-                        "came out faster together. From 10% the test calls it \"worth it\". " +
-                        "The same model twice brings nothing: the Tiiny takes a model's requests in turn.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text("Web pages: the 25% rule", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Before answering, the helper shortens each web page it found to the parts that matter, and the " +
-                        "chat model reads only those. It does this only when the helper writes at least 25% faster than " +
-                        "the chat model, for example gpt-oss-20b beside the 27B (more than twice as fast). Beside an A3B " +
-                        "model (as fast as gpt-oss) the chat model reads the pages itself.\n\n" +
-                        "Drawbacks of condensing:\n" +
-                        "• Details can get lost: exact numbers, dates, names, quotes or a side remark the helper didn't " +
-                        "think important. The answer can then only be as good as the summary.\n" +
-                        "• Mistakes add up: the smaller helper can misread a page, and the chat model can't notice, " +
-                        "because it never sees the original.\n" +
-                        "• An extra step: the helper has to read the whole page first. That only pays off when it's " +
-                        "clearly faster, hence the strict 25%.\n" +
-                        "When details matter, use the chat model alone (helper None) or pair the helper with an A3B model.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text("Test runs", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "Run the test once for each chat model you pair with the helper. With 3–5 runs the results are " +
-                        "averaged, the spread is shown, and the rules apply to the average, so one lucky or unlucky run " +
-                        "doesn't decide. Clear outliers (far from the others, e.g. a hiccup on the Tiiny) are left out: " +
-                        "1 of 3 or 4 runs, up to 2 of 5, so at least 3 always count. A short pause comes before every " +
-                        "measurement. History keeps every test, to compare pairs and models over time.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        },
-        confirmButton = {},
-    )
-}
 
 @Composable
 private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     val cur = s.settings
     // Display changes save at once; they shouldn't reset what is being typed in the other fields.
-    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, helperOn = true, stayConnected = false, keepAsr = false, keepOcr = false, keepEmbed = false, keepRerank = false, keepTts = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, showRecs = true, appLock = false, lockAfter = 0)
+    val formKey = cur.copy(layout = "", uiScale = "", textScale = "", enterSends = true, keepRunning = false, notifyDone = false, labels = "", helperModel = "", dailyUpdateCheck = false, speedRuns = 1, autoAsksHelper = false, helperOn = true, nightShift = false, nightFrom = 1, nightTo = 6, loadAhead = "", stayConnected = false, keepAsr = false, keepOcr = false, keepEmbed = false, keepRerank = false, keepTts = false, startScreen = "", navOrder = "", theme = "", style = "", lineIcons = false, lineColour = false, designedFonts = false, oneFace = false, quietStatus = false, showRecs = true, appLock = false, lockAfter = 0)
     var url by remember(formKey) { mutableStateOf(cur.tiinyUrl) }
     var key by remember(formKey) { mutableStateOf(cur.apiKey) }
     var host by remember(formKey) { mutableStateOf(cur.nasHost) }
@@ -1504,7 +1430,6 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
     var searxTest by remember { mutableStateOf<String?>(null) }
     var searchMode by remember(formKey) { mutableStateOf(cur.searchMode) }
     var tavily by remember(formKey) { mutableStateOf(cur.tavilyKey) }
-    var helper by remember(formKey) { mutableStateOf(cur.helperModel) }
     val scope = rememberCoroutineScope()
 
     // From the saved settings: fields this form doesn't show (speed test runs, helper options…) are kept as they are.
@@ -1524,7 +1449,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         searxUrl = searx.trim(),
         searchMode = searchMode,
         tavilyKey = tavily.trim(),
-        helperModel = helper,
+        helperModel = cur.helperModel,
     )
 
     Column(
@@ -1922,190 +1847,8 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
         }
 
         HorizontalDivider(Modifier.padding(vertical = 6.dp))
-        Text("Fast helper model", style = MaterialTheme.typography.titleMedium)
-        val chatModels = s.models.filter { it.isChat }
-        // 👍 the recommended helpers (Settings → Display → Recommended models), a missing one offered below.
-        val helperRecs = if (s.settings.showRecs) Recs.forTasks(listOf("helper")) else emptyList()
-        // And those the speed tests found about as quick at a helper's job.
-        val speedRecords by st.speedHistory.collectAsState()
-        val measuredOk = remember(speedRecords, chatModels, helperRecs) {
-            if (s.settings.showRecs) st.measuredHelpers(chatModels, helperRecs.map { it.id }.toSet()) else emptySet()
-        }
-        val helperM = chatModels.firstOrNull { it.id == helper }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Box(Modifier.weight(1f)) {
-        SettingDropdown(
-            "Helper",
-            // ● = loaded now, as in the chat's model menu; mixture-of-experts models carry their tag.
-            listOf("" to "None (the chat model does everything)") + chatModels.map { m ->
-                // No-break spaces: the ● stays in front of its name, even when a long name wraps.
-                m.id to (if (m.running) "●\u00A0" else "") + m.name + (if (m.isMoE) "\u00A0\u00A0" + tag("MoE") else "") +
-                    (if (helperRecs.any { it.id == m.id } || m.id in measuredOk) "\u00A0\u00A0👍" else "")
-            },
-            helper,
-        ) {
-            // Saved at once (no Save needed), like the display settings.
-            helper = it
-            vm.setDisplay(cur.copy(helperModel = it))
-        }
-          }
-          // Load (▶) or unload (■) the chosen helper right here, as on the Models page; a swap is asked as there.
-          if (helperM != null) Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-              when {
-                  helperM.id in s.working || helperM.status == "loading" -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                  helperM.running -> IconButton(onClick = { vm.unload(helperM) }) { SignText("■", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                  else -> IconButton(onClick = { vm.load(helperM) }) {
-                      Icon(Icons.Filled.PlayArrow, contentDescription = "Load ${helperM.name}", tint = MaterialTheme.colorScheme.primary)
-                  }
-              }
-          }
-        }
-        helperRecs.firstOrNull { r -> chatModels.none { it.id == r.id } && helperRecs.none { h -> chatModels.any { it.id == h.id } } }?.let { r ->
-            var ask by remember { mutableStateOf(false) }
-            val shop = LocalModelShop.current
-            LaunchedEffect(Unit) { if (shop?.store == null) shop?.loadStore() }
-            TextButton(onClick = { ask = true }, enabled = shop?.downloading?.contains(r.id) != true) {
-                Text("👍 " + (shop?.nameOf(r.id) ?: r.id) + " · " + r.why + (shop?.sizeOf(r.id)?.let { " · $it" } ?: "") + "  ⤓")
-            }
-            if (ask) DownloadAsk(listOf(r.id), "👍 " + r.why) { ask = false }
-        }
-        SignText(
-            "A small chat model loaded beside your main one. It names chats, suggests follow-ups, condenses long chats and files, and runs Improve prompt, lyrics and tags. " +
-                "It condenses web pages only if the speed test found it at least 25% faster ($SIGN_INFO). ▶ beside the menu loads it, ■ unloads it; the chat's options switch it on or off (⚡). Off or not loaded, the chat model does all this.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Auto thinking asks the helper", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "With Thinking on Auto, the helper picks Low, Medium or High per question: smarter, but answers start about 2 s later. Off: the app decides from the question's length and words.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = cur.autoAsksHelper, onCheckedChange = { vm.setDisplay(cur.copy(autoAsksHelper = it)) })
-        }
-        val speed by st.speed.collectAsState()
-        val small = chatModels.firstOrNull { it.id == helper && it.running }
-        val big = chatModels.firstOrNull { it.running && it.id == st.pick("chat") && it.id != helper }
-            ?: chatModels.firstOrNull { it.running && it.id != helper }
-        var speedInfo by remember { mutableStateOf(false) }
-        var history by remember { mutableStateOf(false) }
-        // Several pairs at once: up to 3 helpers × up to 9 main models, each pair loaded and tested in turn.
-        val byName = chatModels.sortedBy { it.name.lowercase() }
-        var testHelpers by remember { mutableStateOf(st.speedSet("helpers").filter { id -> chatModels.any { it.id == id } }) }
-        var testMains by remember { mutableStateOf(st.speedSet("mains").filter { id -> chatModels.any { it.id == id } }) }
-        val pairs = testMains.sumOf { m -> testHelpers.count { it != m } }
-        val batch = testHelpers.isNotEmpty() && testMains.isNotEmpty()
-        val testing = speed?.startsWith("Testing") == true
-        Box {
-            var pick by remember { mutableStateOf(false) }
-            OutlinedButton(onClick = { pick = true }, modifier = Modifier.fillMaxWidth(), enabled = !testing) {
-                Text(
-                    "Test models: " + (if (!batch) "the loaded pair" else
-                        "${testHelpers.size} helper${if (testHelpers.size > 1) "s" else ""} × ${testMains.size} main · $pairs pair${if (pairs != 1) "s" else ""}") + "  ▾",
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-            }
-            ScaledDropdownMenu(expanded = pick, onDismissRequest = { pick = false }) {
-                DropdownMenuItem(
-                    text = { Text("Only the loaded pair · clear the lists") },
-                    onClick = { testHelpers = emptyList(); testMains = emptyList(); st.setSpeedSet("helpers", testHelpers); st.setSpeedSet("mains", testMains); pick = false },
-                )
-                // Two lists of checkboxes: (title, the chosen and the recommended, how many at most, save).
-                // 👍: recommended as helper, or as chat model (Settings → Display → Recommended models).
-                val recHelpers = if (s.settings.showRecs) Recs.forTasks(listOf("helper")).map { it.id }.toSet() + measuredOk else emptySet()
-                val recMains = if (s.settings.showRecs) Recs.forTasks(Recs.tasksFor("chat")).map { it.id }.toSet() else emptySet()
-                for ((title, lists, most, put) in listOf(
-                    Quad("Helpers (up to 3)", testHelpers to recHelpers, 3) { l: List<String> -> testHelpers = l; st.setSpeedSet("helpers", l) },
-                    Quad("Main models (up to 9)", testMains to recMains, 9) { l: List<String> -> testMains = l; st.setSpeedSet("mains", l) },
-                )) {
-                    val (chosen, recd) = lists
-                    HorizontalDivider()
-                    DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
-                    for (m in byName) {
-                        val on = m.id in chosen
-                        // A chosen helper stays choosable as a main model, greyed: it's tested with the other helpers only.
-                        val alsoHelper = most == 9 && m.id in testHelpers
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    (if (on) "☑ " else "☐ ") + m.name + (if (m.id in recd) "\u00A0\u00A0👍" else ""),
-                                    color = if (alsoHelper) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f) else Color.Unspecified,
-                                )
-                            },
-                            enabled = on || chosen.size < most,
-                            onClick = { put(if (on) chosen - m.id else chosen + m.id) },
-                        )
-                    }
-                }
-            }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                SettingDropdown(
-                    "Test runs",
-                    listOf(1, 3, 4, 5).map { n -> n.toString() to if (n == 1) "1 (quick, no statistics)" else "$n, averaged" },
-                    cur.speedRuns.toString(),
-                ) { vm.setDisplay(cur.copy(speedRuns = it.toInt())) }
-            }
-            TextButton(onClick = { history = true }) { BtnLabel("Statistics", symbol = "📊") }
-        }
-        if (history) SpeedHistoryDialog(st) { history = false }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // The red Stop asks: after this step, or now.
-            if (testing) {
-                val stopping by st.speedStopping.collectAsState()
-                StopAsking(
-                    "the speed test",
-                    "After this step: the current measurement ends first (it isn't saved). Now: breaks off at once. " +
-                        "Finished pairs stay in 📊 Statistics; models loaded before are loaded back.",
-                    onStop = { st.stopSpeedTest(now = true) },
-                    modifier = Modifier.weight(1f),
-                    text = if (stopping) "Stopping after this step…" else "Stop the speed test",
-                    stopText = "Stop now",
-                    extra = if (stopping) null else ("After this step" to { st.stopSpeedTest(now = false) }),
-                )
-            }
-            else if (batch) OutlinedButton(
-                onClick = {
-                    st.speedTestAll(
-                        testMains.mapNotNull { id -> chatModels.firstOrNull { it.id == id } },
-                        testHelpers.mapNotNull { id -> chatModels.firstOrNull { it.id == id } },
-                        cur.speedRuns,
-                    )
-                },
-                enabled = pairs > 0 && !testing,
-                modifier = Modifier.weight(1f),
-            ) { Text("Speed tests: $pairs pair${if (pairs != 1) "s" else ""}, one after the other") }
-            else OutlinedButton(
-                onClick = { if (big != null && small != null) st.speedTest(big, small, cur.speedRuns) },
-                enabled = big != null && small != null && !testing,
-                modifier = Modifier.weight(1f),
-            ) { Text("Speed test: one at a time or both at once?") }
-            IconButton(onClick = { speedInfo = true }) {
-                Icon(Icons.Filled.Info, contentDescription = "Which models to use, and why", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        if (speedInfo) ModelChoiceInfo { speedInfo = false }
-        Text(
-            when {
-                batch && pairs == 0 -> "Choose at least one helper and one other main model."
-                batch -> "Tests $pairs pair${if (pairs != 1) "s" else ""} one after the other, ${if (cur.speedRuns == 1) "once" else "${cur.speedRuns} times"} each: " +
-                    "only that pair is loaded for its test, your models are loaded back at the end. " +
-                    "About ${Tools.fmtDuration(pairs * (cur.speedRuns * 3L + 2) * 60)}; it keeps going in the background. Each pair goes to 📊 Statistics."
-                helper.isBlank() -> "Choose a helper first."
-                small == null -> "Load the helper and your chat model to run the speed test."
-                big == null -> "Load your chat model too to run the speed test."
-                else -> "Tests ${big.name} and ${small.name}, alone and at the same time, " +
-                    (if (cur.speedRuns == 1) "once (about 2 minutes). Results vary from run to run: 3–5 runs give a steadier average."
-                    else "${cur.speedRuns} times with short pauses between, and averages the results (about ${cur.speedRuns * 2} minutes).")
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        speed?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        Text("Background efficiency tools", style = MaterialTheme.typography.titleMedium)
+        BackgroundTools(s, vm)
 
         Text(
             "The log (with Share) is in the Activity tab.",
@@ -2478,16 +2221,22 @@ private fun UpdatesDialog(s: UiState, vm: MainViewModel, onClose: () -> Unit) {
     )
 }
 
-/** Every section's number: 0 Models, 1 Create, 2 Chat, 3 Activity, 4 Settings, 5 Automate, 6 Gallery, 7 Translate, 8 Code. */
-private val ALL_TABS = 0..9
+/** Every section's number: 0 Models, 1 Create, 2 Chat, 3 Activity, 4 Settings, 5 Automate, 6 Gallery, 7 Translate, 8 Code, 9 Start, 10 Test. */
+private val ALL_TABS = 0..10
 
 /** The sidebar's top part, default order. */
-private val DEFAULT_TOP = listOf(9, 2, 8, 1, 6, 5, 7)
+private val DEFAULT_TOP = listOf(9, 2, 8, 1, 6, 5, 10, 7)
 
 /** The top part in the order saved in Settings (numbers missing there, new sections say, go at the end). */
 internal fun topOrder(saved: String): List<Int> {
-    val mine = saved.split(',').mapNotNull { it.trim().toIntOrNull() }.filter { it in DEFAULT_TOP }.distinct()
-    return mine + DEFAULT_TOP.filter { it !in mine }
+    val mine = saved.split(',').mapNotNull { it.trim().toIntOrNull() }.filter { it in DEFAULT_TOP }.distinct().toMutableList()
+    // A section new since the order was saved goes where it is by default: after the one before it there (Test after
+    // Automate), else at the end.
+    for ((i, t) in DEFAULT_TOP.withIndex()) if (t !in mine) {
+        val after = DEFAULT_TOP.getOrNull(i - 1)?.let { mine.indexOf(it) } ?: -1
+        if (after >= 0) mine.add(after + 1, t) else mine.add(t)
+    }
+    return mine
 }
 
 internal fun navEntry(i: Int): Triple<String, androidx.compose.ui.graphics.vector.ImageVector, Int> = when (i) {
@@ -2499,6 +2248,7 @@ internal fun navEntry(i: Int): Triple<String, androidx.compose.ui.graphics.vecto
     6 -> Triple("Gallery", GalleryIcon, 6)
     7 -> Triple("Translate", TranslateIcon, 7)
     8 -> Triple("Code", CodeIcon, 8)
+    10 -> Triple("Test", TestIcon, 10)
     9 -> Triple("Start", LINE_ICONS.getValue("✨"), 9)
     else -> Triple("Settings", Icons.Filled.Settings, 4)
 }

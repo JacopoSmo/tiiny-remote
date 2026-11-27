@@ -40,7 +40,7 @@ private fun median(l: List<Double>) = l.sorted().let { s -> if (s.size % 2 == 1)
 /** Settings → History: every speed test in a table, the best pairs, and each model's speed over all tests. */
 @Composable
 fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
-    val all by st.speedHistory.collectAsState()
+    val all by st.tests.speedHistory.collectAsState()
     val chats by st.chatSpeeds.collectAsState()
     var sort by remember { mutableStateOf("new") }
     var confirmClear by remember { mutableStateOf(false) }
@@ -185,7 +185,7 @@ fun SpeedHistoryDialog(st: StudioViewModel, onClose: () -> Unit) {
         confirmButton = {},
         dismissButton = {
             if (all.isNotEmpty() || chats.isNotEmpty()) {
-                if (confirmClear) TextButton(onClick = { st.clearSpeedHistory(); confirmClear = false }) {
+                if (confirmClear) TextButton(onClick = { st.tests.clearSpeedHistory(); confirmClear = false }) {
                     Text("Really clear all?", color = MaterialTheme.colorScheme.error)
                 } else TextButton(onClick = { confirmClear = true }) { Text("Clear history") }
             }
