@@ -2,6 +2,11 @@ package app.tiinyremote
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.Box
 import android.Manifest
 import android.app.Application
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -177,9 +182,52 @@ class AutoViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun deleteRun(r: AutoRun) {
-        store.deleteRuns(setOf(r.id))
+    private val _hidden = MutableStateFlow<Set<String>>(emptySet())
+    /** Results deleted a moment ago: hidden at once, gone for good after a few seconds unless Undo. */
+    val hidden: StateFlow<Set<String>> = _hidden.asStateFlow()
+    private val _undo = MutableStateFlow<Int?>(null)
+    /** How many results the Undo bar offers to bring back (null: no bar). */
+    val undo: StateFlow<Int?> = _undo.asStateFlow()
+    private var pendingDelete: kotlinx.coroutines.Job? = null
+    private var pendingRuns: List<AutoRun> = emptyList()
+
+    /** Deletes results, the phone's and the NAS's, as the Gallery does: at once, with a few seconds to Undo. */
+    fun deleteRuns(rs: List<AutoRun>) {
+        if (rs.isEmpty()) return
+        pendingDelete?.cancel()
+        commitDelete(pendingRuns)
+        pendingRuns = rs
+        _hidden.value = rs.map { it.id }.toSet()
+        _undo.value = rs.size
+        pendingDelete = viewModelScope.launch {
+            kotlinx.coroutines.delay(6_000)
+            commitDelete(rs)
+            pendingRuns = emptyList()
+            _undo.value = null
+        }
+    }
+
+    fun undoDelete() {
+        pendingDelete?.cancel()
+        pendingRuns = emptyList()
+        _hidden.value = emptySet()
+        _undo.value = null
+    }
+
+    private fun commitDelete(rs: List<AutoRun>) {
+        if (rs.isEmpty()) return
+        store.deleteRuns(rs.filter { it.where != "nas" }.map { it.id }.toSet())
         _runs.value = store.runs()
+        val nas = rs.filter { it.where == "nas" }
+        if (nas.isNotEmpty()) viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { NasAgent.deleteRuns(_conn.value, nas.map { it.id }) }
+                _nasRuns.value = _nasRuns.value.filter { r -> nas.none { it.id == r.id } }
+            } catch (e: Exception) {
+                _note.value = "Couldn't delete the NAS's results: ${e.message}"
+            }
+        }
+        _hidden.value = _hidden.value - rs.map { it.id }.toSet()
     }
 
     /** Saves; answerAt names the card ("email", "nas") whose Save was tapped: the answer shows right under its button. */
@@ -296,7 +344,10 @@ fun AutomationsScreen(s: UiState, st: StudioViewModel, av: AutoViewModel, openCh
             }
         }
         when (section) {
-            "results" -> ResultsList((runs + nasRuns).sortedByDescending { it.at }, st, av, openChat)
+            "results" -> {
+                val hidden by av.hidden.collectAsState()
+                ResultsList((runs + nasRuns).filter { it.id !in hidden }, st, av, openChat)
+            }
             "connectors" -> ConnectorsCard(conn, av, openLogs)
             else -> {
                 Text(
@@ -374,16 +425,79 @@ private fun AutomationCard(a: Automation, doing: String?, last: AutoRun?, onEdit
     }
 }
 
+/** How Automate's results can be ordered. */
+private val RESULT_SORTS = listOf("new" to "Newest first", "old" to "Oldest first", "name" to "By automation", "problems" to "Problems first")
+
+/**
+ * Automate → Results: sorted as chosen (by automation: grouped under its name), long-press to mark (as in the
+ * Gallery): All, Share, Delete (with Undo), ✕.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewModel, openChat: () -> Unit) {
+private fun ResultsList(all: List<AutoRun>, st: StudioViewModel, av: AutoViewModel, openChat: () -> Unit) {
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    if (runs.isEmpty()) Text("No results yet. Run an automation, or wait for its time.", style = MaterialTheme.typography.bodyMedium)
+    val ctx = LocalContext.current
+    var sort by rememberSaveable { mutableStateOf("new") }
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    val undo by av.undo.collectAsState()
+    val runs = when (sort) {
+        "old" -> all.sortedBy { it.at }
+        "name" -> all.sortedWith(compareBy<AutoRun> { it.name.lowercase() }.thenByDescending { it.at })
+        "problems" -> all.sortedWith(compareBy<AutoRun> { it.ok }.thenByDescending { it.at })
+        else -> all.sortedByDescending { it.at }
+    }
+    val marked = runs.filter { it.id in selected }
+    androidx.activity.compose.BackHandler(enabled = marked.isNotEmpty()) { selected = emptySet() }
+    fun share(rs: List<AutoRun>) {
+        val text = rs.joinToString("\n\n---\n\n") { "${it.name} · ${fmtTime(it.at)}\n\n${it.text}" }
+        ctx.startActivity(android.content.Intent.createChooser(
+            android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text),
+            "Share results",
+        ))
+    }
+    undo?.let { n ->
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("$n result${if (n != 1) "s" else ""} deleted", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { av.undoDelete() }) { Text("Undo") }
+            }
+        }
+    }
+    if (marked.isNotEmpty()) Row(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("${marked.size} marked", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        TextButton(onClick = { selected = runs.map { it.id }.toSet() }) { Text("All") }
+        TextButton(onClick = { share(marked) }) { BtnLabel("Share", androidx.compose.material.icons.Icons.Filled.Share) }
+        TextButton(onClick = { av.deleteRuns(marked); selected = emptySet() }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
+        TextButton(onClick = { selected = emptySet() }) { Text("✕") }
+    } else if (all.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { SettingDropdown("Sort", RESULT_SORTS, sort) { sort = it } }
+    }
+    if (all.isEmpty()) Text("No results yet. Run an automation, or wait for its time.", style = MaterialTheme.typography.bodyMedium)
+    else if (marked.isEmpty()) Text(
+        "Long-press a result to mark it (then tap others): share or delete several at once.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    var lastGroup: String? = null
     for (r in runs) androidx.compose.runtime.key(r.id) {
+        if (sort == "name" && r.name != lastGroup) {
+            lastGroup = r.name
+            Text("${r.name} (${runs.count { it.name == r.name }})", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        }
         var open by remember { mutableStateOf(false) }
-        Card(Modifier.fillMaxWidth().clickable { open = !open }) {
+        val on = r.id in selected
+        fun toggle() { selected = if (on) selected - r.id else selected + r.id }
+        Card(
+            Modifier.fillMaxWidth()
+                .combinedClickable(onClick = { if (marked.isNotEmpty()) toggle() else open = !open }, onLongClick = { toggle() })
+                .then(if (on) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)) else Modifier),
+        ) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    (if (r.ok) "" else "⚠ ") + r.name,
+                    (if (on) "✓ " else "") + (if (r.ok) "" else "⚠ ") + r.name,
                     style = MaterialTheme.typography.titleSmall,
                     color = if (r.ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
                 )
@@ -392,7 +506,7 @@ private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewMo
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (open) {
+                if (open && marked.isEmpty()) {
                     androidx.compose.foundation.text.selection.SelectionContainer { MarkdownText(r.text) }
                     if (r.steps.isNotEmpty()) Text(
                         "Steps:\n" + r.steps.joinToString("\n") { "• $it" },
@@ -402,7 +516,7 @@ private fun ResultsList(runs: List<AutoRun>, st: StudioViewModel, av: AutoViewMo
                     Row {
                         if (r.ok) TextButton(onClick = { st.startChatWith(r.name, r.text); openChat() }) { BtnLabel("Continue in chat", symbol = "💬") }
                         TextButton(onClick = { clipboard.setText(androidx.compose.ui.text.AnnotatedString(r.text)) }) { BtnLabel("Copy", symbol = "⧉") }
-                        if (r.where == "phone") TextButton(onClick = { av.deleteRun(r) }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
+                        TextButton(onClick = { av.deleteRuns(listOf(r)) }) { BtnLabel("Delete", androidx.compose.material.icons.Icons.Filled.Delete) }
                     }
                 } else Text(r.text.replace(Regex("\\[([^\\]]+)]\\([^)]*\\)"), "$1").replace(Regex("[#*_`>]"), "").replace(Regex("\\s+"), " ").trim().take(140), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

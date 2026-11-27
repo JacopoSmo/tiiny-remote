@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
@@ -72,6 +73,12 @@ fun StartScreen(st: StudioViewModel, goTab: (Int) -> Unit, openTool: (String) ->
     val ctx = LocalContext.current
     val haptic = LocalHapticFeedback.current
     fun tool(id: String) = openTool(id) // one step: Back returns to Start
+    val speeds by st.tests.speedHistory.collectAsState()
+    val grades by st.tests.qualityHistory.collectAsState()
+    val speedLatest = speeds.firstOrNull()?.let { "Last: ${it.big} + ${it.small}, ${SpeedMath.verdictWord(it.bothGain).substringBefore(':')}" }
+    val qualityLatest = grades.maxByOrNull { it.at }?.let { last ->
+        grades.filter { it.at == last.at && !it.average.isNaN() }.maxByOrNull { it.average }?.let { "Best last time: ${it.model}, ${SpeedMath.f(it.average)}/10" }
+    }
     val tasks = listOf(
         Task("chat", "💬", "Ask anything", "Chat with a model on your Tiiny") { goTab(2) },
         Task("dictate", SIGN_MIC, "Dictate a question", "Speak; the answer comes as text") { goTab(2); Nav.dictate.value = true },
@@ -89,6 +96,9 @@ fun StartScreen(st: StudioViewModel, goTab: (Int) -> Unit, openTool: (String) ->
         Task("automate", SIGN_AUTOMATE, "Automate something", "Daily email summaries, news, reminders") { goTab(5) },
         Task("gallery", SIGN_GALLERY, "See what you made", "Images, sound, video, 3D, texts") { goTab(6) },
         Task("choose", "🧭", "Help me choose a model", "Say what you want to do") { st.askInChat(HELP_CHOOSE_DRAFT) },
+        // The tests, with the latest result in small text.
+        Task("speedtest", "📊", "Speed test", speedLatest ?: "Is a helper beside your model worth it?") { goTab(10) },
+        Task("qualitytest", "🎓", "Quality test", qualityLatest ?: "Which model answers best?") { goTab(10) },
     )
     var order by remember { mutableStateOf(StartOrder.apply(StartOrder.load(ctx), tasks.map { it.key }) { it }) }
     val byKey = tasks.associateBy { it.key }
