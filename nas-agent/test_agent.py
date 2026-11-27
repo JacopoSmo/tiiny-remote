@@ -90,8 +90,13 @@ class FakeTiiny(BaseHTTPRequestHandler):
         self.send(404, {"error": "nope"})
 
 
+class QuietServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        pass  # a connection the test broke off on purpose (Stop now)
+
+
 def serve(handler):
-    srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    srv = QuietServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv
 

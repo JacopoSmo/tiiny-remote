@@ -1501,7 +1501,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             while (true) {
                 if (Background.visible) syncNas()
-                delay(120_000)
+                kotlinx.coroutines.delay(120_000)
             }
         }
     }
