@@ -2010,7 +2010,7 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
             }
             ScaledDropdownMenu(expanded = pick, onDismissRequest = { pick = false }) {
                 DropdownMenuItem(
-                    text = { Text("Only the loaded pair") },
+                    text = { Text("Only the loaded pair · clear the lists") },
                     onClick = { testHelpers = emptyList(); testMains = emptyList(); st.setSpeedSet("helpers", testHelpers); st.setSpeedSet("mains", testMains); pick = false },
                 )
                 // Two lists of checkboxes: (title, the chosen and the recommended, how many at most, save).
@@ -2026,8 +2026,15 @@ private fun SettingsScreen(s: UiState, vm: MainViewModel, st: StudioViewModel) {
                     DropdownMenuItem(text = { Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }, onClick = {}, enabled = false)
                     for (m in byName) {
                         val on = m.id in chosen
+                        // A chosen helper stays choosable as a main model, greyed: it's tested with the other helpers only.
+                        val alsoHelper = most == 9 && m.id in testHelpers
                         DropdownMenuItem(
-                            text = { Text((if (on) "☑ " else "☐ ") + m.name + (if (m.id in recd) "\u00A0\u00A0👍" else "")) },
+                            text = {
+                                Text(
+                                    (if (on) "☑ " else "☐ ") + m.name + (if (m.id in recd) "\u00A0\u00A0👍" else ""),
+                                    color = if (alsoHelper) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f) else Color.Unspecified,
+                                )
+                            },
                             enabled = on || chosen.size < most,
                             onClick = { put(if (on) chosen - m.id else chosen + m.id) },
                         )
