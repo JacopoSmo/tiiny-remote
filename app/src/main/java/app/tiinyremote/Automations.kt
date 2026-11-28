@@ -967,6 +967,16 @@ object NasAgent {
         }
     }
 
+    /**
+     * The Tiiny's temperatures as the agent last read them (agent 2.1+), with what's needed to set that up: [NasTemps].
+     * An older agent: null.
+     */
+    fun temps(c: Connectors, log: Boolean = false): NasTemps? = try {
+        NasTemps.from(JSONObject(call(c, "GET", "/temps", log = log).second))
+    } catch (e: MediaException) {
+        if (e.message?.contains("HTTP 404") == true) null else throw e
+    }
+
     /** Sends a job; [whenToRun] "now" or "night". An agent older than 2.0 has no jobs: said so. */
     fun addJob(c: Connectors, kind: String, whenToRun: String, title: String, spec: JSONObject): NasJob = try {
         NasJob.from(JSONObject(call(c, "POST", "/jobs", JSONObject().put("kind", kind).put("when", whenToRun).put("title", title).put("spec", spec), 60).second))
@@ -1035,3 +1045,60 @@ val AUTOMATION_TEMPLATES: List<Automation> = listOf(
     Automation("", "Tomorrow's meetings", source = "calendar", sourceArg = "tomorrow", time = "20:00", days = setOf(7, 1, 2, 3, 4),
         instruction = "List tomorrow's meetings with time and place, and point out clashes or tight gaps."),
 )
+
+/**
+ * The Tiiny's temperatures, read by the NAS agent over SSH with its own key (agent 2.1). [state]: "ready", "needs-key" (the
+ * Tiiny doesn't know the key yet), "error" ([why]) or "starting". [line]: the key line for the Tiiny's authorized_keys.
+ */
+data class NasTemps(
+    val state: String,
+    val why: String,
+    val temps: List<Pair<String, Double>>,
+    val at: Long,
+    val line: String,
+    val host: String,
+    val port: Int,
+) {
+    companion object {
+        fun from(o: JSONObject): NasTemps {
+            val t = o.optJSONObject("temps") ?: JSONObject()
+            val list = t.keys().asSequence().mapNotNull { k -> t.optDouble(k).takeIf { !it.isNaN() }?.let { k to it } }
+                .sortedByDescending { it.second }.toList()
+            return NasTemps(o.optString("state"), o.optString("why"), list, o.optLong("at"), o.optString("line"),
+                o.optString("host"), o.optInt("port", 3588))
+        }
+
+        /**
+         * The one command that adds the agent's key to the Tiiny, sent with Tiiny support's log kit (whose certificate the
+         * Tiiny accepts). The key line travels as base64 so no quoting can break it; run twice, it's added once.
+         * [windows]: backslashes in the kit's paths.
+         */
+        fun addCommand(line: String, host: String, port: Int, windows: Boolean): String {
+            val b64 = android.util.Base64.encodeToString(line.toByteArray(), android.util.Base64.NO_WRAP)
+            val blob = line.substringAfter("ssh-ed25519 ").substringBefore(' ')
+            val k = if (windows) "keys\\" else "keys/"
+            val remote = "mkdir -p ~/.ssh && chmod 700 ~/.ssh && touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && " +
+                "(grep -qF $blob ~/.ssh/authorized_keys || echo $b64 | base64 -d >> ~/.ssh/authorized_keys) && echo Added"
+            return "ssh -p $port -i ${k}tiiny_ed25519 -o CertificateFile=${k}tiiny_ed25519-cert.pub -o IdentitiesOnly=yes tiiny@$host \"$remote\""
+        }
+    }
+}
+
+/** The agent's temperature reading, fetched at most once a minute while the app watches the Tiiny. */
+object NasTempsCache {
+    @Volatile private var last: NasTemps? = null
+    @Volatile private var at = 0L
+
+    fun get(connectors: () -> Connectors): NasTemps? {
+        val now = System.currentTimeMillis()
+        if (now - at > 60_000) {
+            at = now
+            last = runCatching { connectors().takeIf { it.nasReady }?.let { NasAgent.temps(it) } }.getOrNull()
+        }
+        return last
+    }
+
+    fun forget() {
+        at = 0L
+    }
+}

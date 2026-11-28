@@ -686,9 +686,10 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
             var guide by remember { mutableStateOf<String?>(null) }
             // The three set-up guides, side by side (scrolling sideways when the screen is narrow).
             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                TextButton(onClick = { guide = "nas" }) { Text("Set up NAS") }
                 TextButton(onClick = { guide = "ical" }) { Text("Set up iCal") }
+                TextButton(onClick = { guide = "nas" }) { Text("Set up NAS") }
                 TextButton(onClick = { guide = "ntfy" }) { Text("Set up ntfy") }
+                TextButton(onClick = { guide = "temps" }, enabled = nasUrl.isNotBlank() && token.isNotBlank()) { Text("Set up temperatures") }
             }
             when (guide) {
                 "nas" -> TerminalGuide(
@@ -701,6 +702,7 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
                     "The link is as good as a password: anyone with it can read your calendar. The app keeps it encrypted and sends " +
                         "it only to your NAS. Automations on the phone don't need it: they read the phone's calendar directly.",
                 ) { guide = null }
+                "temps" -> TempsGuide(current()) { guide = null }
                 "ntfy" -> TerminalGuide(
                     "Set up ntfy (results as push messages)", NTFY_STEPS,
                     "Without ntfy, NAS results are under Automate → Results; with it, they also come to your phone as a notification, " +
@@ -710,6 +712,56 @@ private fun ConnectorsCard(conn: Connectors, av: AutoViewModel, openLogs: () -> 
             }
         }
     }
+}
+
+/**
+ * The Tiiny's temperatures through the NAS agent (2.1+): asks the agent how far it is, then shows either what it reads or
+ * the one command that adds the agent's key to the Tiiny (with Tiiny support's log kit, from a computer).
+ */
+@Composable
+private fun TempsGuide(c: Connectors, onClose: () -> Unit) {
+    var answer by remember { mutableStateOf<Result<NasTemps?>?>(null) }
+    LaunchedEffect(Unit) {
+        answer = withContext(Dispatchers.IO) { runCatching { NasAgent.temps(c, log = true) } }
+        NasTempsCache.forget() // the status panel asks afresh
+    }
+    val title = "Set up temperatures"
+    val note = "Close and open this guide again to check. To stop it later: on the Tiiny, delete the line ending in " +
+        "tiiny-remote-nas-temperatures from ~/.ssh/authorized_keys."
+    val a = answer
+    val steps: List<Pair<String, String>> = when {
+        a == null -> listOf("Asking the NAS agent…" to "")
+        a.isFailure -> listOf("The NAS agent didn't answer: ${a.exceptionOrNull()?.message ?: "no reason given"}" to "")
+        a.getOrNull() == null -> listOf(
+            "This needs NAS agent 2.1 or newer: update it first (Set up NAS, step 5), then open this again." to "",
+        )
+        else -> {
+            val t = a.getOrNull()!!
+            if (t.state == "ready" && t.temps.isNotEmpty()) listOf(
+                "✓ The NAS reads ${t.temps.size} sensors on the Tiiny every minute. Hottest now: ${t.temps.first().first.replace('_', ' ')}, " +
+                    "${Math.round(t.temps.first().second)} °C. They show in the status panel (tap the status bar at the top)." to "",
+            ) else {
+                val host = t.host.ifBlank { "<Tiiny address>" }
+                listOfNotNull(
+                    (if (t.state == "error" && t.why.isNotBlank()) "Right now: ${t.why}" to "" else null),
+                    "## What this does" to "",
+                    "The Tiiny doesn't hand out its temperatures over the network, but anyone logged in to it can read them. The NAS " +
+                        "agent has made its own key for this; you add it to the Tiiny once. There, the key may only print the " +
+                        "temperatures: no shell, nothing else. The AI module's own sensor isn't read (that could upset a stuck NPU)." to "",
+                    "## Once, on your computer" to "",
+                    "1. Connect the computer and the Tiiny (same Wi-Fi, or the USB cable). You need Tiiny support's log kit: it works " +
+                        "until the date in its folder name." to "",
+                    "2. Windows: open the kit's folder, hold Shift, right-click in it → \"Open PowerShell window here\", paste this, Enter:" to
+                        NasTemps.addCommand(t.line, host, t.port, windows = true),
+                    "   Mac: in Terminal, go into the kit's folder (cd, then drag the folder in), paste this, Enter:" to
+                        NasTemps.addCommand(t.line, host, t.port, windows = false),
+                    "3. Asked \"Are you sure you want to continue connecting\"? Type yes. It ends with: Added." to "",
+                    "4. Within a minute the NAS reads the temperatures. Running it twice adds the key only once." to "",
+                )
+            }
+        }
+    }
+    TerminalGuide(title, steps, note, onClose = onClose)
 }
 
 /** Where to find a calendar's private iCal link: it comes from the service the calendar syncs with, not from Android. */

@@ -187,6 +187,7 @@ internal fun PictogramLegend(onClose: () -> Unit) {
         "🔎" to "Find (Settings: the Tiiny on your Wi-Fi)",
         "📦" to "Back up now (Settings → Privacy and backup)",
         "🔐" to "Forget the NAS agent's certificate (Connectors)",
+        "🌡" to "The Tiiny's hottest sensor (status bar; read by the NAS agent, Connectors → Set up temperatures)",
         "🗃" to "Copies the Tiiny keeps of texts and chats (Chat's history, Create, Gallery)",
         "↩" to "Undo a delete (the bar at the bottom)",
     )

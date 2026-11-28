@@ -277,6 +277,30 @@ class NightShift(unittest.TestCase):
         self.assertEqual(FakeTiiny.running, {"Q/Embed"})
 
 
+class Temperatures(unittest.TestCase):
+    def test_parse(self):
+        out = agent.parse_temps("scmi_sensors scmi CPU_B0 44000\nscmi_sensors scmi PCB_SOC 0\n"
+                                "lm75 5-0049 temp1_input 40000\nlm75 5-0048 temp1_input 42500\n"
+                                "x y temp3_input 51000\nbroken line\nscmi_sensors scmi NPU notanumber\n"
+                                "scmi_sensors scmi CPU_B0 45000\n")
+        self.assertEqual(out, {"CPU_B0": 44.0, "Board": 40.0, "CPU_board": 42.5, "x_temp3": 51.0, "CPU_B0+": 45.0})
+
+    def test_line_only_allows_the_command(self):
+        line = agent.temp_line()
+        self.assertTrue(line.startswith('command="for f in /sys/class/hwmon/'))
+        self.assertIn('",restrict ssh-ed25519 ', line)
+        self.assertNotIn('"', line[len('command="'):line.index('",restrict')].replace('\\"', ""))
+        self.assertTrue(line.endswith("tiiny-remote-nas-temperatures"))
+
+    def test_endpoint(self):
+        agent.TEMPS.update(state="ready", why="", now={"NPU": 43.0}, at=int(time.time()), hist=[[1, 43.0]])
+        o = agent.public_temps()
+        self.assertEqual(o["temps"], {"NPU": 43.0})
+        self.assertIn("restrict", o["line"])
+        agent.TEMPS.update(at=int(time.time()) - 3600)
+        self.assertEqual(agent.public_temps()["temps"], {})  # an old reading isn't shown as now
+
+
 class Endpoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

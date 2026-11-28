@@ -9,7 +9,7 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 - **Store:** browse TiinyOS's Model Store, download models (progress, pause, cancel), update models with a newer
   version, and delete models from the Tiiny.
 - **Live strip:** online/offline, models loaded, helper on/off, NPU and CPU load (colour-coded), NPU memory and RAM
-  in GB, power and temperature (when the Tiiny reports them); tap it for the full panel (main and helper model,
+  in GB, power and temperature (temperatures via the NAS agent 2.1); tap it for the full panel (main and helper model,
   what's working).
 - **Test (5.0):** the fast helper model (a small chat model beside the main one that names chats, suggests follow-ups,
   condenses long chats, files and, when it's clearly faster, web pages; ⚡ in the chat's options switches it), the
@@ -31,7 +31,7 @@ the same way [Tiiny Studio](https://github.com/thezolon/tiiny-studio) does.
 - **Code:** projects on the phone and a coding model on the Tiiny: Ask, Build (it writes the files), Learn; files to
   edit, a web-page preview, Share as .zip and GitHub (import, push, new private repository).
 - **Automate:** agents and processes at set times (news, web, calendar, email via IMAP, read-only), on the phone or
-  around the clock on a NAS with the NAS agent (`nas-agent/`, a small Docker service, 2.0). Results can be sorted,
+  around the clock on a NAS with the NAS agent (`nas-agent/`, a small Docker service, 2.1). Results can be sorted,
   marked, shared and deleted (Undo), on the NAS too.
 - **Translate:** typed text, a photo or speech.
 - **Create:** 3D · Audio · Image · Text · Video, each with its choices: (create, edit, read text), voice (built-in, described or cloned), transcription, loops and

@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo
 
 # Versions: x.y.0 is a tested release; x.y.1, x.y.2 … are test builds of the next changes, and once they're tested
 # and work, the next release is x.(y+1).0.
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 TOKEN = os.environ.get("AGENT_TOKEN", "")
 DATA = os.environ.get("DATA_DIR", "/data")
 PORT = int(os.environ.get("PORT", "8765"))
@@ -1617,6 +1617,153 @@ def delete_job(jid):
 
 # ---------- encrypted link and backups ----------
 
+# --- The Tiiny's temperatures (agent 2.1): read over SSH with the agent's own key, which the Tiiny only lets print them ---
+# The Tiiny's web services don't hand out its temperature sensors, but any user on it can read them. The agent makes its own
+# key once; you add it to the Tiiny once (Automate → Connectors → Set up temperatures), limited there to one command that
+# prints the sensors: the key can't open a shell, forward ports or run anything else. The AI module's own sensor isn't read:
+# its vendor library is what the Tiiny uses to reset a stuck NPU, so polling it could make things worse.
+SSH_DIR = os.path.join(DATA, "ssh")
+SSH_KEY = os.path.join(SSH_DIR, "id_ed25519")
+SSH_HOSTS = os.path.join(SSH_DIR, "known_hosts")
+SSH_PORT = 3588
+TEMP_EVERY_S = 60
+TEMP_KEEP_S = 24 * 3600
+# What the key may do on the Tiiny: one line per sensor, "chip device label millidegrees".
+TEMP_COMMAND = ("for f in /sys/class/hwmon/hwmon*/temp*_input; do d=${f%/*}; printf '%s %s %s %s\\n' "
+                "$(cat $d/name) $(basename $(readlink -f $d/device)) "
+                "$(cat ${f%_input}_label 2>/dev/null || echo ${f##*/}) $(cat $f); done")
+# The board's two lm75 sensors have no label of their own; these are the names the Tiiny's own sensors tool gives them.
+LM75 = {"5-0049": "Board", "5-0048": "CPU_board"}
+TEMPS = {"state": "starting", "why": "", "now": {}, "at": 0, "hist": []}  # hist: [time, hottest], every 5 minutes
+
+
+def ssh_key():
+    """The agent's public key, made on first use (kept in /data/ssh; the private part never leaves the NAS)."""
+    import subprocess
+    os.makedirs(SSH_DIR, mode=0o700, exist_ok=True)
+    if not os.path.exists(SSH_KEY):
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "tiiny-remote-nas-temperatures", "-f", SSH_KEY],
+                       check=True, capture_output=True, timeout=30)
+        log("Made the agent's own key for reading the Tiiny's temperatures.")
+    with open(SSH_KEY + ".pub") as f:
+        return f.read().strip()
+
+
+def temp_line():
+    """The line for the Tiiny's ~/.ssh/authorized_keys: the key, allowed only the sensor command."""
+    return 'command="%s",restrict %s' % (TEMP_COMMAND.replace('"', '\\"'), ssh_key())
+
+
+def tiiny_host():
+    """The Tiiny's address as the app sent it (the normal app's setup first)."""
+    cs = configs()
+    for app in ["normal"] + sorted(a for a in cs if a != "normal"):
+        url = (cs[app].get("tiiny", {}) or {}).get("url", "").strip()
+        if url:
+            host = urllib.parse.urlsplit(url if "://" in url else "http://" + url).hostname
+            if host:
+                return host
+    return ""
+
+
+def parse_temps(text):
+    """{name: °C} from the sensor command's lines; sensors that aren't wired (0 °C) and odd lines are left out."""
+    out = {}
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        chip, dev, value = parts[0], parts[1], parts[-1]
+        label = "_".join(parts[2:-1])
+        try:
+            c = int(value) / 1000
+        except ValueError:
+            continue
+        if not -40 < c < 150 or c == 0:
+            continue
+        if chip == "lm75":
+            label = LM75.get(dev, "Board_" + dev)
+        elif re.fullmatch(r"temp\d+(_input)?", label):
+            label = chip + "_" + label.replace("_input", "")
+        name = re.sub(r"[^A-Za-z0-9_+-]", "", label)[:24] or "sensor"
+        while name in out:
+            name += "+"
+        out[name] = round(c, 1)
+    return out
+
+
+def read_temps():
+    """One reading; raises RuntimeError with a plain reason."""
+    import subprocess
+    host = tiiny_host()
+    if not host:
+        raise RuntimeError("The app hasn't sent the Tiiny's address yet.")
+    ssh_key()
+    cmd = ["ssh", "-p", str(SSH_PORT), "-i", SSH_KEY, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes",
+           "-o", "ConnectTimeout=6", "-o", "StrictHostKeyChecking=accept-new", "-o", "UserKnownHostsFile=" + SSH_HOSTS,
+           "-o", "LogLevel=ERROR", "-T", "tiiny@" + host]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("The Tiiny didn't answer in time.")
+    except FileNotFoundError:
+        raise RuntimeError("This agent image has no SSH: update it (Set up NAS, step 5).")
+    err = (r.stderr or "").strip()
+    if "Permission denied" in err:
+        raise RuntimeError("needs-key")
+    if "REMOTE HOST IDENTIFICATION HAS CHANGED" in err:
+        raise RuntimeError("The Tiiny's identity changed (a reset or update?). If that's expected, delete "
+                           "/data/ssh/known_hosts on the NAS and restart the agent.")
+    if r.returncode != 0 and not r.stdout:
+        raise RuntimeError("The Tiiny isn't reachable for this (port %d): %s" % (SSH_PORT, err[:200] or "no answer"))
+    temps = parse_temps(r.stdout)
+    if not temps:
+        raise RuntimeError("The Tiiny answered but listed no temperatures.")
+    return temps
+
+
+def temps_tick():
+    try:
+        now = read_temps()
+    except RuntimeError as e:
+        why = str(e)
+        state = "needs-key" if why == "needs-key" else "error"
+        if TEMPS["state"] != state or TEMPS["why"] != why:
+            log("Temperatures: " + ("the Tiiny doesn't know the agent's key yet." if state == "needs-key" else why))
+        TEMPS.update(state=state, why="" if state == "needs-key" else why)
+        return
+    except Exception as e:  # noqa: BLE001 (logged; tried again next minute)
+        TEMPS.update(state="error", why=str(e)[:200])
+        return
+    t = int(time.time())
+    if TEMPS["state"] != "ready":
+        log(f"Temperatures: reading {len(now)} sensors on the Tiiny.")
+    hist = [h for h in TEMPS["hist"] if h[0] > t - TEMP_KEEP_S]
+    if not hist or t - hist[-1][0] >= 300:
+        hist.append([t, max(now.values())])
+    TEMPS.update(state="ready", why="", now=now, at=t, hist=hist)
+
+
+def temps_loop():
+    while True:
+        if tiiny_host():
+            temps_tick()
+        time.sleep(TEMP_EVERY_S)
+
+
+def public_temps():
+    out = {"state": TEMPS["state"], "why": TEMPS["why"], "temps": TEMPS["now"], "at": TEMPS["at"],
+           "hist": TEMPS["hist"], "port": SSH_PORT, "host": tiiny_host()}
+    if TEMPS["state"] != "ready" or time.time() - TEMPS["at"] > 5 * TEMP_EVERY_S:
+        out["temps"] = {}
+    try:
+        out["line"] = temp_line()
+    except Exception as e:  # noqa: BLE001
+        out["line"] = ""
+        out["why"] = out["why"] or "The agent couldn't make its key: " + str(e)[:200]
+    return out
+
+
 TLS_DIR = os.path.join(DATA, "tls")
 HTTPS_ONLY_F = os.path.join(TLS_DIR, "https-only")
 BACKUP_NAME = re.compile(r"[A-Za-z0-9._-]{1,80}")
@@ -1786,6 +1933,8 @@ class Handler(BaseHTTPRequestHandler):
                 runs = load(RUNS_F, [])
             # Each app sees its own results (results from before 1.5 are the normal app's).
             return self.reply(200, {"runs": [r for r in runs if r.get("app", "normal") == CTX.app]})
+        if path == "/temps":
+            return self.reply(200, public_temps())
         if path == "/jobs":
             return self.reply(200, {"jobs": [public_job(j) for j in jobs_all() if j.get("app", "normal") == CTX.app]})
         m = re.fullmatch(r"/jobs/([A-Za-z0-9_-]{1,40})/(result|files/([A-Za-z0-9_.-]{1,80}))", path)
@@ -1935,6 +2084,7 @@ def main():
     os.makedirs(DATA, exist_ok=True)
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=worker, daemon=True).start()
+    threading.Thread(target=temps_loop, daemon=True).start()
     log(f"Tiiny Remote NAS agent {VERSION} on port {PORT} (time zone: {zone().key}; the app sends the phone's)")
     srv = Server(("0.0.0.0", PORT), Handler)
     srv.tls = tls_context()

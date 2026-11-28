@@ -1,5 +1,11 @@
 Download the .apk below on your phone and open it to install or update (or in the app: Settings → App updates → Update app). It installs over 4.0.x (and 3.2) and keeps your settings and chats.
 
+## What's new in 5.0.1 (NAS agent 2.1.0)
+**The Tiiny's temperatures:** the NAS agent now reads the Tiiny's temperature sensors (CPU cores, GPU, memory, board,
+the chip's NPU) every minute; they show in the status panel, and 🌡 the hottest one in the status bar. Set it up once:
+update the NAS agent (Set up NAS, step 5), then Automate → Connectors → **Set up temperatures** gives the one command to
+run on your computer with Tiiny support's log kit. On the Tiiny the agent's key may only print the temperatures.
+
 ## What's new in 5.0.0 (NAS agent 2.0.0)
 A big step: a Test page, the night shift on the NAS, load ahead, a quality test, and automated checks on every build.
 Update the NAS agent too (Automate → Connectors → Set up NAS, step 5): tests on the NAS and the night shift need 2.0.

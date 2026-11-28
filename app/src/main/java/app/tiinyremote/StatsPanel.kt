@@ -391,6 +391,10 @@ private fun StatsPanel(s: UiState, vm: MainViewModel, st: DeviceStats?, studio: 
                                 }
                             }
                         }
+                        if (temps.isEmpty()) Text(
+                            "Temperatures: the NAS agent can read them (Automate → Connectors → Set up temperatures).",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Text(
                             "The Tiiny's 80 GB are two parts: 48 GB on the NPU, where the models run, and 32 GB beside the CPU " +
                                 "for TiinyOS and its services (shown as CPU RAM, about 33 GB as the system counts it).",

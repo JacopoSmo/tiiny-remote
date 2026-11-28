@@ -93,7 +93,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             _stats.value = null // no old numbers while the Tiiny is away
             return
         }
-        _stats.value = withContext(Dispatchers.IO) { Stats.read(s.settings) }
+        _stats.value = withContext(Dispatchers.IO) {
+            val st = Stats.read(s.settings)
+            // The Tiiny itself doesn't hand out its temperatures; the NAS agent (2.1+) reads them, once set up.
+            val t = if (st.temps.isEmpty()) NasTempsCache.get { AutoStore(app).connectors() } else null
+            if (t != null && t.state == "ready" && t.temps.isNotEmpty())
+                st.copy(temps = t.temps, npuTempC = st.npuTempC ?: t.temps.first().second)
+            else st
+        }
     }
 
     /** Runs while the app is on screen, beside pollLoop. */

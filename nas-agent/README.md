@@ -1,4 +1,4 @@
-# Tiiny Remote NAS agent 2.0
+# Tiiny Remote NAS agent 2.1
 
 Works for Tiiny Remote around the clock, also when your phone is off or away:
 
@@ -11,6 +11,7 @@ Works for Tiiny Remote around the clock, also when your phone is off or away:
   puts back the ones that were loaded before; in the morning the app brings the results in (made files into the
   Gallery) and a report comes as a notice and under Automate → Results.
 - **Load ahead** (Automatic): loads the model you usually use shortly before the hour, into free NPU room only.
+- **The Tiiny's temperatures** (agent 2.1): every minute, shown in the app's status panel.
 - **Backups**, encrypted on the phone before they arrive.
 
 It's one Python file using only the standard library, in a Docker container. One thing at a time on the Tiiny (an
@@ -64,6 +65,17 @@ yourself, replace the `image:` line with `build: https://github.com/JacopoSmo/ti
   requests again (an old app), delete `/data/tls/https-only`.
 - **Backups:** Settings → Privacy and backup in the app. The phone encrypts everything with your backup password before it
   leaves; the agent only stores the files (`/data/backups`, the newest five, at most 20 GB each) and can't read them.
+
+## The Tiiny's temperatures (agent 2.1)
+
+The Tiiny's web services don't hand out its temperature sensors, but any user on the Tiiny can read them. The agent makes
+its own key on first start (`/data/ssh`; the private part never leaves the NAS) and logs in to the Tiiny on its SSH port
+(3588) once a minute. You add the key to the Tiiny once: in the app, **Automate → Connectors → Set up temperatures**.
+
+On the Tiiny the key is limited to one command that prints the sensors (`restrict` plus a forced command): it can't open
+a shell, forward ports or run anything else, so even someone who took the NAS couldn't use it for more. The AI module's
+own sensor isn't read: its vendor library is what the Tiiny uses to reset a stuck NPU. To stop it, delete the key's
+line from `~/.ssh/authorized_keys` on the Tiiny.
 
 ## What it does and doesn't
 

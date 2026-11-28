@@ -2,8 +2,9 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 DATA_DIR=/data PORT=8765
 # Time zones: the slim image may come without the system's zone database; Python's own copy is the fallback.
-# openssl makes the agent's own certificate once (the encrypted link to the app).
-RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/* \
+# openssl makes the agent's own certificate once (the encrypted link to the app); openssh-client reads the Tiiny's
+# temperatures with the agent's own key (agent 2.1).
+RUN apt-get update && apt-get install -y --no-install-recommends openssl openssh-client && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir tzdata && useradd --uid 10001 --create-home agent && mkdir -p /data && chown agent /data
 COPY agent.py /app/agent.py
 USER agent
